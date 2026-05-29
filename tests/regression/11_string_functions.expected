@@ -1,0 +1,21 @@
+number of observations set to 1
+(1 real change made)
+upper: HELLO
+lower: world
+proper: Hello World
+trim: 'Hello, World'
+ltrim: 'Hello, World  '
+rtrim: '  Hello, World'
+itrim: ' a b c '
+strreverse: edcba
+strpos: 7
+strrpos: 3
+substr: ell
+subinstr: X bbb X
+subinword: the DOG and cats
+word: quick
+wordcount: 5
+length: 5
+char: A
+real: 3.14
+string-fmt:  3.14

@@ -1,0 +1,131 @@
+=== Margins after regress: AME == β, SE == SE(β) ===
+number of observations set to 100
+(100 real changes made)
+(100 real changes made)
+(100 real changes made)
+
+      Source |       SS           df       MS      Number of obs   =       100
+-------------+----------------------------------   F(2, 97)        =     907.79
+       Model |     7425.36          2     3712.68    Prob > F        =     0.0000
+    Residual |     396.712         97     4.08981    R-squared       =     0.9493
+-------------+----------------------------------   Adj R-squared   =     0.9482
+       Total |     7822.07         99     79.0108    Root MSE        =      2.022
+
+------------------------------------------------------------------------------
+           y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+          x1 |    2.98212   0.0700675   42.56 0.000      2.84305     3.12118
+          x2 |   -1.46885    0.543869   -2.70 0.008     -2.54828   -0.389422
+       _cons |    2.06159    0.518994    3.97 0.000      1.03154     3.09165
+------------------------------------------------------------------------------
+
+Marginal effects                                Number of obs   =      100
+Model VCE: OIM
+Expression: E(y)
+dy/dx w.r.t.: * (average)
+
+------------------------------------------------------------------------------
+             |     dy/dx     Std. err.    z    P>|z|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+          x1 |    2.98212   0.0700675   42.56 0.000      2.84479     3.11945
+          x2 |   -1.46885    0.543869   -2.70 0.007     -2.53482   -0.402888
+------------------------------------------------------------------------------
+
+=== Margins after logit: AME ≈ avg-p(1-p) × β ===
+number of observations set to 500
+(500 real changes made)
+(500 real changes made)
+(500 real changes made)
+
+Marginal effects                                Number of obs   =      500
+Model VCE: OIM
+Expression: Pr(y)
+dy/dx w.r.t.: * (average)
+
+------------------------------------------------------------------------------
+             |     dy/dx     Std. err.    z    P>|z|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+          x1 |   0.122372    0.036988    3.31 0.001    0.0498767    0.194867
+          x2 |  0.0711135   0.0377884    1.88 0.060   -0.00295043    0.145177
+------------------------------------------------------------------------------
+
+=== Margins after logit: MEM (atmeans) ===
+
+Marginal effects                                Number of obs   =      500
+Model VCE: OIM
+Expression: Pr(y)
+dy/dx w.r.t.: * (at means)
+
+------------------------------------------------------------------------------
+             |     dy/dx     Std. err.    z    P>|z|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+          x1 |   0.125894   0.0396525    3.17 0.001    0.0481764    0.203611
+          x2 |  0.0731603   0.0394095    1.86 0.063   -0.00408085    0.150401
+------------------------------------------------------------------------------
+
+=== Margins after probit (should be very close to logit AME above) ===
+
+Marginal effects                                Number of obs   =      500
+Model VCE: OIM
+Expression: Pr(y)
+dy/dx w.r.t.: * (average)
+
+------------------------------------------------------------------------------
+             |     dy/dx     Std. err.    z    P>|z|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+          x1 |   0.122529   0.0371695    3.30 0.001    0.0496778    0.195379
+          x2 |  0.0710999   0.0378578    1.88 0.060   -0.00310012      0.1453
+------------------------------------------------------------------------------
+
+=== dydx(x1) only ===
+
+Marginal effects                                Number of obs   =      500
+Model VCE: OIM
+Expression: Pr(y)
+dy/dx w.r.t.: x1 (average)
+
+------------------------------------------------------------------------------
+             |     dy/dx     Std. err.    z    P>|z|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+          x1 |   0.122529   0.0371695    3.30 0.001    0.0496778    0.195379
+------------------------------------------------------------------------------
+
+=== Margins after logit with TS-op regressor ===
+number of observations set to 50
+(50 real changes made)
+(25 real changes made)
+(50 real changes made)
+(50 real changes made)
+(50 real changes made)
+panel variable: p
+ time variable: t
+         delta: 1 unit
+
+Marginal effects                                Number of obs   =       48
+Model VCE: OIM
+Expression: Pr(y)
+dy/dx w.r.t.: * (average)
+
+------------------------------------------------------------------------------
+             |     dy/dx     Std. err.    z    P>|z|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+         L.x |    0.13282    0.135046    0.98 0.325    -0.131865    0.397505
+           x |  -0.133636    0.130673   -1.02 0.306    -0.389751    0.122479
+------------------------------------------------------------------------------
+
+=== Error: dydx(_cons) ===
+number of observations set to 50
+(50 real changes made)
+(50 real changes made)
+margins: dydx(_cons) doesn't make sense
+rc=.
+
+=== Error: unknown variable ===
+margins: zzz not a coefficient
+rc=.
+
+=== Error: margins without estimates ===
+number of observations set to 5
+(5 real changes made)
+margins: x not in current data
+rc=.

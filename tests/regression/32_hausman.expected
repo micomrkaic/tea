@@ -1,0 +1,76 @@
+number of observations set to 100
+(100 real changes made)
+(100 real changes made)
+(100 real changes made)
+(100 real changes made)
+(100 real changes made)
+(100 real changes made)
+panel variable: pid
+ time variable: tid
+         delta: 1 unit
+=== Hausman when RE assumption holds: expect chi2 ~ 0, p ~ 1 ===
+
+                ---- Coefficients ----
+             |      (b)          (B)            (b-B)     sqrt(diag(V_b-V_B))
+             |      fe           re          Difference     S.E.
+-------------+----------------------------------------------------------------
+           x |    2.07455       2.07455    -8.88178e-16    2.63418e-09
+------------------------------------------------------------------------------
+                  b = consistent under H0 and Ha;     obtained from xtreg, fe
+                  B = inconsistent under Ha, efficient under H0; obtained from xtreg, re
+
+Test: Ho:  difference in coefficients not systematic
+
+              chi2(1) = (b-B)'[(V_b-V_B)^(-1)](b-B)
+                       =     0.00
+            Prob > chi2 =   1.0000
+
+
+=== Hausman when α_i correlated with x: expect rejection ===
+number of observations set to 100
+(100 real changes made)
+(100 real changes made)
+(100 real changes made)
+(100 real changes made)
+(100 real changes made)
+(100 real changes made)
+panel variable: pid
+ time variable: tid
+         delta: 1 unit
+
+                ---- Coefficients ----
+             |      (b)          (B)            (b-B)     sqrt(diag(V_b-V_B))
+             |      fe           re          Difference     S.E.
+-------------+----------------------------------------------------------------
+           x |    2.17505       2.17718     -0.00213327    0.00074316
+------------------------------------------------------------------------------
+                  b = consistent under H0 and Ha;     obtained from xtreg, fe
+                  B = inconsistent under Ha, efficient under H0; obtained from xtreg, re
+
+Test: Ho:  difference in coefficients not systematic
+
+              chi2(1) = (b-B)'[(V_b-V_B)^(-1)](b-B)
+                       =     8.24
+            Prob > chi2 =   0.0041
+
+
+=== hausman errors with no estimates ===
+number of observations set to 4
+(4 real changes made)
+
+                ---- Coefficients ----
+             |      (b)          (B)            (b-B)     sqrt(diag(V_b-V_B))
+             |      fe           re          Difference     S.E.
+-------------+----------------------------------------------------------------
+           x |    2.17505       2.17718     -0.00213327    0.00074316
+------------------------------------------------------------------------------
+                  b = consistent under H0 and Ha;     obtained from xtreg, fe
+                  B = inconsistent under Ha, efficient under H0; obtained from xtreg, re
+
+Test: Ho:  difference in coefficients not systematic
+
+              chi2(1) = (b-B)'[(V_b-V_B)^(-1)](b-B)
+                       =     8.24
+            Prob > chi2 =   0.0041
+
+rc=.

@@ -1,0 +1,4 @@
+line 5: mkdir: 'recursive' is a tea extension (Stata's mkdir creates only one level).
+       Rerun with --tea-extensions to enable, or call mkdir once per level.
+after attempted recursive mkdir
+after non-recursive mkdir

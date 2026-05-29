@@ -1,0 +1,222 @@
+number of observations set to 12
+(12 real changes made)
+(12 real changes made)
+(12 real changes made)
+=== regress y x i.country (default base = 1) ===
+Expected: beta_x = 1.0, _cons = 10, 2.country = 10, 3.country = 20
+
+      Source |       SS           df       MS      Number of obs   =        12
+-------------+----------------------------------   F(3, 8)        =        inf
+       Model |        1583          3     527.667    Prob > F        =     0.0000
+    Residual | 5.36425e-29          8 6.70532e-30    R-squared       =     1.0000
+-------------+----------------------------------   Adj R-squared   =     1.0000
+       Total |        1583         11     143.909    Root MSE        =   2.589e-15
+
+------------------------------------------------------------------------------
+           y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           x |          1  6.68596e-16 1495670575692046.25 0.000            1           1
+   2.country |         10  3.24114e-15 3085332818345800.50 0.000           10          10
+   3.country |         20  5.6535e-15 3537634206891343.00 0.000           20          20
+       _cons |         10  2.11429e-15 4729725648482149.00 0.000           10          10
+------------------------------------------------------------------------------
+
+_b[x]         = 1
+_b[2.country] = 10
+_b[3.country] = 20
+_b[_cons]     = 10
+
+=== regress y x ib2.country (base = 2) ===
+Expected: _cons = 20, 1.country = -10, 3.country = 10
+
+      Source |       SS           df       MS      Number of obs   =        12
+-------------+----------------------------------   F(3, 8)        =        inf
+       Model |        1583          3     527.667    Prob > F        =     0.0000
+    Residual | 5.99534e-29          8 7.49418e-30    R-squared       =     1.0000
+-------------+----------------------------------   Adj R-squared   =     1.0000
+       Total |        1583         11     143.909    Root MSE        =   2.738e-15
+
+------------------------------------------------------------------------------
+           y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           x |          1  7.06832e-16 1414762728978867.25 0.000            1           1
+   1.country |        -10  3.4265e-15 -2918432674167755.50 0.000          -10         -10
+   3.country |         10  3.4265e-15 2918432674167749.00 0.000           10          10
+       _cons |         20  4.79397e-15 4171907685113701.00 0.000           20          20
+------------------------------------------------------------------------------
+_b[_cons]     = 20
+_b[1.country] = -10
+_b[3.country] = 10
+
+=== c.x#c.x: y = x^2 ===
+number of observations set to 5
+(5 real changes made)
+(5 real changes made)
+
+      Source |       SS           df       MS      Number of obs   =         5
+-------------+----------------------------------   F(1, 3)        =        inf
+       Model |         374          1         374    Prob > F        =     0.0000
+    Residual | 3.47099e-29          3   1.157e-29    R-squared       =     1.0000
+-------------+----------------------------------   Adj R-squared   =     1.0000
+       Total |         374          4        93.5    Root MSE        =   3.401e-15
+
+------------------------------------------------------------------------------
+           y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+     c.x#c.x |          1  1.75886e-16 5685515834629241.00 0.000            1           1
+       _cons | 1.83865e-15  2.46114e-15    0.75 0.509   -5.9938e-15  9.67109e-15
+------------------------------------------------------------------------------
+_b[c.x#c.x]  = 1
+Expected: exactly 1.0
+
+=== i.country#c.x: country-specific slopes ===
+number of observations set to 12
+(12 real changes made)
+(12 real changes made)
+(12 real changes made)
+
+      Source |       SS           df       MS      Number of obs   =        12
+-------------+----------------------------------   F(3, 8)        =        inf
+       Model |     448.667          3     149.556    Prob > F        =     0.0000
+    Residual | 3.01863e-29          8 3.77328e-30    R-squared       =     1.0000
+-------------+----------------------------------   Adj R-squared   =     1.0000
+       Total |     448.667         11     40.7879    Root MSE        =   1.942e-15
+
+------------------------------------------------------------------------------
+           y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+         c.x |        0.5  7.95656e-16 628411916865128.38 0.000          0.5         0.5
+2.country#c.x |        0.5  5.49437e-16 910021890707774.38 0.000          0.5         0.5
+3.country#c.x |          1  6.28797e-16 1590338001608030.00 0.000            1           1
+       _cons | -1.64155e-15  2.13674e-15   -0.77 0.464   -6.56888e-15  3.28577e-15
+------------------------------------------------------------------------------
+_b[c.x]            = 0.5
+_b[2.country#c.x]  = 0.5
+_b[3.country#c.x]  = 1
+Expected: c.x = 0.5, 2.country#c.x = 0.5, 3.country#c.x = 1.0
+
+=== regress y i.country##c.x ===
+Adds y intercepts: y = α_country + slope_country * x
+number of observations set to 12
+(12 real changes made)
+(12 real changes made)
+(12 real changes made)
+
+      Source |       SS           df       MS      Number of obs   =        12
+-------------+----------------------------------   F(5, 6)        =        inf
+       Model |     1138.67          5     227.733    Prob > F        =     0.0000
+    Residual | 1.39283e-30          6 2.32139e-31    R-squared       =     1.0000
+-------------+----------------------------------   Adj R-squared   =     1.0000
+       Total |     1138.67         11     103.515    Root MSE        =   4.818e-16
+
+------------------------------------------------------------------------------
+           y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+   2.country |          4  1.53877e-15 2599477598014735.50 0.000            4           4
+   3.country |          9  2.35051e-15 3828954490792874.50 0.000            9           9
+         c.x |        0.5  2.15471e-16 2320497902227836.50 0.000          0.5         0.5
+2.country#c.x |        0.5  3.04722e-16 1640839802394462.50 0.000          0.5         0.5
+3.country#c.x |          1  3.04722e-16 3281679604788919.50 0.000            1           1
+       _cons |          1  5.90092e-16 1694652060924804.75 0.000            1           1
+------------------------------------------------------------------------------
+_b[_cons]          = 1
+_b[2.country]      = 4
+_b[3.country]      = 9
+_b[c.x]            = 0.5
+_b[2.country#c.x]  = 0.5
+_b[3.country#c.x]  = 1
+
+=== i.A#i.B with K_A=3, K_B=2 → 2 interaction cols ===
+number of observations set to 12
+(12 real changes made)
+(12 real changes made)
+(12 real changes made)
+_b[2.A#6.B] = 1.75
+_b[3.A#6.B] = 5.75
+
+=== logit with factor vars + predict ===
+number of observations set to 200
+(200 real changes made)
+(200 real changes made)
+(200 real changes made)
+(option Pr(y) assumed; 200 observations)
+First few predictions look reasonable:
+     +          +          +          +          +
+     | y        | x        | g        | p        |
+   1.| 0        | -9.95    | 1        | 0        |
+   2.| 0        | -9.85    | 2        | 0        |
+   3.| 0        | -9.75    | 3        | 0        |
+   4.| 0        | -9.65    | 1        | 0        |
+   5.| 0        | -9.55    | 2        | 0        |
+
+=== xtreg with i.year as time FE ===
+number of observations set to 30
+(30 real changes made)
+(10 real changes made)
+(10 real changes made)
+(30 real changes made)
+(30 real changes made)
+(30 real changes made)
+panel variable: cid
+ time variable: year
+         delta: 1 unit
+Expected: xtreg absorbs country FE; i.year tests for time effects
+
+Fixed-effects (within) regression               Number of obs   =       30
+Group variable: cid                             Number of groups =        3
+
+R-sq:                                           Obs per group:
+     within  = 1.0000                                  min =       10
+     between = 0.0000                                  avg =     10.0
+     overall = 0.9733                                  max =       10
+
+                                                F(9, 17) =        inf
+corr(u_i, Xb)  = 1.0000                         Prob > F      =     0.0000
+
+------------------------------------------------------------------------------
+           y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           x |          1  6.61829e-17 15109635343300922.00 0.000            1           1
+   2016.year | 7.3545e-16  5.65467e-16    1.30 0.211   -4.57581e-16  1.92848e-15
+   2017.year | 3.62742e-16  5.41731e-16    0.67 0.512   -7.8021e-16  1.50569e-15
+   2018.year | 2.7081e-16  5.25311e-16    0.52 0.613   -8.37498e-16  1.37912e-15
+   2019.year | 1.78879e-16  5.16905e-16    0.35 0.734   -9.11696e-16  1.26945e-15
+   2020.year | 8.69479e-17  5.16905e-16    0.17 0.868   -1.00363e-15  1.17752e-15
+   2021.year | -4.98339e-18  5.25311e-16   -0.01 0.993   -1.11329e-15  1.10333e-15
+   2022.year | -9.69147e-17  5.41731e-16   -0.18 0.860   -1.23987e-15  1.04604e-15
+   2023.year | -4.69623e-16  5.65467e-16   -0.83 0.418   -1.66265e-15  7.23408e-16
+   2024.year |          0  (omitted)
+-------------+----------------------------------------------------------------
+     sigma_u |         10   
+     sigma_e | 7.29515e-16   
+         rho |          1   (fraction of variance due to u_i)
+------------------------------------------------------------------------------
+F test that all u_i=0:  F(2, 17) =    5377.06      Prob > F = 0.0000
+
+=== Error: i.var on string variable ===
+number of observations set to 5
+(5 real changes made)
+(5 real changes made)
+regress: factor variable i.cid must be numeric (use encode to convert)
+rc=.
+
+=== Error: i.var with only one level ===
+number of observations set to 5
+(5 real changes made)
+(5 real changes made)
+(5 real changes made)
+
+      Source |       SS           df       MS      Number of obs   =         5
+-------------+----------------------------------   F(1, 3)        =        inf
+       Model |          40          1          40    Prob > F        =     0.0000
+    Residual | 4.97968e-30          3 1.65989e-30    R-squared       =     1.0000
+-------------+----------------------------------   Adj R-squared   =     1.0000
+       Total |          40          4          10    Root MSE        =   1.288e-15
+
+------------------------------------------------------------------------------
+           y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           x |          2  4.07418e-16 4908962456607121.00 0.000            2           2
+       _cons | 5.18835e-17  1.35125e-15    0.04 0.972   -4.24841e-15  4.35217e-15
+------------------------------------------------------------------------------
+(should drop i.g silently — no levels to add)

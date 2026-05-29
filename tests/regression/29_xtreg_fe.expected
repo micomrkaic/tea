@@ -1,0 +1,138 @@
+number of observations set to 12
+(12 real changes made)
+(4 real changes made)
+(4 real changes made)
+(12 real changes made)
+(12 real changes made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(12 real changes made)
+(4 real changes made)
+(4 real changes made)
+(4 real changes made)
+panel variable: panel
+ time variable: year
+         delta: 1 unit
+=== xtreg y x, fe ===
+
+Fixed-effects (within) regression               Number of obs   =       12
+Group variable: panel                           Number of groups =        3
+
+R-sq:                                           Obs per group:
+     within  = 1.0000                                  min =        4
+     between = 1.0000                                  avg =      4.0
+     overall = 0.9470                                  max =        4
+
+                                                F(1, 8) =        inf
+corr(u_i, Xb)  = 1.0000                         Prob > F      =     0.0000
+
+------------------------------------------------------------------------------
+           y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           x |          1           0    0.00 1.000            1           1
+-------------+----------------------------------------------------------------
+     sigma_u |         10   
+     sigma_e |          0   
+         rho |          1   (fraction of variance due to u_i)
+------------------------------------------------------------------------------
+
+=== xtreg with vce(robust) — same coefficient, different SE ===
+
+Fixed-effects (within) regression               Number of obs   =       12
+Group variable: panel                           Number of groups =        3
+
+R-sq:                                           Obs per group:
+     within  = 1.0000                                  min =        4
+     between = 1.0000                                  avg =      4.0
+     overall = 0.9470                                  max =        4
+
+                                                F(1, 8) =       0.00
+corr(u_i, Xb)  = 1.0000                         Prob > F      =     1.0000
+
+------------------------------------------------------------------------------
+           y | Coefficient  Robust        t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           x |          1           0    0.00 1.000            1           1
+-------------+----------------------------------------------------------------
+     sigma_u |         10   
+     sigma_e |          0   
+         rho |          1   (fraction of variance due to u_i)
+------------------------------------------------------------------------------
+
+=== xtreg with vce(cluster panel) — clustered SE ===
+
+Fixed-effects (within) regression               Number of obs   =       12
+Group variable: panel                           Number of groups =        3
+
+R-sq:                                           Obs per group:
+     within  = 1.0000                                  min =        4
+     between = 1.0000                                  avg =      4.0
+     overall = 0.9470                                  max =        4
+
+                                                F(1, 8) =       0.00
+corr(u_i, Xb)  = 1.0000                         Prob > F      =     1.0000
+
+------------------------------------------------------------------------------
+           y | Coefficient  Cluster       t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           x |          1           0    0.00 1.000            1           1
+-------------+----------------------------------------------------------------
+     sigma_u |         10   
+     sigma_e |          0   
+         rho |          1   (fraction of variance due to u_i)
+------------------------------------------------------------------------------
+(Std. err. adjusted for 3 clusters in panel)
+
+=== xtreg fails cleanly when xtset not declared ===
+number of observations set to 6
+(6 real changes made)
+(6 real changes made)
+xtreg: panel variable not set; use xtset first
+rc=.
+
+=== xtreg rejects ,re and ,be (not yet implemented) ===
+number of observations set to 12
+(12 real changes made)
+(6 real changes made)
+(12 real changes made)
+(12 real changes made)
+(12 real changes made)
+panel variable: p
+ time variable: t
+         delta: 1 unit
+
+Random-effects GLS regression                   Number of obs   =       12
+Group variable: p                               Number of groups =        2
+
+R-sq:                                           Obs per group:
+     within  = 1.0000                                  min =        6
+     between = 1.0000                                  avg =      6.0
+     overall = 1.0000                                  max =        6
+
+                                                Wald chi2(1)  =        inf
+corr(u_i, X)   = 0 (assumed)                    Prob > chi2   =     0.0000
+
+------------------------------------------------------------------------------
+           a | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           b |        0.5  1.49215e-18 335087182037474688.00 0.000          0.5         0.5
+       _cons | 1.22298e-16  2.8222e-17    4.33 0.001   5.94151e-17  1.8518e-16
+-------------+----------------------------------------------------------------
+     sigma_u | 6.03573e-16   
+     sigma_e | 4.25183e-16   
+         rho |   0.668342   (fraction of variance due to u_i)
+       theta |   0.723615   (quasi-demeaning factor)
+------------------------------------------------------------------------------
+rc=.
+xtreg, be: too few panels (2) for 2 regressors
+rc=.

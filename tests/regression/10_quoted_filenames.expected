@@ -1,0 +1,16 @@
+number of observations set to 3
+(3 real changes made)
+(3 real changes made)
+file /tmp/tea_regtest_quoted.tea saved
+(2 vars, 3 obs)
+     +          +          +
+     | x        | y        |
+   1.| 1        | 10       |
+   2.| 2        | 20       |
+   3.| 3        | 30       |
+(2 vars, 3 obs)
+     +          +          +
+     | x        | y        |
+   1.| 1        | 10       |
+   2.| 2        | 20       |
+   3.| 3        | 30       |

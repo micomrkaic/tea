@@ -1,0 +1,679 @@
+#define _GNU_SOURCE
+/* tea — tiny econometric assistant
+ * Copyright (C) 2026 Mico Mrkaic
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+#include "interp.h"
+#include "cmd.h"
+#include "expr.h"
+#include "value.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdbool.h>
+#include <unistd.h>
+#include <sys/wait.h>
+
+Interp *interp_new(Workspace *ws){
+    Interp *ip=calloc(1,sizeof*ip);
+    ip->ws=ws;
+    ip->strict_stata = true;  /* tea is strict-Stata by default */
+    return ip;
+}
+
+/* set by 'exit' command, polled by run_stream and main */
+int g_exit_requested = 0;
+int g_exit_code      = 0;
+int g_current_line   = 0;     /* do-file line number, 0 = REPL/unknown */
+
+/* defined in commands.c — echo a command to the open log, if any */
+extern void tea_log_command(const char *line);
+static void free_tbl(MacroKV *m){ while(m){ MacroKV*n=m->next; free(m->name);free(m->val);free(m); m=n; } }
+void interp_free(Interp *ip){ if(!ip)return; free_tbl(ip->locals);free_tbl(ip->globals);free_tbl(ip->rret); free(ip); }
+
+void mac_set(MacroKV **tbl,const char *name,const char *val){
+    for(MacroKV*m=*tbl;m;m=m->next) if(!strcmp(m->name,name)){ free(m->val); m->val=strdup(val); return; }
+    MacroKV*m=calloc(1,sizeof*m); m->name=strdup(name); m->val=strdup(val); m->next=*tbl; *tbl=m;
+}
+const char *mac_get(MacroKV *tbl,const char *name){
+    for(MacroKV*m=tbl;m;m=m->next) if(!strcmp(m->name,name)) return m->val;
+    return NULL;
+}
+void mac_clear(MacroKV **tbl){ free_tbl(*tbl); *tbl=NULL; }
+
+/* evaluate a constant/scalar expression (may reference r() via pre-expand). */
+static int eval_scalar(Interp *ip,const char *e,char *out,size_t n){
+    /* Use the active frame so expressions can reference _N, _n, and
+     * variables.  Fall back to an empty scratch frame only when there's
+     * no workspace (shouldn't happen in practice, but defensive). */
+    Frame scratch; Frame *f;
+    if(ip && ip->ws && ip->ws->cur){
+        f = ip->ws->cur;
+    } else {
+        memset(&scratch,0,sizeof scratch); scratch.ts_panel=scratch.ts_time=-1;
+        f = &scratch;
+    }
+    const char *perr; Node *a=expr_parse(e,f,&perr);
+    if(!a){ snprintf(out,n,"%s",e); return -1; }
+    EvalCtx ec={0}; ec.f=f;
+    /* In display/macro context there is no current row; set _n=1 (Stata
+     * convention) and _N to the actual frame size. */
+    ec.n = 1;
+    ec.N = (long)f->nobs;
+    ec.i = 0;
+    EVal v=expr_eval(a,&ec); node_free(a);
+    if(v.is_str) snprintf(out,n,"%s",v.str);
+    else if(sv_is_miss(v.num)) snprintf(out,n,".");
+    else if(v.num==(long long)v.num) snprintf(out,n,"%lld",(long long)v.num);
+    else snprintf(out,n,"%.10g",v.num);
+    eval_free(&v); return 0;
+}
+
+/* macro expansion: `local' , $glob/${glob}, r(name)/e(name), `=expr'
+ *
+ * Stata's rules for what gets substituted inside double-quoted strings:
+ *   - `local'   : YES (macro reference is always substituted)
+ *   - $global   : YES
+ *   - e(name)   : NO  — Stata treats this as a stored-result *function*,
+ *                 not a macro.  Inside quotes it's literal text.
+ *                 To embed e(N) in a string, write "...`=e(N)'..."
+ *   - r(name)   : NO (same logic)
+ * So we track whether we're inside a double-quoted string and skip
+ * the e()/r() form there.  */
+char *macro_expand(Interp *ip,const char *line){
+    size_t cap=strlen(line)*2+64,len=0; char *out=malloc(cap);
+    #define PUT(s) do{ const char*_s=(s); size_t _l=strlen(_s); \
+        while(len+_l+1>cap){cap*=2;out=realloc(out,cap);} memcpy(out+len,_s,_l); len+=_l; out[len]=0; }while(0)
+    bool in_dquote = false;
+    for(const char *p=line;*p;){
+        if(*p == '"'){ in_dquote = !in_dquote; char c2[2]={*p,0}; PUT(c2); p++; continue; }
+        if(*p=='`'){
+            const char *q=p+1; int d=1; while(*q&&d){ if(*q=='`')d++; else if(*q=='\'')d--; if(d)q++; }
+            char inner[1024]; snprintf(inner,sizeof inner,"%.*s",(int)(q-p-1),p+1);
+            char *ix=macro_expand(ip,inner);   /* nested */
+            if(ix[0]=='='){ char vb[256]; eval_scalar(ip,ix+1,vb,sizeof vb); PUT(vb); }
+            else { const char *v=mac_get(ip->locals,ix); PUT(v?v:""); }
+            free(ix); p=(*q?q+1:q);
+        } else if(*p=='$'){
+            /* Stata global syntax: $name or ${name}, where name is a Stata
+             * identifier (letter or underscore first, then alphanumerics/
+             * underscores).  $1, $2, etc are NOT macro references — the $
+             * stays literal (this matters for currency strings like
+             * "$1,234.56"). */
+            const char *save=p; p++;
+            int brace=0; if(*p=='{'){brace=1;p++;}
+            char nm[128]; int n=0;
+            if(*p=='_' || isalpha((unsigned char)*p)){
+                while(*p && (isalnum((unsigned char)*p)||*p=='_') && n<127) nm[n++]=*p++;
+            }
+            nm[n]=0;
+            if(n == 0){
+                p = save + 1;
+                char c2[2]={'$',0}; PUT(c2);
+            } else {
+                if(brace && *p=='}') p++;
+                const char *v=mac_get(ip->globals,nm); PUT(v?v:"");
+            }
+        } else if(!in_dquote && (p[0]=='r'||p[0]=='e')&&p[1]=='('&&strchr(p,')')){
+            const char *e=strchr(p,')'); char key[64];
+            snprintf(key,sizeof key,"%.*s",(int)(e-p+1),p);
+            const char *v=mac_get(ip->rret,key);
+            if(v){ PUT(v); p=e+1; } else { char c2[2]={*p,0}; PUT(c2); p++; }
+        } else if(!in_dquote && p[0]=='_'
+                  && (p[1]=='b' || (p[1]=='s' && p[2]=='e'))
+                  && (p[1]=='b' ? p[2]=='[' : p[3]=='[')){
+            /* _b[name] or _se[name]: post-estimation coefficient/SE access.
+             * The estimators store these in c->ip->rret keyed by exactly
+             * "_b[varname]" / "_se[varname]" so we just look them up.
+             * The bracketed name can contain dots (e.g. L.growth) and
+             * crosses (factor-variable interactions). */
+            const char *lb = strchr(p, '[');
+            const char *rb = lb ? strchr(lb, ']') : NULL;
+            if(lb && rb){
+                char key[96];
+                snprintf(key, sizeof key, "%.*s", (int)(rb - p + 1), p);
+                const char *v = mac_get(ip->rret, key);
+                if(v){ PUT(v); p = rb + 1; }
+                else  { PUT("."); p = rb + 1; }   /* missing if absent */
+            } else { char c2[2]={*p,0}; PUT(c2); p++; }
+        } else { char c2[2]={*p,0}; PUT(c2); p++; }
+    }
+    #undef PUT
+    return out;
+}
+
+/* ---- single line execution -------------------------------------------- */
+int run_line(Interp *ip,const char *raw){
+    char line[8192]; snprintf(line,sizeof line,"%s",raw);
+    char *s=line; while(*s==' '||*s=='\t')s++;
+    if(!*s) return 0;
+
+    /* '!' at start of line is the shell escape — handle before everything else */
+    if(*s=='!'){
+        const char *cmd=s+1; while(*cmd==' ')cmd++;
+        if(!*cmd) return 0;
+        const char *sh=getenv("SHELL"); if(!sh||!sh[0]) sh="/bin/sh";
+        fflush(stdout);
+        pid_t pid=fork();
+        if(pid==0){ execl(sh,sh,"-c",cmd,(char*)NULL); _exit(127); }
+        int st=0; waitpid(pid,&st,0);
+        ip->rc = WIFEXITED(st)? WEXITSTATUS(st) : 128;
+        return 0;
+    }
+
+    int cap=0; bool quiet=false;
+    /* prefixes: capture / quietly / noisily (repeatable) */
+    for(;;){
+        if(!strncmp(s,"capture ",8)||!strncmp(s,"cap ",4)){ cap=1; s+=(s[3]==' '?4:8); }
+        else if(!strncmp(s,"quietly ",8)||!strncmp(s,"qui ",4)){ quiet=1; s+=(s[3]==' '?4:8); }
+        else if(!strncmp(s,"noisily ",8)||!strncmp(s,"noi ",4)){ s+=(s[3]==' '?4:8); }
+        else break;
+        while(*s==' ')s++;
+    }
+
+    /* by / bysort prefix:  by[sort] groupvars [(sortvars)] : cmd */
+    int *byv=NULL,nby=0; int *sortk=NULL,nsk=0; bool bysort=false;
+    if(!strncmp(s,"by ",3)||!strncmp(s,"bysort ",7)||!strncmp(s,"bys ",4)){
+        bysort = (s[2]!=' ');
+        char *colon=strchr(s,':');
+        if(colon){
+            char *vp=strchr(s,' ')+1; char vspec[512];
+            snprintf(vspec,sizeof vspec,"%.*s",(int)(colon-vp),vp);
+            char *xp=macro_expand(ip,vspec);
+            char grp[512]={0},srt[512]={0};
+            char *lp=strchr(xp,'(');
+            if(lp){ char *rp=strchr(lp,')');
+                snprintf(grp,sizeof grp,"%.*s",(int)(lp-xp),xp);
+                if(rp) snprintf(srt,sizeof srt,"%.*s",(int)(rp-lp-1),lp+1);
+            } else snprintf(grp,sizeof grp,"%s",xp);
+            free(xp);
+            nby=varlist_expand(ip->ws->cur,grp,&byv);
+            /* sort keys = group vars then within-sort vars */
+            char allk[1024]; snprintf(allk,sizeof allk,"%s %s",grp,srt);
+            nsk=varlist_expand(ip->ws->cur,allk,&sortk);
+            s=colon+1; while(*s==' ')s++;
+        }
+    }
+
+    char *ex=macro_expand(ip,s);
+    char *t=ex; while(*t==' ')t++;
+    if(!*t){ free(ex); free(byv); free(sortk); return 0; }
+
+    /* interpreter-native statements */
+
+    /* 'assert exp [if] [in]' — fail loud if exp is false anywhere selected */
+    if(!strncmp(t,"assert ",7) || !strcmp(t,"assert")){
+        const char *e = t+6; while(*e==' ') e++;
+        if(!*e){ fprintf(stderr,"assert: expression required\n"); free(ex);free(byv);free(sortk); ip->rc=198; return cap?0:198; }
+        /* split out optional 'if'/'in' so they constrain assertion scope */
+        char esep[2048]; snprintf(esep,sizeof esep,"%s",e);
+        Frame *f = ip->ws->cur;
+        Node *ifn=NULL; const char *perr;
+        char *ifp = strstr(esep," if ");
+        if(ifp){ *ifp=0; ifn = expr_parse(ifp+4, f, &perr); }
+        Node *en = expr_parse(esep, f, &perr);
+        if(!en){ fprintf(stderr,"assert: %s\n", perr?perr:"parse error"); free(ex);free(byv);free(sortk); ip->rc=198; return cap?0:198; }
+        EvalCtx ec={0}; ec.f=f;
+        long bad=0, ok=0, miss=0;
+        size_t N = f->nobs ? f->nobs : 1;
+        for(size_t i=0;i<N;i++){
+            if(ifn){ ec.i=i;ec.n=(long)i+1;ec.N=(long)N; if(!expr_eval_bool(ifn,&ec)){ continue; } }
+            ec.i=i; ec.n=(long)i+1; ec.N=(long)N;
+            EVal v=expr_eval(en,&ec);
+            if(v.is_str){ if(v.str[0]) ok++; else bad++; }
+            else if(sv_is_miss(v.num)) miss++;
+            else if(v.num!=0) ok++;
+            else bad++;
+            eval_free(&v);
+        }
+        node_free(en); node_free(ifn);
+        if(bad){
+            fprintf(stderr,"assertion is false (%ld failed, %ld true, %ld missing)\n",bad,ok,miss);
+            ip->rc=9; free(ex);free(byv);free(sortk); return cap?0:9;
+        }
+        if(!ip->quiet) printf("assertion is true\n");
+        free(ex);free(byv);free(sortk); return 0;
+    }
+
+    /* 'shell cmd' — run via $SHELL -c, return code in rc.  '!' handled earlier. */
+    if(!strncmp(t,"shell ",6) || !strcmp(t,"shell")){
+        const char *cmd = t+5; while(*cmd==' ') cmd++;
+        if(!*cmd){ free(ex); free(byv); free(sortk); return 0; }
+        const char *sh = getenv("SHELL"); if(!sh||!sh[0]) sh="/bin/sh";
+        fflush(stdout);
+        pid_t pid=fork();
+        if(pid==0){ execl(sh,sh,"-c",cmd,(char*)NULL); _exit(127); }
+        int st=0; waitpid(pid,&st,0);
+        ip->rc = WIFEXITED(st)? WEXITSTATUS(st) : 128;
+        free(ex);free(byv);free(sortk); return 0;
+    }
+
+    if(!strncmp(t,"local ",6)||!strncmp(t,"loc ",4)){
+        char *p=t+(t[3]==' '?4:6); while(*p==' ')p++;
+        char nm[128]; int n=0; while(*p&&!isspace((unsigned char)*p)&&*p!='='&&n<127)nm[n++]=*p++; nm[n]=0;
+        while(*p==' ')p++; int isexp=0; if(*p=='='){isexp=1;p++;while(*p==' ')p++;}
+        char val[2048];
+        if(isexp){ eval_scalar(ip,p,val,sizeof val); }
+        else { snprintf(val,sizeof val,"%s",p);
+            for(int i=(int)strlen(val)-1;i>=0&&val[i]==' ';i--)val[i]=0;
+            /* strip surrounding double quotes: `local v "x y"` -> v = `x y` */
+            size_t L=strlen(val);
+            if(L>=2 && val[0]=='"' && val[L-1]=='"'){
+                memmove(val, val+1, L-2); val[L-2]=0; }
+        }
+        mac_set(&ip->locals,nm,val); free(ex);free(byv);free(sortk); return 0;
+    }
+    if(!strncmp(t,"global ",7)){
+        char *p=t+7; while(*p==' ')p++; char nm[128]; int n=0;
+        while(*p&&!isspace((unsigned char)*p)&&*p!='='&&n<127)nm[n++]=*p++; nm[n]=0;
+        while(*p==' ')p++; int isexp=0; if(*p=='='){isexp=1;p++;while(*p==' ')p++;}
+        char val[2048]; if(isexp)eval_scalar(ip,p,val,sizeof val);
+        else { snprintf(val,sizeof val,"%s",p); for(int i=(int)strlen(val)-1;i>=0&&val[i]==' ';i--)val[i]=0;
+            size_t L=strlen(val);
+            if(L>=2 && val[0]=='"' && val[L-1]=='"'){ memmove(val, val+1, L-2); val[L-2]=0; } }
+        mac_set(&ip->globals,nm,val); free(ex);free(byv);free(sortk); return 0;
+    }
+    if(!strncmp(t,"display ",8)||!strncmp(t,"di ",3)||!strcmp(t,"display")){
+        char *p=t+(t[2]==' '?3:8); while(*p==' ')p++;
+        char outb[4096]; int ob=0;
+        while(*p){
+            while(*p==' ')p++;
+            if(!*p) break;
+            if(*p=='"'){ p++; while(*p&&*p!='"'&&ob<4090) outb[ob++]=*p++; if(*p=='"')p++; }
+            else { char seg[1024]; int n=0; int paren=0; int inq=0;
+                while(*p && ob<4090 && n<1023){
+                    if(*p=='"' && paren==0) break;  /* end of bareword segment */
+                    if(*p=='"') inq=!inq;
+                    else if(!inq){
+                        if(*p=='(') paren++;
+                        else if(*p==')'){ if(paren==0) break; paren--; }
+                    }
+                    seg[n++]=*p++;
+                }
+                seg[n]=0;
+                /* trim trailing spaces of segment */
+                for(int z=n-1;z>=0&&seg[z]==' ';z--)seg[z]=0;
+                char vb[512];
+                if(seg[0]&&eval_scalar(ip,seg,vb,sizeof vb)==0){ int l=strlen(vb); if(ob+l<4090){memcpy(outb+ob,vb,l);ob+=l;} }
+                else { int l=strlen(seg); if(ob+l<4090){memcpy(outb+ob,seg,l);ob+=l;} }
+            }
+        }
+        outb[ob]=0;
+        printf("%s\n",outb);
+        /* Tee display output to log file if one is open. */
+        extern FILE *g_logfp;
+        if(g_logfp){ fprintf(g_logfp, "%s\n", outb); fflush(g_logfp); }
+        free(ex);free(byv);free(sortk); return 0;
+    }
+    if(!strncmp(t,"scalar ",7)){ char *p=t+7; if(!strncmp(p,"define ",7))p+=7;
+        char nm[128]; int n=0; while(*p&&*p!='='&&!isspace((unsigned char)*p)&&n<127)nm[n++]=*p++; nm[n]=0;
+        while(*p==' '||*p=='=')p++; char val[512]; eval_scalar(ip,p,val,sizeof val);
+        mac_set(&ip->globals,nm,val); free(ex);free(byv);free(sortk); return 0; }
+    if(!strcmp(t,"describe")||!strncmp(t,"describe ",9)){}
+
+    /* build a Cmd and dispatch */
+    Cmd c; memset(&c,0,sizeof c);
+    c.ip=ip; c.ws=ip->ws; c.f=ip->ws->cur;
+    c.byvars=byv; c.nby=nby; c.bysort=bysort;
+    c.quiet = quiet || ip->quiet;
+    /* command word: alphanumerics + underscore only — stop at space OR comma */
+    int ci=0; const char *cp=t;
+    while(*cp&&!isspace((unsigned char)*cp)&&*cp!=','&&ci<31) c.cmd[ci++]=*cp++;
+    c.cmd[ci]=0;
+    while(*cp==' ')cp++;
+    snprintf(c.args,sizeof c.args,"%s",cp);
+
+    /* by: requires sorted; bysort sorts first (by all sort keys) */
+    if(nby>0){
+        if(bysort) frame_physical_sort(c.f,sortk,nsk,NULL);
+        else {
+            bool ok = c.f->nsort>=nby; if(ok)for(int k=0;k<nby;k++)if(c.f->sortvars[k]!=byv[k])ok=false;
+            if(!ok){ fprintf(stderr,"not sorted (use bysort)\n"); free(ex);free(byv);free(sortk);
+                ip->rc=5; return cap?0:5; }
+        }
+    }
+    cmd_split(&c);
+    int rc=cmd_dispatch(&c);
+    free(ex); free(byv); free(sortk);
+    ip->rc=rc;
+    if(cap){ /* capture: swallow the error, expose it via _rc only */ return 0; }
+    return rc;
+}
+
+/* ---- block-aware execution over a vector of logical lines ------------- */
+typedef struct { char **v; int n; } Lines;
+
+static int exec_range(Interp *ip,Lines *L,int from,int to);
+
+/* find matching close brace for an open at line `open` (brace count). */
+static int match_brace(Lines *L,int open){
+    int d=0;
+    for(int i=open;i<L->n;i++){
+        for(char *p=L->v[i];*p;p++){ if(*p=='{')d++; else if(*p=='}'){ d--; if(d==0)return i; } }
+    }
+    return -1;
+}
+
+static int exec_one(Interp *ip,Lines *L,int *i){
+    char *ln=L->v[*i];
+    char *s=ln; while(*s==' ')s++;
+
+    /* foreach X in/of LIST { ... } */
+    if(!strncmp(s,"foreach ",8)){
+        char var[64]={0}; char kind[16]={0};
+        const char *r=s+8; while(*r==' ')r++;
+        int n=0; while(*r&&!isspace((unsigned char)*r)&&n<63)var[n++]=*r++; var[n]=0;
+        while(*r==' ')r++;
+        n=0; while(*r&&!isspace((unsigned char)*r)&&n<15)kind[n++]=*r++; kind[n]=0;
+        while(*r==' ')r++;
+        char list[2048]; snprintf(list,sizeof list,"%s",r);
+        char *brace=strchr(list,'{'); if(brace)*brace=0;
+        char *xl=macro_expand(ip,list);
+        char **items=NULL; int ni=0;
+        if(!strcmp(kind,"of")){
+            char *sp=xl; char w[32]; sscanf(sp,"%31s",w); sp+=strlen(w); while(*sp==' ')sp++;
+            int *vs=NULL,nv=varlist_expand(ip->ws->cur,sp,&vs);
+            for(int k=0;k<nv;k++){ items=realloc(items,(ni+1)*sizeof(char*)); items[ni++]=strdup(ip->ws->cur->vars[vs[k]].name); }
+            free(vs);
+        } else { /* in: literal list */
+            char *sv=NULL; for(char *tk=strtok_r(xl," ",&sv);tk;tk=strtok_r(NULL," ",&sv)){
+                items=realloc(items,(ni+1)*sizeof(char*)); items[ni++]=strdup(tk); }
+        }
+        free(xl);
+        int open=*i; int close=match_brace(L,open); if(close<0){fprintf(stderr,"unbalanced {\n");return 199;}
+        for(int it=0;it<ni;it++){
+            mac_set(&ip->locals,var,items[it]);
+            int rc=exec_range(ip,L,open+1,close-1); if(rc&&rc!=0){}
+        }
+        for(int k=0;k<ni;k++)free(items[k]); free(items);
+        *i=close; return 0;
+    }
+    /* forvalues i = a/b  or  a(step)b { } */
+    if(!strncmp(s,"forvalues ",10)||!strncmp(s,"forv ",5)){
+        char *p=s+(s[4]==' '?5:10); while(*p==' ')p++;
+        char var[64]; int n=0; while(*p&&*p!='='&&!isspace((unsigned char)*p))var[n++]=*p++; var[n]=0;
+        while(*p==' '||*p=='=')p++;
+        double a=0,b=0,step=1;
+        if(strchr(p,'(')){ sscanf(p,"%lf(%lf)%lf",&a,&step,&b); }
+        else sscanf(p,"%lf/%lf",&a,&b);
+        int open=*i,close=match_brace(L,open); if(close<0){fprintf(stderr,"unbalanced {\n");return 199;}
+        for(double x=a;(step>0)?x<=b+1e-9:x>=b-1e-9;x+=step){
+            char vb[32]; if(x==(long long)x)snprintf(vb,sizeof vb,"%lld",(long long)x);else snprintf(vb,sizeof vb,"%g",x);
+            mac_set(&ip->locals,var,vb);
+            exec_range(ip,L,open+1,close-1);
+        }
+        *i=close; return 0;
+    }
+    /* if (cond) { } [else { }]  — also single-line: if (cond) cmd */
+    if(!strncmp(s,"if ",3) && (strchr(s,'{')||1)){
+        char *brace=strchr(s,'{');
+        char cond[1024];
+        if(brace){ snprintf(cond,sizeof cond,"%.*s",(int)(brace-(s+3)),s+3); }
+        else { snprintf(cond,sizeof cond,"%s",s+3); }
+        char *xc=macro_expand(ip,cond);
+        Frame scratch; memset(&scratch,0,sizeof scratch); scratch.ts_panel=scratch.ts_time=-1;
+        const char *pe; Node *a=expr_parse(xc,&scratch,&pe); free(xc);
+        EvalCtx ec={0}; ec.f=&scratch; ec.n=1;ec.N=1;
+        bool truth=false; if(a){ EVal v=expr_eval(a,&ec); truth=!v.is_str&&!sv_is_miss(v.num)&&v.num!=0; eval_free(&v); node_free(a); }
+        if(brace){
+            int open=*i,close=match_brace(L,open); if(close<0)return 199;
+            int elseopen=-1,elseclose=-1;
+            if(close+1<L->n){ char *e=L->v[close+1]; while(*e==' ')e++;
+                if(!strncmp(e,"else",4)){ elseopen=close+1; elseclose=match_brace(L,elseopen); } }
+            if(truth) exec_range(ip,L,open+1,close-1);
+            else if(elseopen>=0) exec_range(ip,L,elseopen+1,elseclose-1);
+            *i = elseclose>=0?elseclose:close; return 0;
+        } else {
+            if(truth){ char *cmd=s+3; /* skip cond up to first space-separated cmd: take after ')' */
+                char *rp=strchr(s,')'); char *body=rp?rp+1:cmd; while(*body==' ')body++;
+                return run_line(ip,body); }
+            return 0;
+        }
+    }
+    if(!strcmp(s,"}")||!strcmp(s,"{")) return 0;
+    return run_line(ip,s);
+}
+
+static int exec_range(Interp *ip,Lines *L,int from,int to){
+    for(int i=from;i<=to && i<L->n;i++){
+        int rc=exec_one(ip,L,&i);
+        if(rc>0 && rc!=5) return rc;   /* abort do-file on hard error */
+    }
+    return 0;
+}
+
+/* split a raw stream into logical lines: strip comments, join /// */
+static void add_line(Lines *L,const char *s){
+    while(*s==' '||*s=='\t')s++;
+    L->v=realloc(L->v,(L->n+1)*sizeof(char*)); L->v[L->n++]=strdup(s);
+}
+/* --------------- readline-backed interactive line reader -------------- */
+#include <readline/readline.h>
+#include <readline/history.h>
+
+/* Disp is defined in commands.c; we only need name+ for completion */
+typedef struct { const char *name; int (*fn)(void*); int needs_data; const char *help; } DispCompat;
+extern DispCompat TABLE[];     /* defined in commands.c */
+
+/* completion needs access to the workspace for variable names */
+static Workspace *g_compl_ws = NULL;
+
+static char *cmd_generator(const char *text, int state){
+    static int i; static size_t len;
+    if(!state){ i=0; len=strlen(text); }
+    while(TABLE[i].name){
+        const char *n=TABLE[i++].name;
+        if(!strncmp(n,text,len)) return strdup(n);
+    }
+    return NULL;
+}
+static char *var_generator(const char *text, int state){
+    static int i; static size_t len;
+    if(!state){ i=0; len=strlen(text); }
+    if(!g_compl_ws || !g_compl_ws->cur) return NULL;
+    Frame *f=g_compl_ws->cur;
+    while(i<f->nvar){
+        const char *n=f->vars[i++].name;
+        if(!strncmp(n,text,len)) return strdup(n);
+    }
+    return NULL;
+}
+static char **tea_completer(const char *text, int start, int end){
+    (void)end;
+    rl_attempted_completion_over = 1;
+    const char *L = rl_line_buffer;
+
+    /* leftmost non-blank index of the line */
+    int lhs = 0; while(L[lhs]==' '||L[lhs]=='\t') lhs++;
+
+    /* shell escape: !cmd ... → defer to readline's filename completion */
+    if(L[lhs]=='!'){
+        /* the first word after ! is the command name; everything after is args.
+         * For both, filename completion is the right default. */
+        rl_attempted_completion_over = 0;
+        return NULL;
+    }
+
+    /* find the first word of the line */
+    int w1s=lhs, w1e=lhs;
+    while(L[w1e] && !isspace((unsigned char)L[w1e])) w1e++;
+    char w1[32]={0};
+    int wl = w1e-w1s; if(wl>31) wl=31;
+    memcpy(w1, L+w1s, wl);
+
+    /* command position: nothing before us (start at lhs) */
+    if(start==lhs)
+        return rl_completion_matches(text,cmd_generator);
+
+    /* second word of 'help' / 'shell' completes commands / filenames */
+    if(!strcmp(w1,"help"))  return rl_completion_matches(text,cmd_generator);
+    if(!strcmp(w1,"shell")){ rl_attempted_completion_over=0; return NULL; }
+
+    /* filename positions: anywhere following 'using', or as 1st arg of cd/
+     * save/use/log, or after 'log using'. */
+    /* scan tokens up to 'start' to see what immediately precedes us */
+    char prev[64]={0}, prev2[64]={0};
+    int p=lhs;
+    while(p<start){
+        while(p<start && isspace((unsigned char)L[p])) p++;
+        int ws=p; while(p<start && !isspace((unsigned char)L[p])) p++;
+        if(ws<p){ snprintf(prev2,sizeof prev2,"%s",prev);
+                  int n=p-ws; if(n>63)n=63;
+                  memcpy(prev,L+ws,n); prev[n]=0; }
+    }
+    int is_filename_pos = 0;
+    if(!strcmp(prev,"using"))             is_filename_pos = 1;
+    if(!strcmp(prev2,"log") && !strcmp(prev,"using")) is_filename_pos=1;
+    if(!strcmp(w1,"cd"))                  is_filename_pos = 1;
+    if((!strcmp(w1,"save")||!strcmp(w1,"use")) && start==w1e+1) is_filename_pos=1;
+    /* import excel|delimited|ods using FILE — 'using' check above covers it */
+
+    if(is_filename_pos){
+        rl_attempted_completion_over = 0;          /* let readline do filenames */
+        return NULL;
+    }
+
+    /* default: variable names of the current frame */
+    return rl_completion_matches(text,var_generator);
+}
+
+static char *history_path(void){
+    static char p[1024]; const char *h=getenv("HOME");
+    snprintf(p,sizeof p,"%s/.tea_history", h?h:".");
+    return p;
+}
+
+static void rl_setup(Workspace *ws){
+    rl_readline_name = "tea";
+    rl_attempted_completion_function = tea_completer;
+    rl_basic_word_break_characters = " \t\n\"\\'`@$><=;|&{(,";
+    g_compl_ws = ws;
+    using_history();
+    read_history(history_path());
+    stifle_history(2000);
+}
+static void rl_teardown(void){
+    write_history(history_path());
+    history_truncate_file(history_path(),2000);
+}
+
+/* read one logical input line.  In interactive mode uses readline with the
+ * given prompt; otherwise fgets.  Returns malloc'd string (caller frees)
+ * or NULL on EOF. */
+static char *read_one_line(FILE *in, bool interactive, const char *prompt){
+    if(interactive){
+        char *s = readline(prompt);
+        if(!s) return NULL;
+        if(*s) add_history(s);
+        return s;
+    }
+    char buf[8192];
+    if(!fgets(buf,sizeof buf,in)) return NULL;
+    size_t n=strlen(buf); while(n&&(buf[n-1]=='\n'||buf[n-1]=='\r'))buf[--n]=0;
+    return strdup(buf);
+}
+
+int run_stream(Interp *ip,FILE *in,bool interactive){
+    Lines L={0}; char acc[16384]; acc[0]=0; int inblk=0;
+    char delim = '\n';   /* default; '#delimit ;' switches to ';' */
+    if(interactive) rl_setup(ip->ws);
+    while(!g_exit_requested){
+        char *raw = read_one_line(in, interactive, (acc[0]||inblk)?"> ":". ");
+        if(!raw) break;
+        if(!interactive) g_current_line++;
+        /* #delimit directive — owns the whole physical line */
+        { char *cs=raw; while(*cs==' '||*cs=='\t')cs++;
+          if(!strncmp(cs,"#delimit",8)){
+              while(*cs&&!isspace((unsigned char)*cs))cs++;
+              while(*cs==' '||*cs=='\t')cs++;
+              delim = (*cs==';') ? ';' : '\n';
+              free(raw); acc[0]=0; continue;
+          } }
+        /* strip // and * comments (not inside quotes) */
+        char clean[8192]; int ci=0,inq=0; int saw_cont=0;
+        for(int k=0;raw[k];k++){
+            if(raw[k]=='"')inq=!inq;
+            if(!inq&&raw[k]=='/'&&raw[k+1]=='/'){
+                if(raw[k+2]=='/'){ saw_cont=1; break; }
+                break;
+            }
+            clean[ci++]=raw[k];
+        }
+        clean[ci]=0;
+        free(raw);
+        { char *cs=clean; while(*cs==' ')cs++; if(*cs=='*'){ continue; } }
+        if(saw_cont){
+            if(acc[0]) strncat(acc,clean,sizeof acc-strlen(acc)-1);
+            else snprintf(acc,sizeof acc,"%s",clean);
+            continue;
+        }
+        if(acc[0]){ strncat(acc," ",sizeof acc-strlen(acc)-1); strncat(acc,clean,sizeof acc-strlen(acc)-1); }
+        else snprintf(acc,sizeof acc,"%s",clean);
+        for(char *p=acc;*p;p++){ if(*p=='{')inblk++; else if(*p=='}')inblk--; }
+
+        /* Under '#delimit ;' a statement ends at ';', not at newline.  Keep
+         * accumulating physical lines until we see a ';' (or hit a block). */
+        if(delim==';' && inblk<=0 && !strchr(acc,';')) continue;
+
+        if(inblk>0){
+            char buf[16384]; snprintf(buf,sizeof buf,"%s",acc); acc[0]=0;
+            add_line(&L,buf);
+            while(inblk>0){
+                char *r2 = read_one_line(in, interactive, "> ");
+                if(!r2) break;
+                if(!interactive) g_current_line++;
+                char *cs=r2; while(*cs==' ')cs++;
+                if(*cs=='*'){ free(r2); continue; }
+                for(char *p=r2;*p;p++){ if(*p=='{')inblk++; else if(*p=='}')inblk--; }
+                add_line(&L,r2); free(r2);
+            }
+            /* echo every line of the block to log (Stata's behavior) */
+            for(int z=0;z<L.n;z++) tea_log_command(L.v[z]);
+            int idx=0; exec_one(ip,&L,&idx);
+            for(int z=0;z<L.n;z++)free(L.v[z]); free(L.v); L.v=NULL; L.n=0;
+            continue;
+        }
+        /* In ';' mode, split acc on ';' and execute each segment */
+        if(delim==';'){
+            char *p = acc;
+            while(p && *p){
+                char *semi = strchr(p,';');
+                if(!semi) break;
+                *semi = 0;
+                char *seg = p; while(*seg==' '||*seg=='\t')seg++;
+                if(*seg){ tea_log_command(seg); add_line(&L,seg);
+                    int idx=L.n-1; int rc=exec_one(ip,&L,&idx);
+                    for(int z=0;z<L.n;z++)free(L.v[z]); free(L.v); L.v=NULL; L.n=0;
+                    if(rc>0 && rc!=5 && !interactive) { fprintf(stderr,"do-file aborted at line %d (rc=%d)\n",g_current_line,rc); return rc; }
+                }
+                p = semi+1;
+            }
+            /* leftover after last ';' becomes next statement's prefix */
+            if(p && *p){ memmove(acc,p,strlen(p)+1); } else acc[0]=0;
+            continue;
+        }
+        if(acc[0]){
+            tea_log_command(acc);
+            add_line(&L,acc); acc[0]=0;
+            int idx=L.n-1; int rc=exec_one(ip,&L,&idx);
+            for(int z=0;z<L.n;z++)free(L.v[z]); free(L.v); L.v=NULL; L.n=0;
+            if(rc>0 && rc!=5 && !interactive) { fprintf(stderr,"do-file aborted at line %d (rc=%d)\n",g_current_line,rc); return rc; }
+        }
+    }
+    for(int z=0;z<L.n;z++)free(L.v[z]); free(L.v);
+    if(interactive) rl_teardown();
+    return 0;
+}

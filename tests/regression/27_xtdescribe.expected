@@ -1,0 +1,68 @@
+number of observations set to 12
+(12 real changes made)
+(4 real changes made)
+(4 real changes made)
+(12 real changes made)
+(12 real changes made)
+panel variable: panel
+ time variable: year
+         delta: 1 unit
+--- balanced panel: 3 panels x 4 periods ---
+
+       panel:  A, ..., C                                 n =        3
+       year:  2020, ..., 2023                          T =        4
+              Delta(year) = 1 unit
+              Span(year)  = 4 periods
+              (panel*year uniquely identifies each observation)
+
+     Distribution of T_i:   min      5%     25%     50%     75%     95%     max
+                              4       4       4       4       4       4       4
+
+     3 panels x 4 periods = 12 observations (strongly balanced)
+
+
+--- xtdes abbreviation should give identical output ---
+
+       panel:  A, ..., C                                 n =        3
+       year:  2020, ..., 2023                          T =        4
+              Delta(year) = 1 unit
+              Span(year)  = 4 periods
+              (panel*year uniquely identifies each observation)
+
+     Distribution of T_i:   min      5%     25%     50%     75%     95%     max
+                              4       4       4       4       4       4       4
+
+     3 panels x 4 periods = 12 observations (strongly balanced)
+
+
+--- unbalanced panel ---
+number of observations set to 10
+(10 real changes made)
+(4 real changes made)
+(3 real changes made)
+(10 real changes made)
+(3 real changes made)
+(4 real changes made)
+(3 real changes made)
+(10 real changes made)
+panel variable: cid
+ time variable: year
+         delta: 1 unit
+
+       cid:  DEU, ..., USA                               n =        3
+       year:  2020, ..., 2023                          T =        4
+              Delta(year) = 1 unit
+              Span(year)  = 4 periods
+              (cid*year uniquely identifies each observation)
+
+     Distribution of T_i:   min      5%     25%     50%     75%     95%     max
+                              3       3       3       3       3       3       4
+
+     3 panels, 10 total observations (unbalanced)
+
+
+--- xtdescribe without xtset should error ---
+number of observations set to 4
+(4 real changes made)
+line 39: xtdescribe: data not xtset
+rc=.

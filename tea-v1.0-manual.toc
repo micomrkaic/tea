@@ -1,0 +1,110 @@
+\contentsline {section}{\numberline {1}Introduction}{5}{section.1}%
+\contentsline {subsection}{\numberline {1.1}What \texttt {tea} is}{5}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}What \texttt {tea} is not}{5}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}Design choices, locked}{5}{subsection.1.3}%
+\contentsline {section}{\numberline {2}Installation}{5}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Build from source}{5}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Dependencies}{6}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Sanity check}{6}{subsection.2.3}%
+\contentsline {subsection}{\numberline {2.4}Running interactively}{6}{subsection.2.4}%
+\contentsline {section}{\numberline {3}Your first \texttt {tea} session}{7}{section.3}%
+\contentsline {section}{\numberline {4}The do-file language}{7}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Comments}{8}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Macros}{8}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Control flow}{8}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}Capture and quietly}{9}{subsection.4.4}%
+\contentsline {subsection}{\numberline {4.5}The \texttt {by:} prefix}{9}{subsection.4.5}%
+\contentsline {section}{\numberline {5}Data management}{9}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Importing data}{9}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Saving data}{10}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Generating and modifying variables}{10}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}\texttt {egen} extended generators}{10}{subsection.5.4}%
+\contentsline {subsection}{\numberline {5.5}Type conversion}{10}{subsection.5.5}%
+\contentsline {subsection}{\numberline {5.6}Labels}{11}{subsection.5.6}%
+\contentsline {section}{\numberline {6}Exploring data}{11}{section.6}%
+\contentsline {subsection}{\numberline {6.1}\texttt {describe}}{11}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}\texttt {list}}{11}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}\texttt {summarize}}{11}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}\texttt {tabulate}}{11}{subsection.6.4}%
+\contentsline {subsection}{\numberline {6.5}\texttt {codebook}}{12}{subsection.6.5}%
+\contentsline {subsection}{\numberline {6.6}\texttt {count}}{12}{subsection.6.6}%
+\contentsline {section}{\numberline {7}Reshaping, merging, aggregating}{12}{section.7}%
+\contentsline {subsection}{\numberline {7.1}\texttt {sort} and \texttt {gsort}}{12}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}\texttt {reshape}}{12}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}\texttt {merge}}{12}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.4}\texttt {collapse}}{13}{subsection.7.4}%
+\contentsline {subsection}{\numberline {7.5}Frames}{13}{subsection.7.5}%
+\contentsline {section}{\numberline {8}Time series and panel data}{13}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Declaring panel / time structure}{13}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}\texttt {xtdescribe}}{14}{subsection.8.2}%
+\contentsline {section}{\numberline {9}Factor variables}{14}{section.9}%
+\contentsline {subsection}{\numberline {9.1}Atoms}{14}{subsection.9.1}%
+\contentsline {subsection}{\numberline {9.2}Interactions}{14}{subsection.9.2}%
+\contentsline {subsection}{\numberline {9.3}Coefficient naming}{14}{subsection.9.3}%
+\contentsline {subsection}{\numberline {9.4}Known limitation: factor × TS-op composition}{15}{subsection.9.4}%
+\contentsline {section}{\numberline {10}Linear regression}{15}{section.10}%
+\contentsline {subsection}{\numberline {10.1}Basic syntax}{15}{subsection.10.1}%
+\contentsline {subsection}{\numberline {10.2}Output}{15}{subsection.10.2}%
+\contentsline {subsection}{\numberline {10.3}Robust and clustered SEs}{15}{subsection.10.3}%
+\contentsline {subsection}{\numberline {10.4}Constraints and hypothesis tests}{15}{subsection.10.4}%
+\contentsline {section}{\numberline {11}Panel regression}{16}{section.11}%
+\contentsline {subsection}{\numberline {11.1}Fixed effects}{16}{subsection.11.1}%
+\contentsline {subsection}{\numberline {11.2}Random effects}{16}{subsection.11.2}%
+\contentsline {subsection}{\numberline {11.3}Between effects}{16}{subsection.11.3}%
+\contentsline {subsection}{\numberline {11.4}Hausman test}{16}{subsection.11.4}%
+\contentsline {section}{\numberline {12}Maximum likelihood estimators}{16}{section.12}%
+\contentsline {subsection}{\numberline {12.1}\texttt {logit}}{17}{subsection.12.1}%
+\contentsline {subsection}{\numberline {12.2}\texttt {probit}}{17}{subsection.12.2}%
+\contentsline {subsection}{\numberline {12.3}\texttt {poisson}}{17}{subsection.12.3}%
+\contentsline {subsection}{\numberline {12.4}Marginal effects via \texttt {margins}}{17}{subsection.12.4}%
+\contentsline {section}{\numberline {13}Instrumental variables}{17}{section.13}%
+\contentsline {subsection}{\numberline {13.1}Syntax}{17}{subsection.13.1}%
+\contentsline {subsection}{\numberline {13.2}Example}{18}{subsection.13.2}%
+\contentsline {subsection}{\numberline {13.3}Interpreting the first-stage $F$}{18}{subsection.13.3}%
+\contentsline {subsection}{\numberline {13.4}Variance estimators}{18}{subsection.13.4}%
+\contentsline {section}{\numberline {14}Time series models}{18}{section.14}%
+\contentsline {subsection}{\numberline {14.1}ARIMA}{18}{subsection.14.1}%
+\contentsline {subsection}{\numberline {14.2}Example}{18}{subsection.14.2}%
+\contentsline {section}{\numberline {15}Post-estimation}{19}{section.15}%
+\contentsline {subsection}{\numberline {15.1}\texttt {predict}}{19}{subsection.15.1}%
+\contentsline {subsection}{\numberline {15.2}Hypothesis tests}{19}{subsection.15.2}%
+\contentsline {section}{\numberline {16}Output and reproducibility}{19}{section.16}%
+\contentsline {subsection}{\numberline {16.1}Saving estimates}{19}{subsection.16.1}%
+\contentsline {subsection}{\numberline {16.2}\texttt {estout}: publication tables}{20}{subsection.16.2}%
+\contentsline {subsection}{\numberline {16.3}\texttt {log}}{20}{subsection.16.3}%
+\contentsline {section}{\numberline {17}Random numbers and Monte Carlo}{21}{section.17}%
+\contentsline {subsection}{\numberline {17.1}Reproducibility}{21}{subsection.17.1}%
+\contentsline {subsection}{\numberline {17.2}Functions}{21}{subsection.17.2}%
+\contentsline {subsection}{\numberline {17.3}A Monte Carlo example}{21}{subsection.17.3}%
+\contentsline {section}{\numberline {18}Escape hatches: when to leave \texttt {tea}}{21}{section.18}%
+\contentsline {subsection}{\numberline {18.1}When to escape}{22}{subsection.18.1}%
+\contentsline {subsection}{\numberline {18.2}A bridge example}{22}{subsection.18.2}%
+\contentsline {section}{\numberline {19}Known v1.0\ limitations}{22}{section.19}%
+\contentsline {subsection}{\numberline {19.1}Data and metadata}{22}{subsection.19.1}%
+\contentsline {subsection}{\numberline {19.2}Econometric estimators}{22}{subsection.19.2}%
+\contentsline {subsection}{\numberline {19.3}Factor variables}{23}{subsection.19.3}%
+\contentsline {subsection}{\numberline {19.4}Programming}{23}{subsection.19.4}%
+\contentsline {subsection}{\numberline {19.5}Graphics}{23}{subsection.19.5}%
+\contentsline {section}{\numberline {20}Reporting bugs}{23}{section.20}%
+\contentsline {section}{\numberline {A}Command reference}{24}{appendix.A}%
+\contentsline {section}{\numberline {B}Function reference}{27}{appendix.B}%
+\contentsline {subsection}{\numberline {B.1}Arithmetic and rounding}{27}{subsection.B.1}%
+\contentsline {subsection}{\numberline {B.2}Exponential and logarithm}{27}{subsection.B.2}%
+\contentsline {subsection}{\numberline {B.3}Trigonometric and hyperbolic}{27}{subsection.B.3}%
+\contentsline {subsection}{\numberline {B.4}Probability distributions}{28}{subsection.B.4}%
+\contentsline {subsection}{\numberline {B.5}Random number generation}{28}{subsection.B.5}%
+\contentsline {subsection}{\numberline {B.6}Missing-value tests and ranges}{28}{subsection.B.6}%
+\contentsline {subsection}{\numberline {B.7}String construction and inspection}{28}{subsection.B.7}%
+\contentsline {subsection}{\numberline {B.8}String transformation}{29}{subsection.B.8}%
+\contentsline {subsection}{\numberline {B.9}Regular expressions (POSIX extended)}{29}{subsection.B.9}%
+\contentsline {subsection}{\numberline {B.10}Numeric $\leftrightarrow $ string conversion}{29}{subsection.B.10}%
+\contentsline {subsection}{\numberline {B.11}Calendar: building dates}{29}{subsection.B.11}%
+\contentsline {subsection}{\numberline {B.12}Calendar: extracting components from a daily date}{30}{subsection.B.12}%
+\contentsline {subsection}{\numberline {B.13}Calendar: converting between frequencies}{30}{subsection.B.13}%
+\contentsline {subsection}{\numberline {B.14}Special: running and time-series-context}{30}{subsection.B.14}%
+\contentsline {section}{\numberline {C}egen function reference}{30}{appendix.C}%
+\contentsline {subsection}{\numberline {C.1}Group-wise aggregators}{30}{subsection.C.1}%
+\contentsline {subsection}{\numberline {C.2}Position and identity}{31}{subsection.C.2}%
+\contentsline {subsection}{\numberline {C.3}Row-wise aggregators (across columns of a single row)}{31}{subsection.C.3}%
+\contentsline {section}{\numberline {D}Summarize / tabstat statistics keywords}{31}{appendix.D}%
+\contentsline {section}{\numberline {E}Stata cheat sheet}{32}{appendix.E}%

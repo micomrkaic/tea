@@ -1,0 +1,118 @@
+number of observations set to 100
+(100 real changes made)
+(100 real changes made)
+(100 real changes made)
+
+=== estimates dir ===
+
+    name                 command               N   depvar
+    ----                 -------               -   ------
+    m2                   regress             100   y
+    m1                   regress             100   y
+
+
+=== estimates table m1 m2 ===
+
+Variable                     m1           m2
+--------------------------------------------
+x1                     1.996     1.996
+_cons                    6.2       0.2
+x2                            .         3
+--------------------------------------------
+N                           100          100
+
+=== estimates table m1 m2, se star stats(N r2 rmse) ===
+
+Variable                     m1           m2
+--------------------------------------------
+x1                     1.996***     1.996***
+                      (0.01849)    (0.01108)
+_cons                    6.2***       0.2   
+                        (1.076)     (0.7876)
+x2                            .         3***
+                                    (0.2262)
+--------------------------------------------
+N                           100          100
+r2                       0.9917        0.997
+rmse                      5.338        3.199
+
+Legend: * p<0.10, ** p<0.05, *** p<0.01
+
+=== estout m1 m2 (LaTeX, default) ===
+\begin{tabular}{lcc}
+\hline\hline
+  & m1 & m2 \\
+  & y & y \\
+\hline
+x1 & 1.996$^{***}$ & 1.996$^{***}$ \\
+  & (0.01849) & (0.01108) \\
+x2 &  & 3$^{***}$ \\
+  &  & (0.2262) \\
+\_cons & 6.2$^{***}$ & 0.2 \\
+  & (1.076) & (0.7876) \\
+\hline
+N & 100 & 100 \\
+r2 & 0.9917 & 0.997 \\
+\hline\hline
+\end{tabular}
+\footnotesize{$^{*}$ $p<0.10$, $^{**}$ $p<0.05$, $^{***}$ $p<0.01$.  Standard errors in parentheses.}
+
+=== estout m1 m2, format(markdown) ===
+| Variable | m1 | m2 |
+|---|---|---|
+| x1 | 1.996*** | 1.996*** |
+|  | (0.01849) | (0.01108) |
+| x2 |  | 3*** |
+|  |  | (0.2262) |
+| _cons | 6.2*** | 0.2 |
+|  | (1.076) | (0.7876) |
+| N | 100 | 100 |
+| r2 | 0.9917 | 0.997 |
+
+\* p<0.10, ** p<0.05, *** p<0.01
+
+=== estout m1 m2, format(plain) ===
+Variable                      m1            m2
+                               y             y
+------------------------------------------------
+x1                     1.996        1.996   
+                       (0.01849)     (0.01108)
+x2                             .         3   
+                                      (0.2262)
+_cons                    6.2          0.2   
+                         (1.076)      (0.7876)
+------------------------------------------------
+N                            100           100
+r2                        0.9917         0.997
+
+=== estimates restore m1 ===
+after restore, _b[x1] = 1.996435644
+after restore, e(N)  = 100
+
+=== estimates drop m1 ===
+
+    name                 command               N   depvar
+    ----                 -------               -   ------
+    m2                   regress             100   y
+
+
+=== .dta value-label round-trip ===
+number of observations set to 5
+(5 real changes made)
+file /tmp/_test_labels.dta saved
+(1 vars, 5 obs)
+     +          +
+     | cat      |
+   1.| First    |
+   2.| Second   |
+   3.| Third    |
+   4.| First    |
+   5.| Second   |
+
+Contains data
+  obs: 5
+ vars: 1
+-------------------------------------------------------------
+variable         type     format     label
+cat              double   %9.0g      Categorical
+-------------------------------------------------------------
