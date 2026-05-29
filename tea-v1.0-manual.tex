@@ -1,6 +1,7 @@
 \documentclass[11pt,letterpaper]{article}
 \usepackage[margin=1in]{geometry}
 \usepackage[T1]{fontenc}
+\usepackage{graphicx}
 \usepackage{xcolor}
 \usepackage{listings}
 \usepackage{booktabs}
@@ -78,9 +79,18 @@
 \begin{document}
 
 \thispagestyle{empty}
-\maketitle
 
-\vspace{2em}
+% --- title page with logo ---
+\begin{center}
+\vspace*{0.2in}
+\includegraphics[width=0.55\textwidth]{tea_logo.jpg}\\[0.5em]
+{\Huge\bfseries version \teaversion}\\[0.8em]
+{\Large User manual}\\[1.2em]
+{\large Mico Mrkaic}\\[0.3em]
+{\large \today}
+\end{center}
+
+\vspace{1.5em}
 \begin{center}
 \begin{minipage}{0.85\textwidth}
 \small
@@ -126,6 +136,8 @@ not affiliated with or endorsed by StataCorp LLC.
 \textit{Stata} is a registered trademark of StataCorp LLC.
 \end{minipage}
 \end{center}
+
+\vspace{2em}
 
 \newpage
 \tableofcontents

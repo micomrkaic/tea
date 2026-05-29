@@ -1,4 +1,10 @@
+<p align="center">
+  <img src="assets/tea_logo.jpg" alt="tea — data prep, brewed cleanly" width="360"/>
+</p>
+
 # tea — tiny econometric assistant
+
+*Data prep, brewed cleanly.*
 
 A small C17 program for the data-prep phase economists use Stata for: import,
 clean, define variables, prepare for econometrics. Interactive REPL plus batch
