@@ -20,6 +20,31 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+/* Interactive startup banner (stderr, REPL only — never in batch mode, so
+ * do-file output and the regression suite stay byte-identical).  Colors only
+ * when stderr is a terminal, TERM isn't dumb, and NO_COLOR is unset
+ * (https://no-color.org).  Suppress entirely with -q / --quiet. */
+static void print_banner(const Interp *ip){
+    const char *term = getenv("TERM");
+    int color = isatty(fileno(stderr))
+             && term && strcmp(term, "dumb") != 0
+             && !getenv("NO_COLOR");
+    const char *A = color ? "\x1b[38;5;24m" : "";   /* steel blue */
+    const char *D = color ? "\x1b[2m"       : "";   /* dim */
+    const char *R = color ? "\x1b[0m"       : "";
+    fprintf(stderr, "\n");
+    fprintf(stderr, "%s        (  (%s\n", A, R);
+    fprintf(stderr, "%s         )  )%s      tea %s \u2014 tiny econometric assistant\n", A, R, TEA_VERSION);
+    fprintf(stderr, "%s      .........%s    %sfree Stata-like data analysis at the command line%s\n", A, R, D, R);
+    fprintf(stderr, "%s      |       |]%s   %sGPLv3 \u00b7 Mico Mrkaic \u00b7 github.com/micomrkaic/tea%s\n", A, R, D, R);
+    fprintf(stderr, "%s      \\       /%s\n", A, R);
+    fprintf(stderr, "%s       `-----\u00b4%s     %stype help for commands \u00b7 Ctrl-D to exit%s\n", A, R, D, R);
+    if(!ip->strict_stata)
+        fprintf(stderr, "                   %s(tea-extensions enabled)%s\n", D, R);
+    fprintf(stderr, "\n");
+}
 
 extern int g_exit_requested;
 extern int g_exit_code;
@@ -31,6 +56,7 @@ static void usage(FILE *out){
 "Options:\n"
 "  --strict-stata      reject tea-only extensions (default)\n"
 "  --tea-extensions    allow tea-only extensions\n"
+"  -q, --quiet         suppress the startup banner\n"
 "  --version           print version and exit\n"
 "  --help              print this help and exit\n"
 "\n"
@@ -39,6 +65,7 @@ static void usage(FILE *out){
 }
 
 int main(int argc,char **argv){
+    int quiet = 0;
     /* Line-buffer stdout so that when stdout and stderr are merged
      * (e.g. tea foo.do 2>&1) the lines appear in real source order
      * instead of interleaving according to libc's internal buffers.
@@ -51,9 +78,12 @@ int main(int argc,char **argv){
 
     /* parse leading -- options */
     int argi = 1;
-    while(argi < argc && argv[argi][0] == '-' && argv[argi][1] == '-'){
+    while(argi < argc &&
+          ((argv[argi][0] == '-' && argv[argi][1] == '-') || !strcmp(argv[argi], "-q"))){
         const char *a = argv[argi];
-        if(!strcmp(a, "--strict-stata")){
+        if(!strcmp(a, "-q") || !strcmp(a, "--quiet")){
+            quiet = 1;
+        } else if(!strcmp(a, "--strict-stata")){
             ip->strict_stata = true;
         } else if(!strcmp(a, "--tea-extensions")){
             ip->strict_stata = false;
@@ -82,9 +112,7 @@ int main(int argc,char **argv){
         /* explicit '-' — read do-file commands from stdin, non-interactive */
         rc=run_stream(ip,stdin,false);
     } else {
-        fprintf(stderr,"tea %s — tiny econometric assistant.  type 'help' or Ctrl-D to exit.\n",TEA_VERSION);
-        if(!ip->strict_stata)
-            fprintf(stderr,"(tea-extensions enabled)\n");
+        if(!quiet) print_banner(ip);
         rc=run_stream(ip,stdin,true);
     }
     interp_free(ip);
