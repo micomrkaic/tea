@@ -7,15 +7,15 @@ number of observations set to 50
 Regress checks: yhat[1] = 2 + 3*0.1 = 2.3
      +          +          +          +           +
      | x        | y        | yhat     | resids    |
-   1.| 0.1      | 2.3      | 2.3      | 8.882e-16 |
-   2.| 0.2      | 2.6      | 2.6      | 1.332e-15 |
-   3.| 0.3      | 2.9      | 2.9      | 1.332e-15 |
+   1.| 0.1      | 2.31     | 2.315    | -0.005271 |
+   2.| 0.2      | 2.62     | 2.615    | 0.00474   |
+   3.| 0.3      | 2.93     | 2.915    | 0.01475   |
 stdp non-zero:
-     +           +
-     | se        |
-   1.| 2.308e-16 |
-   2.| 2.239e-16 |
-   3.| 2.17e-16  |
+     +          +
+     | se       |
+   1.| 0.003128 |
+   2.| 0.003034 |
+   3.| 0.002941 |
 number of observations set to 100
 (100 real changes made)
 (100 real changes made)
@@ -65,6 +65,8 @@ panel variable: panel
 (option e_it assumed; 12 observations)
 (option u_i + e_it assumed; 12 observations)
 (option xb + u_i assumed; 12 observations)
+(12 real changes made)
+(12 real changes made)
 
 xtreg FE perfect-fit case:
   xb = beta*x = x (since beta=1, no _cons)
@@ -97,14 +99,15 @@ panel variable: p
          delta: 1 unit
 (option xb assumed; 19 observations)
 (option residuals assumed; 19 observations)
+(20 real changes made)
 First few rows (row 1 has L.g missing -> all missing):
-     +          +          +          +           +
-     | t        | g        | gh       | gr        |
-   1.| 1        | 1        | .        | .         |
-   2.| 2        | 2        | 2        | 1.776e-15 |
-   3.| 3        | 3        | 3        | 1.776e-15 |
-   4.| 4        | 4        | 4        | 1.776e-15 |
-   5.| 5        | 5        | 5        | 1.776e-15 |
+     +          +          +          +          +
+     | t        | g        | gh       | gr       |
+   1.| 1        | 1        | .        | .        |
+   2.| 2        | 2        | 2        | 0        |
+   3.| 3        | 3        | 3        | 0        |
+   4.| 4        | 4        | 4        | 0        |
+   5.| 5        | 5        | 5        | 0        |
 
 === predict ,pr after regress should error ===
 number of observations set to 10

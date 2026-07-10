@@ -21,6 +21,7 @@
 #include "expr.h"
 #include "dta.h"
 #include "tsop.h"
+#include "plot.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -3510,6 +3511,19 @@ static int wrap_ts(Cmd*c){return do_tsset(c,0);}
 static int wrap_xt(Cmd*c){return do_tsset(c,1);} 
 
 Disp TABLE[]={
+    {"scatter",do_scatter,1,
+        "scatter yvar xvar [if] [in] [, title() xtitle() ytitle() saving() noview]\n"
+        "      SVG scatter plot; saving(FILE) writes to FILE instead of tea_graph.svg\n"
+        "      e.g.  scatter gdp_growth inflation if year>2000, title(\"Growth vs inflation\")"},
+    {"line",do_lineplot,1,
+        "line yvar xvar [if] [in] [, sort title() xtitle() ytitle() saving() noview]\n"
+        "      SVG line plot; connects points in data order (use sort to order by x)\n"
+        "      e.g.  line gdp year if country==\"US\", sort"},
+    {"histogram",do_histogram,1,
+        "histogram var [if] [in] [, bins(#) freq title() saving() noview]\n"
+        "      SVG histogram; density by default, freq for counts, auto bins = min(ceil(sqrt(N)),50)\n"
+        "      e.g.  histogram wage, bins(30) freq"},
+    {"hist",do_histogram,1,NULL},
     {"generate",wrap_gen,1,
         "generate [type] newvar = exp [if] [in]      create a new variable\n"
         "      e.g.  gen logy = log(income) if year >= 2000"},

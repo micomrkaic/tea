@@ -592,6 +592,15 @@ int do_regress(Cmd *c){
         for(long i=0;i<D.N;i++){ double dy=D.y[i]-ybar; tss += dy*dy; }
     }
     for(long i=0;i<D.N;i++) rss += resid[i]*resid[i];
+    rss = tea_snap_rss(rss, tss);   /* perfect fit: exactly 0 on every backend */
+    if(rss == 0){                    /* residuals are mathematically 0 too:  */
+        for(long i=0;i<D.N;i++) resid[i]=0;   /* keeps sandwich SEs exact    */
+        /* In an exact fit with full-rank X the solution is unique and exact;
+         * coefficients tiny relative to the largest are mathematical zeros
+         * carrying backend-dependent FP noise.  Snap them for portable output. */
+        double bmax=0; for(int j=0;j<D.K;j++){ double a=fabs(b[j]); if(a>bmax) bmax=a; }
+        for(int j=0;j<D.K;j++) if(fabs(b[j]) < 1e-8*bmax) b[j]=0;
+    }
     double mss = tss - rss;
 
     /* Effective N for df calculation and "Number of obs" reporting:
@@ -622,7 +631,12 @@ int do_regress(Cmd *c){
     /* model F: classical = (R²/dfm) / ((1-R²)/dfr).  Wald F otherwise via
      * R b under the null all slopes = 0.  For simplicity classical formula. */
     double F = 0, F_p = 1.0;
-    if(df_m>0 && df_r>0){
+    if(rss == 0 && df_m > 0 && df_r > 0){
+        /* perfect fit: residual variance is exactly 0, F is infinite.
+         * Set it deterministically (prints "inf" / 0.0000, the existing
+         * golden convention) instead of computing backend-dependent noise. */
+        F = INFINITY; F_p = 0.0;
+    } else if(df_m>0 && df_r>0){
         if(se_kind==SE_CLASSICAL && D.has_cons){
             F = (r2/df_m) / ((1-r2)/df_r);
         } else {
@@ -1500,6 +1514,8 @@ int do_xtreg(Cmd *c)
             double d = yb[g] - ybar_be;
             tss_be += d * d;
         }
+        rss_be = tea_snap_rss(rss_be, tss_be);
+        double sigma2_be_s = rss_be / df_be; sigma2_be = sigma2_be_s;
         double r2_be = (tss_be > 0) ? 1.0 - rss_be / tss_be : 0;
 
         /* V = σ²_be (X̄'X̄)^{-1} via Cholesky. */
@@ -1626,6 +1642,12 @@ int do_xtreg(Cmd *c)
     /* RSS and TSS on the within-transformed data → R-within. */
     double rss_w = 0; for(long i=0; i<D.N; i++) rss_w += resid[i]*resid[i];
     double tss_w = 0; for(long i=0; i<D.N; i++) tss_w += yw[i]*yw[i];
+    rss_w = tea_snap_rss(rss_w, tss_w);   /* backend-independent zero */
+    if(rss_w == 0){
+        for(long i=0;i<D.N;i++) resid[i]=0;   /* keeps sandwich SEs exact */
+        double bmax=0; for(int j=0;j<D.K;j++){ double a=fabs(b[j]); if(a>bmax) bmax=a; }
+        for(int j=0;j<D.K;j++) if(fabs(b[j]) < 1e-8*bmax) b[j]=0;
+    }
     double r2_w = tss_w > 0 ? 1 - rss_w/tss_w : 0;
     double sigma_e2 = rss_w / df_r;
     double sigma_e = sqrt(sigma_e2);
@@ -1768,9 +1790,14 @@ int do_xtreg(Cmd *c)
             sum_alpha += a; sumT += grps[g].count;
         }
         double abar = sum_alpha / G;
-        double svar = 0;
-        for(long g=0; g<G; g++){ double d = alpha[g]-abar; svar += d*d; }
+        double svar = 0, ascale = 0;
+        for(long g=0; g<G; g++){ double d = alpha[g]-abar; svar += d*d;
+                                 ascale += alpha[g]*alpha[g]; }
         svar /= (G > 1 ? G - 1 : 1);
+        ascale /= G;
+        /* identical panel intercepts: variance is FP noise, snap to 0 so
+         * sigma_u/rho print identically on every backend */
+        if(svar < 1e-24 * ascale + 1e-30) svar = 0;
         double Tbar = sumT / G;
         double su2 = svar - sigma_e2 / Tbar;
         sigma_u = su2 > 0 ? sqrt(su2) : 0;
@@ -1784,7 +1811,9 @@ int do_xtreg(Cmd *c)
      * within R². */
     int df_m = Kr;
     double F=0, F_p=1;
-    if(se_kind == SE_CLASSICAL){
+    if(rss_w == 0){
+        F = INFINITY; F_p = 0.0;     /* perfect within fit: deterministic inf */
+    } else if(se_kind == SE_CLASSICAL){
         F = (r2_w/df_m) / ((1 - r2_w)/(double)df_r);
         F_p = tea_pval_f(F, df_m, df_r);
     } else {
@@ -1921,8 +1950,15 @@ int do_xtreg(Cmd *c)
         }
 
         /* Residual variance for RE (df = N - K - 1, no -G correction). */
-        double rss_re = 0;
+        double rss_re = 0, tss_re = 0;
         for(long i=0; i<D.N; i++) rss_re += resid_re[i]*resid_re[i];
+        for(long i=0; i<D.N; i++) tss_re += y_re[i]*y_re[i];
+        rss_re = tea_snap_rss(rss_re, tss_re);   /* backend-independent zero */
+        if(rss_re == 0){
+            for(long i=0; i<D.N; i++) resid_re[i]=0;   /* exact sandwich too */
+            double bmax=0; for(int j=0;j<K_re;j++){ double a=fabs(b_re[j]); if(a>bmax) bmax=a; }
+            for(int j=0;j<K_re;j++) if(fabs(b_re[j]) < 1e-8*bmax) b_re[j]=0;
+        }
         int df_r_re = (int)(D.N - K_re);
         double sigma_re2 = df_r_re > 0 ? rss_re / df_r_re : 0;
 
@@ -1998,7 +2034,9 @@ int do_xtreg(Cmd *c)
         double F_re = 0, F_p_re = 1;
         int Kr_re_slope = 0;
         for(int j=0; j<D.K; j++) if(!omitted_re[j]) Kr_re_slope++;
-        if(Kr_re_slope > 0){
+        if(rss_re == 0 && Kr_re_slope > 0){
+            F_re = INFINITY; F_p_re = 0.0;   /* perfect fit: deterministic */
+        } else if(Kr_re_slope > 0){
             double *bs = malloc(Kr_re_slope * sizeof(double));
             double *Vs = malloc((size_t)Kr_re_slope*Kr_re_slope * sizeof(double));
             int idx_map[64]; int sn=0;
@@ -2253,8 +2291,15 @@ int do_hausman(Cmd *c)
         for(int j=0; j<nc; j++){
             double vfe = fe->V[(size_t)fe_map[i]*fe->K + fe_map[j]];
             double vre = re->V[(size_t)re_map[i]*re->K + re_map[j]];
-            dV[(size_t)i*nc + j] = vfe - vre;
+            double d = vfe - vre;
+            /* When V_FE and V_RE agree to relative machine precision the
+             * difference is a mathematical zero; keep it exact so the
+             * sqrt(diag) column and the chi2 don't print backend noise. */
+            if(fabs(d) < 1e-10 * (fabs(vfe) + fabs(vre))) d = 0;
+            dV[(size_t)i*nc + j] = d;
         }
+        if(fabs(db[i]) < 1e-8 * (fabs(fe->b[fe_map[i]]) + fabs(re->b[re_map[i]])))
+            db[i] = 0;   /* same: identical coefficients differ only in noise */
     }
 
     /* Try Cholesky inverse first (works when dV is PD).  If it fails,

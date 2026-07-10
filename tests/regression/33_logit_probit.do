@@ -13,12 +13,19 @@ set obs 100
 gen y = mod(_n, 2)
 display "=== Logit intercept-only on 50/50 ==="
 display "Expected: _cons = 0 exactly (log(1) = 0), SE = 0.2 (= 1/sqrt(25))"
-logit y
+* _cons is a mathematical zero; its printed digits are floating-point noise
+* that varies by BLAS/libm backend, so assert with tolerances instead of
+* diffing the coefficient table.
+quietly logit y
+display "logit  _cons approx 0 : " (abs(_b[_cons]) < 1e-8)
+display "logit  SE(_cons) = 0.2: " (abs(_se[_cons] - 0.2) < 1e-8)
 
 display ""
 display "=== Probit intercept-only on 50/50 ==="
 display "Expected: _cons = 0 exactly, SE = sqrt(0.25·2π) / sqrt(100) ≈ 0.1253"
-probit y
+quietly probit y
+display "probit _cons approx 0    : " (abs(_b[_cons]) < 1e-8)
+display "probit SE(_cons) = 0.1253: " (abs(_se[_cons] - sqrt(0.25*2*_pi)/10) < 1e-8)
 
 * --- Real-effect dataset ---
 display ""

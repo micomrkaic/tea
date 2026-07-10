@@ -102,7 +102,7 @@ panel variable: cid
  time variable: t
          delta: 1 unit
 _b[L.z]      = 1
-_se[L.z]     = 1.838951634e-16
+_se[L.z]     = 0
 
 === e(N) not substituted inside double quotes ===
 number of observations set to 25

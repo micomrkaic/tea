@@ -2,37 +2,13 @@ number of observations set to 100
 (100 real changes made)
 === Logit intercept-only on 50/50 ===
 Expected: _cons = 0 exactly (log(1) = 0), SE = 0.2 (= 1/sqrt(25))
-
-Iteration 0:    log likelihood =   -69.314718
-Iteration 3:    log likelihood =   -69.314718
-
-Logistic regression                             Number of obs   =      100
-                                                LR chi2(0)      =       0.00
-                                                Prob > chi2     =     1.0000
-Log likelihood = -69.314718                     Pseudo R2       =     0.0000
-
-------------------------------------------------------------------------------
-           y | Coefficient  Std. err.     z    P>|z|     [95% conf. interval]
--------------+----------------------------------------------------------------
-       _cons | 1.29213e-17         0.2    0.00 1.000    -0.391993    0.391993
-------------------------------------------------------------------------------
+logit  _cons approx 0 : 1
+logit  SE(_cons) = 0.2: 1
 
 === Probit intercept-only on 50/50 ===
 Expected: _cons = 0 exactly, SE = sqrt(0.25·2π) / sqrt(100) ≈ 0.1253
-
-Iteration 0:    log likelihood =   -69.314718
-Iteration 3:    log likelihood =   -69.314718
-
-Probit regression                               Number of obs   =      100
-                                                LR chi2(0)      =       0.00
-                                                Prob > chi2     =     1.0000
-Log likelihood = -69.314718                     Pseudo R2       =     0.0000
-
-------------------------------------------------------------------------------
-           y | Coefficient  Std. err.     z    P>|z|     [95% conf. interval]
--------------+----------------------------------------------------------------
-       _cons | -7.37025e-15    0.125331   -0.00 1.000    -0.245645    0.245645
-------------------------------------------------------------------------------
+probit _cons approx 0    : 1
+probit SE(_cons) = 0.1253: 1
 
 === Logit and probit with regressor — convergence + ratio check ===
 number of observations set to 200

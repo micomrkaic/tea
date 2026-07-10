@@ -22,7 +22,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#define TEA_VERSION "1.0"
+#define TEA_VERSION "1.1.0"
 
 typedef struct MacroKV { char *name; char *val; struct MacroKV *next; } MacroKV;
 
@@ -53,5 +53,23 @@ int     run_line(Interp *ip,const char *line);
 /* run a stream of lines (do-file). handles continuation /// , comments,
  * and multi-line control blocks (foreach/forvalues/if/{ }). */
 int     run_stream(Interp *ip,FILE *in,bool interactive);
+
+/* ---- push-mode session ---------------------------------------------------
+ * Event-driven line interface: the caller feeds one physical input line at
+ * a time and the session keeps all cross-line state (`///` continuations,
+ * `#delimit ;` mode, `{...}` block accumulation).  run_stream() is a thin
+ * driver over this; a browser/WASM front-end feeds it directly, one line
+ * per keypress-Enter, with no blocking read loop.
+ */
+typedef struct TeaSession TeaSession;
+TeaSession *tea_session_new(Interp *ip, bool interactive);
+/* Feed one physical line (without trailing newline).  Returns the return
+ * code the driver should treat as do-file-aborting (0 = fine).  Sets
+ * *need_more when the statement is incomplete (continuation prompt). */
+int  tea_session_feed(TeaSession *s, const char *line, bool *need_more);
+/* EOF: execute any pending unterminated {...} block (matches historical
+ * behavior); leftover partial statements are discarded. */
+void tea_session_flush(TeaSession *s);
+void tea_session_free(TeaSession *s);
 
 #endif

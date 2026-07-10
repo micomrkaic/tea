@@ -167,10 +167,16 @@ int run_line(Interp *ip,const char *raw){
         if(!*cmd) return 0;
         const char *sh=getenv("SHELL"); if(!sh||!sh[0]) sh="/bin/sh";
         fflush(stdout);
+#ifdef __EMSCRIPTEN__
+        /* no fork() in WASM; Emscripten implements system() (node: spawnSync,
+         * browser: fails cleanly with ENOSYS) */
+        { int st = system(cmd); ip->rc = st < 0 ? 128 : ((st >> 8) & 0xff); }
+#else
         pid_t pid=fork();
         if(pid==0){ execl(sh,sh,"-c",cmd,(char*)NULL); _exit(127); }
         int st=0; waitpid(pid,&st,0);
         ip->rc = WIFEXITED(st)? WEXITSTATUS(st) : 128;
+#endif
         return 0;
     }
 
@@ -254,10 +260,14 @@ int run_line(Interp *ip,const char *raw){
         if(!*cmd){ free(ex); free(byv); free(sortk); return 0; }
         const char *sh = getenv("SHELL"); if(!sh||!sh[0]) sh="/bin/sh";
         fflush(stdout);
+#ifdef __EMSCRIPTEN__
+        { int st = system(cmd); ip->rc = st < 0 ? 128 : ((st >> 8) & 0xff); }
+#else
         pid_t pid=fork();
         if(pid==0){ execl(sh,sh,"-c",cmd,(char*)NULL); _exit(127); }
         int st=0; waitpid(pid,&st,0);
         ip->rc = WIFEXITED(st)? WEXITSTATUS(st) : 128;
+#endif
         free(ex);free(byv);free(sortk); return 0;
     }
 
@@ -461,6 +471,20 @@ static void add_line(Lines *L,const char *s){
     L->v=realloc(L->v,(L->n+1)*sizeof(char*)); L->v[L->n++]=strdup(s);
 }
 /* --------------- readline-backed interactive line reader -------------- */
+#ifdef __EMSCRIPTEN__
+/* No terminal, no readline in the browser build: the xterm.js front-end
+ * drives tea_session_feed() directly.  Keep run_stream() linkable with a
+ * plain-fgets reader and no-op setup/teardown. */
+static void rl_setup(Workspace *ws){ (void)ws; }
+static void rl_teardown(void){}
+static char *read_one_line(FILE *in, bool interactive, const char *prompt){
+    (void)interactive; (void)prompt;
+    char buf[8192];
+    if(!fgets(buf,sizeof buf,in)) return NULL;
+    size_t n=strlen(buf); while(n&&(buf[n-1]=='\n'||buf[n-1]=='\r'))buf[--n]=0;
+    return strdup(buf);
+}
+#else
 #include <readline/readline.h>
 #include <readline/history.h>
 
@@ -585,95 +609,170 @@ static char *read_one_line(FILE *in, bool interactive, const char *prompt){
     size_t n=strlen(buf); while(n&&(buf[n-1]=='\n'||buf[n-1]=='\r'))buf[--n]=0;
     return strdup(buf);
 }
+#endif /* !__EMSCRIPTEN__ */
+
+/* ---- push-mode session --------------------------------------------------
+ * The old run_stream() loop body, inverted into a state machine so that a
+ * non-blocking front-end (browser/WASM, or any embedding) can feed lines
+ * one at a time.  Behavior is a faithful port:
+ *   - `#delimit ;` owns its physical line and resets the accumulator
+ *   - `//` comments strip, `///` continues, leading `*` skips the line
+ *   - `{`-blocks accumulate physical lines verbatim until braces balance
+ *   - block execution results never abort a do-file (historical behavior)
+ *   - at EOF an unterminated block executes as-is; partial statements drop
+ */
+struct TeaSession {
+    Interp *ip;
+    bool    interactive;
+    char    acc[16384];
+    int     inblk;
+    bool    in_block;    /* accumulating a {...} block into L */
+    char    delim;       /* '\n' or ';' under #delimit */
+    Lines   L;
+};
+
+TeaSession *tea_session_new(Interp *ip, bool interactive){
+    TeaSession *s = calloc(1, sizeof *s);
+    if(!s) return NULL;
+    s->ip = ip; s->interactive = interactive; s->delim = '\n';
+    return s;
+}
+
+static void session_run_block(TeaSession *s){
+    /* echo every line of the block to log (Stata's behavior) */
+    for(int z=0;z<s->L.n;z++) tea_log_command(s->L.v[z]);
+    int idx=0; exec_one(s->ip,&s->L,&idx);
+    for(int z=0;z<s->L.n;z++)free(s->L.v[z]); free(s->L.v);
+    s->L.v=NULL; s->L.n=0;
+    s->in_block=false; s->inblk=0;
+}
+
+int tea_session_feed(TeaSession *s, const char *raw, bool *need_more){
+    if(need_more) *need_more = false;
+
+    /* block-accumulation mode: lines are taken verbatim (no // stripping,
+     * no continuation), exactly as the old nested read loop did */
+    if(s->in_block){
+        const char *cs=raw; while(*cs==' ')cs++;
+        if(*cs=='*'){ if(need_more)*need_more=true; return 0; }
+        for(const char *p=raw;*p;p++){ if(*p=='{')s->inblk++; else if(*p=='}')s->inblk--; }
+        add_line(&s->L,raw);
+        if(s->inblk>0){ if(need_more)*need_more=true; return 0; }
+        session_run_block(s);      /* rc historically not abort-checked */
+        return 0;
+    }
+
+    /* #delimit directive — owns the whole physical line */
+    { const char *cs=raw; while(*cs==' '||*cs=='\t')cs++;
+      if(!strncmp(cs,"#delimit",8)){
+          while(*cs&&!isspace((unsigned char)*cs))cs++;
+          while(*cs==' '||*cs=='\t')cs++;
+          s->delim = (*cs==';') ? ';' : '\n';
+          s->acc[0]=0;
+          return 0;
+      } }
+
+    /* strip // and * comments (not inside quotes) */
+    char clean[8192]; int ci=0,inq=0; int saw_cont=0;
+    for(int k=0;raw[k] && ci<(int)sizeof clean-1;k++){
+        if(raw[k]=='"')inq=!inq;
+        if(!inq&&raw[k]=='/'&&raw[k+1]=='/'){
+            if(raw[k+2]=='/'){ saw_cont=1; break; }
+            break;
+        }
+        clean[ci++]=raw[k];
+    }
+    clean[ci]=0;
+    { const char *cs=clean; while(*cs==' ')cs++;
+      if(*cs=='*'){ if(need_more)*need_more=(s->acc[0]!=0); return 0; } }
+    if(saw_cont){
+        if(s->acc[0]) strncat(s->acc,clean,sizeof s->acc-strlen(s->acc)-1);
+        else snprintf(s->acc,sizeof s->acc,"%s",clean);
+        if(need_more)*need_more=true;
+        return 0;
+    }
+    if(s->acc[0]){ strncat(s->acc," ",sizeof s->acc-strlen(s->acc)-1);
+                   strncat(s->acc,clean,sizeof s->acc-strlen(s->acc)-1); }
+    else snprintf(s->acc,sizeof s->acc,"%s",clean);
+    for(char *p=s->acc;*p;p++){ if(*p=='{')s->inblk++; else if(*p=='}')s->inblk--; }
+
+    /* Under '#delimit ;' a statement ends at ';', not at newline. */
+    if(s->delim==';' && s->inblk<=0 && !strchr(s->acc,';')){
+        if(need_more)*need_more=true;
+        return 0;
+    }
+
+    if(s->inblk>0){
+        char buf[16384]; snprintf(buf,sizeof buf,"%s",s->acc); s->acc[0]=0;
+        add_line(&s->L,buf);
+        s->in_block=true;
+        if(need_more)*need_more=true;
+        return 0;
+    }
+
+    /* In ';' mode, split acc on ';' and execute each segment */
+    if(s->delim==';'){
+        char *p = s->acc;
+        while(p && *p){
+            char *semi = strchr(p,';');
+            if(!semi) break;
+            *semi = 0;
+            char *seg = p; while(*seg==' '||*seg=='\t')seg++;
+            if(*seg){ tea_log_command(seg); add_line(&s->L,seg);
+                int idx=s->L.n-1; int rc=exec_one(s->ip,&s->L,&idx);
+                for(int z=0;z<s->L.n;z++)free(s->L.v[z]); free(s->L.v);
+                s->L.v=NULL; s->L.n=0;
+                if(rc>0 && rc!=5 && !s->interactive){ s->acc[0]=0; return rc; }
+            }
+            p = semi+1;
+        }
+        /* leftover after last ';' becomes next statement's prefix */
+        if(p && *p){ memmove(s->acc,p,strlen(p)+1); } else s->acc[0]=0;
+        if(need_more)*need_more=(s->acc[0]!=0);
+        return 0;
+    }
+
+    if(s->acc[0]){
+        tea_log_command(s->acc);
+        add_line(&s->L,s->acc); s->acc[0]=0;
+        int idx=s->L.n-1; int rc=exec_one(s->ip,&s->L,&idx);
+        for(int z=0;z<s->L.n;z++)free(s->L.v[z]); free(s->L.v);
+        s->L.v=NULL; s->L.n=0;
+        if(rc>0 && rc!=5 && !s->interactive) return rc;
+    }
+    return 0;
+}
+
+void tea_session_flush(TeaSession *s){
+    if(s->in_block && s->L.n) session_run_block(s);
+}
+
+void tea_session_free(TeaSession *s){
+    if(!s) return;
+    for(int z=0;z<s->L.n;z++)free(s->L.v[z]); free(s->L.v);
+    free(s);
+}
 
 int run_stream(Interp *ip,FILE *in,bool interactive){
-    Lines L={0}; char acc[16384]; acc[0]=0; int inblk=0;
-    char delim = '\n';   /* default; '#delimit ;' switches to ';' */
     if(interactive) rl_setup(ip->ws);
+    TeaSession *s = tea_session_new(ip, interactive);
+    if(!s){ if(interactive) rl_teardown(); return 1; }
+    int rc_final = 0;
+    bool need_more = false;
     while(!g_exit_requested){
-        char *raw = read_one_line(in, interactive, (acc[0]||inblk)?"> ":". ");
+        char *raw = read_one_line(in, interactive, need_more?"> ":". ");
         if(!raw) break;
         if(!interactive) g_current_line++;
-        /* #delimit directive — owns the whole physical line */
-        { char *cs=raw; while(*cs==' '||*cs=='\t')cs++;
-          if(!strncmp(cs,"#delimit",8)){
-              while(*cs&&!isspace((unsigned char)*cs))cs++;
-              while(*cs==' '||*cs=='\t')cs++;
-              delim = (*cs==';') ? ';' : '\n';
-              free(raw); acc[0]=0; continue;
-          } }
-        /* strip // and * comments (not inside quotes) */
-        char clean[8192]; int ci=0,inq=0; int saw_cont=0;
-        for(int k=0;raw[k];k++){
-            if(raw[k]=='"')inq=!inq;
-            if(!inq&&raw[k]=='/'&&raw[k+1]=='/'){
-                if(raw[k+2]=='/'){ saw_cont=1; break; }
-                break;
-            }
-            clean[ci++]=raw[k];
-        }
-        clean[ci]=0;
+        int rc = tea_session_feed(s, raw, &need_more);
         free(raw);
-        { char *cs=clean; while(*cs==' ')cs++; if(*cs=='*'){ continue; } }
-        if(saw_cont){
-            if(acc[0]) strncat(acc,clean,sizeof acc-strlen(acc)-1);
-            else snprintf(acc,sizeof acc,"%s",clean);
-            continue;
-        }
-        if(acc[0]){ strncat(acc," ",sizeof acc-strlen(acc)-1); strncat(acc,clean,sizeof acc-strlen(acc)-1); }
-        else snprintf(acc,sizeof acc,"%s",clean);
-        for(char *p=acc;*p;p++){ if(*p=='{')inblk++; else if(*p=='}')inblk--; }
-
-        /* Under '#delimit ;' a statement ends at ';', not at newline.  Keep
-         * accumulating physical lines until we see a ';' (or hit a block). */
-        if(delim==';' && inblk<=0 && !strchr(acc,';')) continue;
-
-        if(inblk>0){
-            char buf[16384]; snprintf(buf,sizeof buf,"%s",acc); acc[0]=0;
-            add_line(&L,buf);
-            while(inblk>0){
-                char *r2 = read_one_line(in, interactive, "> ");
-                if(!r2) break;
-                if(!interactive) g_current_line++;
-                char *cs=r2; while(*cs==' ')cs++;
-                if(*cs=='*'){ free(r2); continue; }
-                for(char *p=r2;*p;p++){ if(*p=='{')inblk++; else if(*p=='}')inblk--; }
-                add_line(&L,r2); free(r2);
-            }
-            /* echo every line of the block to log (Stata's behavior) */
-            for(int z=0;z<L.n;z++) tea_log_command(L.v[z]);
-            int idx=0; exec_one(ip,&L,&idx);
-            for(int z=0;z<L.n;z++)free(L.v[z]); free(L.v); L.v=NULL; L.n=0;
-            continue;
-        }
-        /* In ';' mode, split acc on ';' and execute each segment */
-        if(delim==';'){
-            char *p = acc;
-            while(p && *p){
-                char *semi = strchr(p,';');
-                if(!semi) break;
-                *semi = 0;
-                char *seg = p; while(*seg==' '||*seg=='\t')seg++;
-                if(*seg){ tea_log_command(seg); add_line(&L,seg);
-                    int idx=L.n-1; int rc=exec_one(ip,&L,&idx);
-                    for(int z=0;z<L.n;z++)free(L.v[z]); free(L.v); L.v=NULL; L.n=0;
-                    if(rc>0 && rc!=5 && !interactive) { fprintf(stderr,"do-file aborted at line %d (rc=%d)\n",g_current_line,rc); return rc; }
-                }
-                p = semi+1;
-            }
-            /* leftover after last ';' becomes next statement's prefix */
-            if(p && *p){ memmove(acc,p,strlen(p)+1); } else acc[0]=0;
-            continue;
-        }
-        if(acc[0]){
-            tea_log_command(acc);
-            add_line(&L,acc); acc[0]=0;
-            int idx=L.n-1; int rc=exec_one(ip,&L,&idx);
-            for(int z=0;z<L.n;z++)free(L.v[z]); free(L.v); L.v=NULL; L.n=0;
-            if(rc>0 && rc!=5 && !interactive) { fprintf(stderr,"do-file aborted at line %d (rc=%d)\n",g_current_line,rc); return rc; }
+        if(rc>0 && rc!=5 && !interactive){
+            fprintf(stderr,"do-file aborted at line %d (rc=%d)\n",g_current_line,rc);
+            rc_final = rc;
+            break;
         }
     }
-    for(int z=0;z<L.n;z++)free(L.v[z]); free(L.v);
+    if(!rc_final) tea_session_flush(s);   /* EOF mid-block: run it (historical) */
+    tea_session_free(s);
     if(interactive) rl_teardown();
-    return 0;
+    return rc_final;
 }

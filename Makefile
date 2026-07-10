@@ -171,3 +171,29 @@ showpaths:
 	@echo "LDFLAGS          = $(LDFLAGS)"
 
 .PHONY: clean test smoke check-deps showpaths debug release
+
+# ---- WebAssembly build (browser demo) -------------------------------------
+# Requires emcc and the prebuilt WASM static libs (reference CLAPACK stack,
+# GSL, readstat).  Point WASM_LIBS at the directory holding:
+#   liblapacke.a liblapack.a libcblas.a libblas.a libf2c.a libgsl.a libreadstat.a
+WASM_LIBS ?= /home/claude/wasm-libs
+WASM_INC  ?= -Iwasm/include \
+             -I/home/claude/gsl/build-wasm \
+             -I/home/claude/readstat/src
+WASM_SRC  = $(filter-out src/main.c,$(SRC))
+
+wasm: web/tea.js
+
+web/tea.js: $(WASM_SRC)
+	@mkdir -p web
+	emcc -std=c17 -O2 $(WASM_INC) $(WASM_SRC) \
+	  $(WASM_LIBS)/liblapack.a $(WASM_LIBS)/libblas.a $(WASM_LIBS)/libf2c.a \
+	  $(WASM_LIBS)/libgsl.a $(WASM_LIBS)/libreadstat.a \
+	  -sEXPORTED_FUNCTIONS=_tea_web_init,_tea_web_exec,_tea_web_version,_tea_web_run_dofile,_malloc,_free \
+	  -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,FS,NODEFS \
+	  -sALLOW_MEMORY_GROWTH=1 -sMODULARIZE=1 -sEXPORT_NAME=createTea \
+	  -sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 -lnodefs.js \
+	  -o web/tea.js
+
+wasm-clean:
+	rm -rf web/tea.js web/tea.wasm

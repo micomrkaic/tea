@@ -22,8 +22,8 @@ R-sq:                                           Obs per group:
      between = 1.0000                                  avg =      4.0
      overall = 0.9470                                  max =        4
 
-                                                Wald chi2(1)  =       0.00
-corr(u_i, X)   = 0 (assumed)                    Prob > chi2   =     1.0000
+                                                Wald chi2(1)  =        inf
+corr(u_i, X)   = 0 (assumed)                    Prob > chi2   =     0.0000
 
 ------------------------------------------------------------------------------
            y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]

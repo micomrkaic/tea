@@ -26,7 +26,7 @@ display "count iweight: rejected"
 count [fweight=w]
 * regress accepts all four
 display "--- regress accepts all four ---"
-gen y = _n
+gen y = _n + 0.1*mod(_n, 3)   // non-exact fit: keeps SEs/residuals away from FP-noise zeros
 regress y x [fweight=w]
 regress y x [aweight=w]
 regress y x [pweight=w]

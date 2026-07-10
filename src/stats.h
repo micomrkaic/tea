@@ -30,4 +30,18 @@ double tea_ttail(double df, double t);    /* Stata-named: upper-tail */
 double tea_invttail(double df, double p); /* Stata-named: inverse upper-tail */
 double tea_invnormal(double p);           /* standard-normal inverse CDF */
 
+/* ---- backend-independent zero handling --------------------------------
+ * A residual sum of squares that is mathematically zero (perfect fit)
+ * comes out as O(1e-16..1e-29) floating-point noise whose exact value
+ * depends on the BLAS backend, its version, and even the CPU's kernel
+ * dispatch.  Snap it to exactly 0 so that sigma², SEs, t, p, RMSE, and
+ * the F line print identically on every machine.  Threshold is relative
+ * (1e-12 of TSS) with a tiny absolute floor for the TSS==0 edge case. */
+static inline double tea_snap_rss(double rss, double tss){
+    if (rss < 0) return 0;                    /* roundoff can go negative */
+    if (rss < 1e-12 * tss + 1e-30) return 0;
+    return rss;
+}
+
+
 #endif

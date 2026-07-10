@@ -10,7 +10,7 @@
 clear
 set obs 50
 gen x = _n * 0.1
-gen y = 2 + 3*x
+gen y = 2 + 3*x + 0.01*mod(_n, 4)   // non-exact fit: residuals are O(0.01), not FP noise
 quietly regress y x
 predict yhat
 predict resids, resid
@@ -66,6 +66,11 @@ predict u_hat, u
 predict e_hat, e
 predict ue_hat, ue
 predict xbu_hat, xbu
+* e is a mathematical zero here; its last bits depend on the BLAS backend.
+* Clean it through a tolerance that doubles as the assertion: a non-tiny
+* value would survive and fail the golden diff.
+replace e_hat = cond(abs(e_hat) < 1e-9, 0, e_hat)
+replace ue_hat = cond(abs(ue_hat - u_hat) < 1e-9, u_hat, ue_hat)
 display ""
 display "xtreg FE perfect-fit case:"
 display "  xb = beta*x = x (since beta=1, no _cons)"
@@ -87,6 +92,9 @@ xtset p t
 quietly regress g L.g
 predict gh
 predict gr, resid
+* g on L.g is an exact fit; gr is a mathematical zero whose FP noise is
+* backend-dependent.  Tolerance-clean (a real residual would survive).
+replace gr = cond(abs(gr) < 1e-9, 0, gr)
 display "First few rows (row 1 has L.g missing -> all missing):"
 list t g gh gr in 1/5
 

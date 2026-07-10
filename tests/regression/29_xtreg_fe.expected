@@ -56,8 +56,8 @@ R-sq:                                           Obs per group:
      between = 1.0000                                  avg =      4.0
      overall = 0.9470                                  max =        4
 
-                                                F(1, 8) =       0.00
-corr(u_i, Xb)  = 1.0000                         Prob > F      =     1.0000
+                                                F(1, 8) =        inf
+corr(u_i, Xb)  = 1.0000                         Prob > F      =     0.0000
 
 ------------------------------------------------------------------------------
            y | Coefficient  Robust        t    P>|t|     [95% conf. interval]
@@ -79,8 +79,8 @@ R-sq:                                           Obs per group:
      between = 1.0000                                  avg =      4.0
      overall = 0.9470                                  max =        4
 
-                                                F(1, 8) =       0.00
-corr(u_i, Xb)  = 1.0000                         Prob > F      =     1.0000
+                                                F(1, 8) =        inf
+corr(u_i, Xb)  = 1.0000                         Prob > F      =     0.0000
 
 ------------------------------------------------------------------------------
            y | Coefficient  Cluster       t    P>|t|     [95% conf. interval]
@@ -125,13 +125,13 @@ corr(u_i, X)   = 0 (assumed)                    Prob > chi2   =     0.0000
 ------------------------------------------------------------------------------
            a | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
 -------------+----------------------------------------------------------------
-           b |        0.5  1.49215e-18 335087182037474688.00 0.000          0.5         0.5
-       _cons | 1.22298e-16  2.8222e-17    4.33 0.001   5.94151e-17  1.8518e-16
+           b |        0.5           0    0.00 1.000          0.5         0.5
+       _cons |          0           0    0.00 1.000            0           0
 -------------+----------------------------------------------------------------
-     sigma_u | 6.03573e-16   
-     sigma_e | 4.25183e-16   
-         rho |   0.668342   (fraction of variance due to u_i)
-       theta |   0.723615   (quasi-demeaning factor)
+     sigma_u |          0   
+     sigma_e |          0   
+         rho |          0   (fraction of variance due to u_i)
+       theta |          0   (quasi-demeaning factor)
 ------------------------------------------------------------------------------
 rc=.
 xtreg, be: too few panels (2) for 2 regressors

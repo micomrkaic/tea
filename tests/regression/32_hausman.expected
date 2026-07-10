@@ -14,7 +14,7 @@ panel variable: pid
              |      (b)          (B)            (b-B)     sqrt(diag(V_b-V_B))
              |      fe           re          Difference     S.E.
 -------------+----------------------------------------------------------------
-           x |    2.07455       2.07455    -8.88178e-16    2.63418e-09
+           x |    2.07455       2.07455               0             0
 ------------------------------------------------------------------------------
                   b = consistent under H0 and Ha;     obtained from xtreg, fe
                   B = inconsistent under Ha, efficient under H0; obtained from xtreg, re
@@ -24,6 +24,7 @@ Test: Ho:  difference in coefficients not systematic
               chi2(1) = (b-B)'[(V_b-V_B)^(-1)](b-B)
                        =     0.00
             Prob > chi2 =   1.0000
+            (V_b-V_B is not positive definite; used pseudoinverse)
 
 
 === Hausman when α_i correlated with x: expect rejection ===

@@ -228,6 +228,26 @@ sits on it.
 - `reshape` is in-place only (the user must `frame copy` first). `merge`
   supports 1:1 and m:1 only — m:m is deliberately excluded as a footgun.
 - C17, no novelties — toolchain stability over newer-standard ergonomics.
+- **Backend-independent output (v1.1).** The same do-file produces
+  byte-identical output on every machine, BLAS library, and CPU.  To make
+  that true, quantities that are *mathematical zeros* are displayed as
+  exactly 0 rather than as floating-point noise, which differs across
+  numerical backends.  Concretely, when a regression is a perfect fit
+  (residual SS below 1e-12 of total SS), tea snaps the residual SS, the
+  residual vector, the SEs, and any coefficient below 1e-8 of the largest
+  (the unique exact solution's true zeros) to exactly 0; the model F is
+  reported as `inf` with p = 0.0000.  The same relative-tolerance snapping
+  applies to `sigma_u` when panel intercepts are identical and to the
+  `hausman` difference matrix when FE and RE agree to machine precision.
+  This changes *display of degenerate cases only* — normal estimation
+  results are untouched to the last bit.  We consider "identical results
+  everywhere" a core promise for reproducible research; the tradeoff is
+  that raw sub-epsilon values (e.g. a coefficient of `-5.8e-15` in an
+  exact fit) are not shown.  If a computed quantity is genuinely tiny
+  rather than a mathematical zero, the relative thresholds leave it alone.
+  Verified by running the full regression suite under two maximally
+  different backends (gcc + OpenBLAS natively; clang + reference
+  CLAPACK/BLAS + musl under WebAssembly) with byte-identical output.
 
 ## Implemented in Milestone 1 (verified by tests/demo.do)
 
@@ -277,6 +297,28 @@ formats.
   **`frame put varlist, into(name)`**, leak-free **`frame drop`**. This
   enables the safe pattern for the in-place-only `reshape`:
   `frame copy default backup` → `frame change backup` → `reshape …`.
+
+## Implemented in v1.1 (plots, browser, reproducibility)
+
+- **SVG plotting, no dependencies**: `scatter`, `line`, `histogram` (`hist`)
+  with `[if]`/`[in]`, `title() xtitle() ytitle()`, `saving()`, `bins()`,
+  `freq`, `sort`, `noview`.  A self-contained renderer (`src/plot.c`) writes
+  publication-grade vector SVG — no gnuplot, no graphics library.  In the
+  REPL, plots open in the OS viewer; in do-files they only write files, so
+  batch runs stay deterministic.  Golden-SVG regression test included.
+- **WebAssembly build** (`make wasm`): tea runs entirely in the browser —
+  REPL via xterm.js, `.dta`/`.csv` upload into an in-memory filesystem,
+  plots rendered inline, exports downloadable.  Backed by reference
+  CLAPACK/BLAS through a thin `linalg.h` shim; readline stubbed out.  The
+  full regression suite runs inside the WASM module (`web/run_wasm_tests.cjs`)
+  and passes 40/40, byte-identical with native.  Static bundle in `web/`
+  deploys directly to GitHub Pages.
+- **Push-mode session API**: the REPL loop is now a state machine
+  (`TeaSession` in `interp.h`) fed one line at a time — same semantics
+  (`#delimit ;`, `///`, `{}` blocks), enabling event-driven front-ends and
+  future embeddings.
+- **Backend-independent output**: see "Semantics decisions" above.  The
+  suite passes byte-identically under gcc+OpenBLAS and clang+reference-BLAS.
 
 ## Not yet implemented (later)
 

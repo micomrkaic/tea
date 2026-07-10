@@ -51,7 +51,10 @@ forvalues i = 2/300 {
 }
 quietly arima y, arima(1 0 0) noconstant
 display ""
-display "ARIMA AR(1): _b[ar1] = " _b[ar1] " (true 0.7, MC error)"
+* The optimizer's last digits depend on the libm/BLAS backend; assert the
+* estimate with a tolerance instead of printing full precision.
+display "ARIMA AR(1) within 0.05 of true 0.7: " (abs(_b[ar1] - 0.7) < 0.05)
+display "ARIMA AR(1) rounded: " round(_b[ar1]*10000)/10000
 
 * ---- PRNG reproducibility ----
 display ""
