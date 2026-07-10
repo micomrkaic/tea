@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tea — tiny econometric assistant</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.css">
+<style>
+  :root { --bg:#faf6ef; --ink:#2b2b2b; --accent:#1f4e79; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: Helvetica, Arial, sans-serif; background:var(--bg); color:var(--ink); }
+  header { display:flex; align-items:baseline; gap:14px; padding:14px 22px 8px; }
+  header h1 { margin:0; font-size:26px; letter-spacing:.5px; }
+  header .sub { color:#666; font-size:14px; }
+  .wrap { display:flex; gap:14px; padding:0 22px 22px; height: calc(100vh - 120px); }
+  #term-pane { flex: 1 1 60%; min-width: 420px; background:#1e1e1e; border-radius:8px; padding:10px; }
+  #terminal { height:100%; }
+  #side { flex: 1 1 40%; display:flex; flex-direction:column; gap:10px; overflow:auto; }
+  #plots { flex:1; overflow:auto; background:white; border:1px solid #ddd; border-radius:8px; padding:10px; }
+  #plots .placeholder { color:#999; font-size:14px; padding:16px; }
+  #plots svg { max-width:100%; height:auto; display:block; margin-bottom:12px; border-bottom:1px solid #eee; }
+  .bar { display:flex; gap:8px; align-items:center; }
+  button, label.btn { background:var(--accent); color:white; border:none; border-radius:6px;
+      padding:7px 12px; font-size:13px; cursor:pointer; }
+  button:hover, label.btn:hover { filter:brightness(1.12); }
+  input[type=file] { display:none; }
+  #status { font-size:12px; color:#777; }
+</style>
+</head>
+<body>
+<header>
+  <h1>tea</h1>
+  <div class="sub">tiny econometric assistant — running entirely in your browser (WebAssembly)</div>
+</header>
+<div class="wrap">
+  <div id="term-pane"><div id="terminal"></div></div>
+  <div id="side">
+    <div class="bar">
+      <label class="btn">Upload data file<input type="file" id="upload" multiple></label>
+      <button id="dl">Download workspace files</button>
+      <span id="status">loading tea…</span>
+    </div>
+    <div id="plots"><div class="placeholder">Plots will appear here — try:<br>
+      <code>set obs 200</code><br><code>gen x = rnormal()</code><br>
+      <code>gen y = 1 + 2*x + rnormal()</code><br>
+      <code>scatter y x</code> &nbsp;or&nbsp; <code>regress y x</code></div></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.js"></script>
+<script src="tea.js"></script>
+<script>
+const term = new Terminal({ cursorBlink:true, fontSize:14,
+  theme:{ background:'#1e1e1e' }, convertEol:true, scrollback:5000 });
+term.open(document.getElementById('terminal'));
+
+let M = null, needMore = false;
+let line = '', hist = [], histIdx = -1;
+const PROMPT = () => needMore ? '> ' : '. ';
+const known = new Set();               // files present before user commands
+
+function prompt(){ term.write('\r\n' + PROMPT()); }
+
+createTea({
+  print:    s => term.writeln(s),
+  printErr: s => term.writeln('\x1b[31m' + s + '\x1b[0m'),
+}).then(mod => {
+  M = mod;
+  M.teaPlot = fname => {                       // plot hook from plot.c
+    try {
+      const svg = new TextDecoder().decode(M.FS.readFile(fname));
+      const box = document.getElementById('plots');
+      if (box.firstChild && box.firstChild.className==='placeholder') box.innerHTML='';
+      box.insertAdjacentHTML('afterbegin', svg);
+    } catch(e) {}
+  };
+  M.ccall('tea_web_init','number',[],[]);
+  const v = M.ccall('tea_web_version','string',[],[]);
+  for (const f of M.FS.readdir('/')) known.add(f);
+  document.getElementById('status').textContent = 'ready';
+  term.writeln(`tea ${v} — tiny econometric assistant (WebAssembly build)`);
+  term.writeln(`type 'help' for commands.  Uploaded files land in the working directory.`);
+  term.write(PROMPT());
+});
+
+function exec(cmd){
+  hist.push(cmd); histIdx = hist.length;
+  needMore = M.ccall('tea_web_exec','number',['string'],[cmd]) === 1;
+}
+
+term.onData(data => {
+  if (!M) return;
+  for (const ch of data) {
+    if (ch === '\r') {                          // Enter
+      term.write('\r\n');
+      const cmd = line; line = '';
+      if (cmd.trim().length) exec(cmd); 
+      term.write(PROMPT());
+    } else if (ch === '\x7f') {                 // Backspace
+      if (line.length) { line = line.slice(0,-1); term.write('\b \b'); }
+    } else if (ch === '\x1b[A' || ch === '\x1b[B') {   // history (arrow keys arrive whole)
+    } else if (ch >= ' ' || ch === '\t') {
+      line += ch; term.write(ch);
+    }
+  }
+});
+// arrow-key history (xterm delivers escape sequences via onData as full strings)
+term.attachCustomKeyEventHandler(ev => {
+  if (ev.type !== 'keydown' || !M) return true;
+  if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') {
+    if (!hist.length) return false;
+    histIdx = ev.key === 'ArrowUp' ? Math.max(0, histIdx-1)
+                                   : Math.min(hist.length, histIdx+1);
+    const repl = histIdx < hist.length ? hist[histIdx] : '';
+    term.write('\r\x1b[K' + PROMPT() + repl);
+    line = repl;
+    return false;
+  }
+  return true;
+});
+
+document.getElementById('upload').addEventListener('change', async ev => {
+  for (const f of ev.target.files) {
+    const buf = new Uint8Array(await f.arrayBuffer());
+    M.FS.writeFile('/' + f.name, buf);
+    known.add(f.name);
+    term.writeln(`\r\n(uploaded ${f.name}, ${buf.length} bytes — e.g. use ${f.name} or import delimited ${f.name})`);
+  }
+  term.write(PROMPT() + line);
+});
+
+document.getElementById('dl').addEventListener('click', () => {
+  let n = 0;
+  for (const f of M.FS.readdir('/')) {
+    if (known.has(f) || f === '.' || f === '..') continue;
+    try {
+      if (!M.FS.isFile(M.FS.stat('/' + f).mode)) continue;
+      const data = M.FS.readFile('/' + f);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([data]));
+      a.download = f; a.click(); URL.revokeObjectURL(a.href); n++;
+    } catch(e) {}
+  }
+  term.writeln(`\r\n(${n} new file${n===1?'':'s'} downloaded)`);
+  term.write(PROMPT() + line);
+});
+</script>
+</body>
+</html>
