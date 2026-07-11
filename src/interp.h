@@ -22,7 +22,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#define TEA_VERSION "1.1.0"
+#define TEA_VERSION "1.2.2"
 
 typedef struct MacroKV { char *name; char *val; struct MacroKV *next; } MacroKV;
 

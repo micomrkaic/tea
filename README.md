@@ -96,6 +96,14 @@ weights, varlists with `*`/`?` and ranges, factor variables, TS ops.
 - `arima` uses conditional likelihood; for exact ML use R's `arima()`.
 - No `.gph` graphs — use `gnuplot` or escape to Python/R for plotting.
 
+## Manual
+
+The user guide and command reference: `tea-v1.2-manual.md` (single-file
+Markdown) and `tea-v1.2-manual.pdf`.  The master source lives in `manual/`;
+the command-reference appendix is generated from the binary itself by
+`tools/gen_cmdref.sh`, so it cannot drift from the implementation.
+Rebuild both with `make manual` (requires pandoc + texlive).
+
 ## License
 
 GPLv3 or later.  See `LICENSE` at the repository root for the full text.

@@ -170,7 +170,7 @@ showpaths:
 	@echo "CFLAGS           = $(CFLAGS)"
 	@echo "LDFLAGS          = $(LDFLAGS)"
 
-.PHONY: clean test smoke check-deps showpaths debug release
+.PHONY: clean test smoke check-deps showpaths debug release manual
 
 # ---- WebAssembly build (browser demo) -------------------------------------
 # Requires emcc and the prebuilt WASM static libs (reference CLAPACK stack,
@@ -197,3 +197,15 @@ web/tea.js: $(WASM_SRC)
 
 wasm-clean:
 	rm -rf web/tea.js web/tea.wasm
+
+# ---- manual ----------------------------------------------------------------
+# Master source: manual/manual.md (guide) + manual/reference.md (generated
+# from the binary by tools/gen_cmdref.sh).  Produces the single-file
+# markdown and the PDF.  Requires pandoc + texlive.
+manual: $(BIN)
+	./tools/gen_cmdref.sh
+	cat manual/manual.md manual/reference.md > tea-v1.2-manual.md
+	pandoc manual/manual.md manual/reference.md -o tea-v1.2-manual.pdf \
+	  --pdf-engine=pdflatex -H manual/preamble.tex -B manual/titlepage.tex \
+	  --toc --toc-depth=2 -V colorlinks=true
+	@echo "built tea-v1.2-manual.md and tea-v1.2-manual.pdf"
