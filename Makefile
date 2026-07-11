@@ -170,7 +170,7 @@ showpaths:
 	@echo "CFLAGS           = $(CFLAGS)"
 	@echo "LDFLAGS          = $(LDFLAGS)"
 
-.PHONY: clean test smoke check-deps showpaths debug release manual
+.PHONY: clean test smoke check-deps showpaths debug release manual docs-pdf
 
 # ---- WebAssembly build (browser demo) -------------------------------------
 # Requires emcc and the prebuilt WASM static libs (reference CLAPACK stack,
@@ -209,3 +209,15 @@ manual: $(BIN)
 	  --pdf-engine=pdflatex -H manual/preamble.tex -B manual/titlepage.tex \
 	  --toc --toc-depth=2 -V colorlinks=true
 	@echo "built tea-v1.2-manual.md and tea-v1.2-manual.pdf"
+
+# PDF renditions of the companion documents (same styling as the manual).
+docs-pdf:
+	for f in README COMPATIBILITY KNOWN_BUGS WASM_NOTES; do \
+	  pandoc $$f.md -o $$f.pdf --pdf-engine=xelatex \
+	    -V mainfont="DejaVu Serif" -V monofont="DejaVu Sans Mono" \
+	    -H manual/docheader.tex --toc -V colorlinks=true || exit 1; \
+	done
+	pandoc data/SOURCES.md -o data/SOURCES.pdf --pdf-engine=xelatex \
+	  -V mainfont="DejaVu Serif" -V monofont="DejaVu Sans Mono" \
+	  -H manual/docheader.tex -V colorlinks=true
+	@echo "built README.pdf COMPATIBILITY.pdf KNOWN_BUGS.pdf WASM_NOTES.pdf data/SOURCES.pdf"

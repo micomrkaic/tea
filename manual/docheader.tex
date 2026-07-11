@@ -1,0 +1,15 @@
+% shared styling for companion-doc PDFs (no title page)
+\usepackage[margin=1.1in]{geometry}
+\usepackage{fancyhdr}
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small\texttt{tea} --- documentation}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\usepackage{xcolor}
+\definecolor{teablue}{RGB}{31,78,121}
+\usepackage{sectsty}\allsectionsfont{\color{teablue}}
+\usepackage{framed}
+\definecolor{shadecolor}{RGB}{250,246,239}
+\makeatletter
+\@ifundefined{Shaded}{\newenvironment{Shaded}{\begin{snugshade}}{\end{snugshade}}}{}
+\makeatother
