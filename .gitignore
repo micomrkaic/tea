@@ -2,3 +2,4 @@ tea
 tea-debug
 *.o
 *.d
+*.tar.gz

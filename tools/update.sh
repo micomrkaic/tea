@@ -1,40 +1,66 @@
 #!/bin/sh
-# update.sh — extract a tea release tarball over this repo, safely.
+# update.sh — deploy a tea release tarball, end to end:
 #
 #   ./tools/update.sh ~/Downloads/tea-vX.Y.Z.tar.gz
 #
-# Works no matter where you run it from and no matter whether the
-# tarball has a top-level tea/ directory (all official ones do): it
-# detects the layout, extracts into the repo root exactly once (never
-# tea/tea/), and finishes by showing git status so you can see what
-# actually changed before committing.
+#   1. extracts over this repo (layout auto-detected; never tea/tea/)
+#   2. make clean && make && make test   — your machine re-verifies the
+#      42/42 byte-identical promise before anything is committed
+#   3. shows git status, asks once for confirmation
+#   4. commits, tags vVERSION (from the VERSION file), pushes both
 #
-# Note: extraction OVERLAYS files.  It never deletes files that a newer
-# release removed; if a release notes removals, delete those by hand.
+# The tarball already contains the freshly built wasm and PDF docs in
+# docs/, so this machine only builds and verifies the native binary —
+# no emcc or LaTeX needed here.
+#
+# Notes: extraction OVERLAYS files (never deletes removed ones — do
+# those by hand when a release says so).  If the tag already exists
+# (a re-ship without a version bump), the script commits and pushes
+# without re-tagging and tells you so.
 set -eu
 
 [ $# -eq 1 ] || { echo "usage: $0 path/to/tea-vX.Y.Z.tar.gz" >&2; exit 1; }
 TARBALL=$1
 [ -f "$TARBALL" ] || { echo "no such file: $TARBALL" >&2; exit 1; }
 
-# repo root = parent of the directory this script lives in
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 [ -f "$ROOT/Makefile" ] && [ -d "$ROOT/src" ] || {
   echo "refusing: $ROOT does not look like the tea repo" >&2; exit 1; }
+cd "$ROOT"
 
-# inspect the tarball's top level
 TOP=$(tar tzf "$TARBALL" | head -1 | cut -d/ -f1)
 case "$TOP" in
-  tea)  STRIP=1 ;;                       # official layout: tea/...
-  src|Makefile) STRIP=0 ;;               # bare layout, just in case
+  tea)          STRIP=1 ;;
+  src|Makefile) STRIP=0 ;;
   *) echo "refusing: unexpected tarball top-level '$TOP'" >&2; exit 1 ;;
 esac
+echo "== extracting $(basename "$TARBALL") (strip=$STRIP)"
+tar xzf "$TARBALL" --strip-components=$STRIP
 
-echo "extracting $(basename "$TARBALL") into $ROOT (strip=$STRIP)"
-tar xzf "$TARBALL" -C "$ROOT" --strip-components=$STRIP
+VER=$(cat VERSION)
+echo "== building and verifying v$VER natively"
+make clean >/dev/null
+make
+make test
 
 echo
-echo "== git status (read this before committing) =="
-git -C "$ROOT" status --short | head -25
+echo "== git status (review before shipping)"
+git status --short | head -30
 echo
-echo "next:  cd $ROOT && make clean && make && make test"
+printf 'commit, tag v%s, and push? [y/N] ' "$VER"; read -r a
+[ "$a" = y ] || { echo "stopped: extracted+verified, nothing committed"; exit 0; }
+
+git add -A
+if [ -n "$(git status --porcelain)" ]; then
+  git commit -m "release v$VER"
+else
+  echo "(no changes to commit — repo already at this state)"
+fi
+if git rev-parse "v$VER" >/dev/null 2>&1; then
+  echo "(tag v$VER already exists — pushing without re-tagging)"
+  git push origin master
+else
+  git tag "v$VER"
+  git push origin master "v$VER"
+fi
+echo "== shipped v$VER"
