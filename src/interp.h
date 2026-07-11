@@ -22,7 +22,15 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#define TEA_VERSION "1.2.2"
+/* Single-source version: the Makefile injects -DTEA_VERSION_FROM_FILE
+ * from the VERSION file at the repo root.  Everything user-visible
+ * (banner, --version, wasm splash, manual, dist tarball, git tag)
+ * derives from that one file. */
+#ifdef TEA_VERSION_FROM_FILE
+#define TEA_VERSION TEA_VERSION_FROM_FILE
+#else
+#define TEA_VERSION "dev"
+#endif
 
 typedef struct MacroKV { char *name; char *val; struct MacroKV *next; } MacroKV;
 

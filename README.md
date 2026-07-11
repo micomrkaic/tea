@@ -115,8 +115,8 @@ minute, in your browser, with nothing installed.  Rebuild the PDF with
 
 ## Manual
 
-The user guide and command reference: `tea-v1.2-manual.md` (single-file
-Markdown) and `tea-v1.2-manual.pdf`.  The master source lives in `manual/`;
+The user guide and command reference: `tea-manual.md` (single-file
+Markdown) and `tea-manual.pdf`.  The master source lives in `manual/`;
 the command-reference appendix is generated from the binary itself by
 `tools/gen_cmdref.sh`, so it cannot drift from the implementation.
 Rebuild both with `make manual` (requires pandoc + texlive).

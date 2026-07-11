@@ -1,3 +1,4 @@
+VER := $(strip $(shell cat VERSION))
 # tea — tiny econometric assistant
 # Build configuration with strict warnings and per-platform paths.
 #
@@ -55,7 +56,7 @@ WARNINGS = -Wall -Wextra -Werror \
 HARDEN_BASE    = -fstack-protector-strong
 HARDEN_RELEASE = -D_FORTIFY_SOURCE=2
 
-BASE_CFLAGS = -std=c17 -O2 $(WARNINGS) $(HARDEN_BASE) $(HARDEN_RELEASE)
+BASE_CFLAGS = -std=c17 -DTEA_VERSION_FROM_FILE='"$(VER)"' -O2 $(WARNINGS) $(HARDEN_BASE) $(HARDEN_RELEASE)
 
 # -MMD -MP: header-dependency tracking so editing a header rebuilds every
 #   TU that includes it (avoids stale-object ABI mismatches).
@@ -111,7 +112,7 @@ src/%.o: src/%.c
 # ---- debug target: ASan + UBSan, no optimisation -------------------------
 # Builds a separate binary at tea-debug so the release tea/ stays unaffected.
 # Use this for any reproducer that might hint at memory corruption.
-DEBUG_CFLAGS  = -std=c17 -O0 -g3 -fno-omit-frame-pointer \
+DEBUG_CFLAGS  = -std=c17 -DTEA_VERSION_FROM_FILE='"$(VER)"' -O0 -g3 -fno-omit-frame-pointer \
                 $(WARNINGS) $(HARDEN_BASE) \
                 -fsanitize=address,undefined \
                 $(PLATFORM_CFLAGS)
@@ -170,7 +171,7 @@ showpaths:
 	@echo "CFLAGS           = $(CFLAGS)"
 	@echo "LDFLAGS          = $(LDFLAGS)"
 
-.PHONY: clean test smoke check-deps showpaths debug release manual docs-pdf quickstart
+.PHONY: clean test smoke check-deps showpaths debug release manual docs-pdf quickstart sync-web-version dist
 
 # ---- WebAssembly build (browser demo) -------------------------------------
 # Requires emcc and the prebuilt WASM static libs (reference CLAPACK stack,
@@ -186,7 +187,7 @@ wasm: web/tea.js
 
 web/tea.js: $(WASM_SRC)
 	@mkdir -p web
-	emcc -std=c17 -O2 $(WASM_INC) $(WASM_SRC) \
+	emcc -std=c17 -DTEA_VERSION_FROM_FILE='"$(VER)"' -O2 $(WASM_INC) $(WASM_SRC) \
 	  $(WASM_LIBS)/liblapack.a $(WASM_LIBS)/libblas.a $(WASM_LIBS)/libf2c.a \
 	  $(WASM_LIBS)/libgsl.a $(WASM_LIBS)/libreadstat.a \
 	  -sEXPORTED_FUNCTIONS=_tea_web_init,_tea_web_exec,_tea_web_version,_tea_web_run_dofile,_tea_web_complete,_malloc,_free \
@@ -204,11 +205,25 @@ wasm-clean:
 # markdown and the PDF.  Requires pandoc + texlive.
 manual: $(BIN)
 	./tools/gen_cmdref.sh
-	cat manual/manual.md manual/reference.md > tea-v1.2-manual.md
-	pandoc manual/manual.md manual/reference.md -o tea-v1.2-manual.pdf \
+	printf '\\newcommand{\\teaversion}{%s}\n' "$(VER)" > manual/version.tex
+	cat manual/manual.md manual/reference.md > tea-manual.md
+	pandoc manual/manual.md manual/reference.md -o tea-manual.pdf \
 	  --pdf-engine=pdflatex -H manual/preamble.tex -B manual/titlepage.tex \
 	  --toc --toc-depth=2 -V colorlinks=true
-	@echo "built tea-v1.2-manual.md and tea-v1.2-manual.pdf"
+	@echo "built tea-manual.md and tea-manual.pdf (version $(VER))"
+
+# stamp the VERSION into the browser splash (marker-based, idempotent)
+sync-web-version:
+	sed -E -i 's|(<!--TEAVER-->)[^<]*(<!--/TEAVER-->)|\1$(VER)\2|' web/index.html
+	@echo "web splash stamped with $(VER)"
+
+# release tarball: test-gated, named from VERSION, invariant tea/ top level
+dist: test
+	rm -f src/*.o src/*.d tea tea-debug
+	tar czf /tmp/tea-v$(VER).tar.gz --exclude='.git' --exclude='*.o' \
+	  --exclude='*.d' --exclude='tea/*.tar.gz' -C .. tea
+	mv /tmp/tea-v$(VER).tar.gz .
+	@echo "dist: tea-v$(VER).tar.gz"
 
 # PDF renditions of the companion documents (same styling as the manual).
 docs-pdf:

@@ -186,7 +186,7 @@ applied days — tea covers it.  For the other 20%, it hands off cleanly.
   cd tea && make && make test     # 42/42 expected
   ```
 
-- **Manual:** `tea-v1.2-manual.pdf` — 38 pages, full command and
+- **Manual:** `tea-manual.pdf` — 38 pages, full command and
   function reference, generated from the program itself so it cannot
   drift from the implementation.
 
