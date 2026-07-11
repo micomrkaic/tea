@@ -1,0 +1,129 @@
+number of observations set to 5
+(5 real changes made)
+(5 real changes made)
+(1 real change made)
+(5 real changes made)
+(1 real change made)
+--- [aweight=w], robust ---
+
+      Source |       SS           df       MS      Number of obs   =         5
+                                                    F(1, 3)        =       0.06
+                                                    Prob > F        =     0.8283
+                                                    R-squared       =     0.0328
+                                                    Root MSE        =     0.7774
+
+------------------------------------------------------------------------------
+           y | Coefficient  Robust        t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           x |  -0.209934    0.887796   -0.24 0.828      -3.0353     2.61543
+       _cons |    6.01987     4.42683    1.36 0.267     -8.06829      20.108
+------------------------------------------------------------------------------
+--- [pweight=w] (should be byte-identical to above) ---
+
+      Source |       SS           df       MS      Number of obs   =         5
+                                                    F(1, 3)        =       0.06
+                                                    Prob > F        =     0.8283
+                                                    R-squared       =     0.0328
+                                                    Root MSE        =     0.7774
+
+------------------------------------------------------------------------------
+           y | Coefficient  Robust        t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           x |  -0.209934    0.887796   -0.24 0.828      -3.0353     2.61543
+       _cons |    6.01987     4.42683    1.36 0.267     -8.06829      20.108
+------------------------------------------------------------------------------
+--- Number of obs comparison ---
+fweight should show sum of weights as obs:
+
+      Source |       SS           df       MS      Number of obs   =       104
+-------------+----------------------------------   F(1, 102)        =       3.46
+       Model |     1.27979          1     1.27979    Prob > F        =     0.0657
+    Residual |     37.7106        102    0.369712    R-squared       =     0.0328
+-------------+----------------------------------   Adj R-squared   =     0.0233
+       Total |     38.9904        103    0.378547    Root MSE        =      0.608
+
+------------------------------------------------------------------------------
+           y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           x |  -0.209934    0.112835   -1.86 0.066    -0.433742   0.0138744
+       _cons |    6.01987     0.55653   10.82 0.000      4.91599     7.12374
+------------------------------------------------------------------------------
+aweight, pweight, iweight should show unweighted N=5:
+
+      Source |       SS           df       MS      Number of obs   =         5
+-------------+----------------------------------   F(1, 3)        =       0.10
+       Model |   0.0615283          1   0.0615283    Prob > F        =     0.7706
+    Residual |     1.81301          3    0.604336    R-squared       =     0.0328
+-------------+----------------------------------   Adj R-squared   =    -0.2896
+       Total |     1.87454          4    0.468634    Root MSE        =     0.7774
+
+------------------------------------------------------------------------------
+           y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           x |  -0.209934    0.657937   -0.32 0.771     -2.30378     1.88392
+       _cons |    6.01987      3.2451    1.86 0.161     -4.30748     16.3472
+------------------------------------------------------------------------------
+--- fweight row-replication identity ---
+number of observations set to 5
+(5 real changes made)
+(5 real changes made)
+(5 real changes made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+fweight on 5 rows:
+
+      Source |       SS           df       MS      Number of obs   =        11
+-------------+----------------------------------   F(1, 9)        =        inf
+       Model |     24.9091          1     24.9091    Prob > F        =     0.0000
+    Residual |           0          9           0    R-squared       =     1.0000
+-------------+----------------------------------   Adj R-squared   =     1.0000
+       Total |     24.9091         10     2.49091    Root MSE        =          0
+
+------------------------------------------------------------------------------
+           y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           x |          1           0    0.00 1.000            1           1
+       _cons |        0.5           0    0.00 1.000          0.5         0.5
+------------------------------------------------------------------------------
+number of observations set to 11
+(11 real changes made)
+(11 real changes made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+manually expanded to 11 rows:
+
+      Source |       SS           df       MS      Number of obs   =        11
+-------------+----------------------------------   F(1, 9)        =        inf
+       Model |     24.9091          1     24.9091    Prob > F        =     0.0000
+    Residual |           0          9           0    R-squared       =     1.0000
+-------------+----------------------------------   Adj R-squared   =     1.0000
+       Total |     24.9091         10     2.49091    Root MSE        =          0
+
+------------------------------------------------------------------------------
+           y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+           x |          1           0    0.00 1.000            1           1
+       _cons |        0.5           0    0.00 1.000          0.5         0.5
+------------------------------------------------------------------------------

@@ -1,0 +1,27 @@
+number of observations set to 4
+(4 real changes made)
+(4 real changes made)
+(4 real changes made)
+(4 real changes made)
+(4 real changes made)
+(4 real changes made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+--- before save ---
+     +          +          +          +          +            +          +
+     | b        | i        | l        | fp       | dp         | country  |
+   1.| 1        | 100      | 1000000  | 0.5      |     3.1416 | USA      |
+   2.| .        | 200      | 2000000  | 1        |     6.2832 | FRA      |
+   3.| 3        | 300      | 3000000  | 1.5      |     9.4248 | JPN      |
+   4.| 4        | 400      | 4000000  | 2        |    12.5664 |          |
+file /tmp/tea_reg14.dta saved
+(6 vars, 4 obs)
+--- after reload ---
+     +          +          +          +          +            +          +
+     | b        | i        | l        | fp       | dp         | country  |
+   1.| 1        | 100      | 1000000  | 0.5      |     3.1416 | USA      |
+   2.| .        | 200      | 2000000  | 1        |     6.2832 | FRA      |
+   3.| 3        | 300      | 3000000  | 1.5      |     9.4248 | JPN      |
+   4.| 4        | 400      | 4000000  | 2        |    12.5664 |          |

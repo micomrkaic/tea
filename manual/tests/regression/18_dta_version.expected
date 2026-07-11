@@ -1,0 +1,22 @@
+number of observations set to 2
+(2 real changes made)
+file /tmp/tea_reg18a.dta saved
+file /tmp/tea_reg18b.dta saved
+file /tmp/tea_reg18c.dta saved
+line 9: save: dta_write: unsupported DTA version 99 (valid: 104-119)
+after bad version attempt (file not created)
+(1 vars, 2 obs)
+     +          +
+     | x        |
+   1.| 1        |
+   2.| 2        |
+(1 vars, 2 obs)
+     +          +
+     | x        |
+   1.| 1        |
+   2.| 2        |
+(1 vars, 2 obs)
+     +          +
+     | x        |
+   1.| 1        |
+   2.| 2        |

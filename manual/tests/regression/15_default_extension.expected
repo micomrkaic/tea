@@ -1,0 +1,19 @@
+number of observations set to 3
+(3 real changes made)
+(3 real changes made)
+(1 real change made)
+(1 real change made)
+file /tmp/tea_reg15.dta saved
+(2 vars, 3 obs)
+     +          +          +
+     | x        | tag      |
+   1.| 1        | AAA      |
+   2.| 2        | BBB      |
+   3.| 3        | CCC      |
+file /tmp/tea_reg15_native.tea saved
+(2 vars, 3 obs)
+     +          +          +
+     | x        | tag      |
+   1.| 1        | AAA      |
+   2.| 2        | BBB      |
+   3.| 3        | CCC      |

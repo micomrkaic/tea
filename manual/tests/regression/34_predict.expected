@@ -1,0 +1,137 @@
+number of observations set to 50
+(50 real changes made)
+(50 real changes made)
+(option xb assumed; 50 observations)
+(option residuals assumed; 50 observations)
+(option stdp assumed; 50 observations)
+Regress checks: yhat[1] = 2 + 3*0.1 = 2.3
+     +          +          +          +           +
+     | x        | y        | yhat     | resids    |
+   1.| 0.1      | 2.31     | 2.315    | -0.005271 |
+   2.| 0.2      | 2.62     | 2.615    | 0.00474   |
+   3.| 0.3      | 2.93     | 2.915    | 0.01475   |
+stdp non-zero:
+     +          +
+     | se       |
+   1.| 0.003128 |
+   2.| 0.003034 |
+   3.| 0.002941 |
+number of observations set to 100
+(100 real changes made)
+(100 real changes made)
+(10 real changes made)
+(option Pr(y) assumed; 100 observations)
+(option xb assumed; 100 observations)
+
+Logit checks: at xb = idx, p should equal 1/(1+exp(-idx)):
+     +          +          +          +
+     | x        | idx      | p        |
+   1.| -4.95    | -3.743   | 0.02314  |
+   2.| -4.85    | -3.667   | 0.02491  |
+   3.| -4.75    | -3.592   | 0.02682  |
+     +          +          +          +
+     | x        | idx      | p        |
+  50.| -0.05    | -0.03781 | 0.4905   |
+  51.| 0.05     | 0.03781  | 0.5095   |
+  52.| 0.15     | 0.1134   | 0.5283   |
+number of observations set to 100
+(100 real changes made)
+(100 real changes made)
+(10 real changes made)
+(option Pr(y) assumed; 100 observations)
+(option xb assumed; 100 observations)
+
+Probit checks: p = normal(idx):
+     +          +          +          +
+     | x        | idx      | p        |
+   1.| -4.95    | -2.004   | 0.02251  |
+   2.| -4.85    | -1.964   | 0.02479  |
+   3.| -4.75    | -1.923   | 0.02726  |
+number of observations set to 12
+(12 real changes made)
+(4 real changes made)
+(4 real changes made)
+(12 real changes made)
+(12 real changes made)
+(12 real changes made)
+(4 real changes made)
+(4 real changes made)
+(4 real changes made)
+panel variable: panel
+ time variable: year
+         delta: 1 unit
+(option xb assumed; 12 observations)
+(option u_i assumed; 12 observations)
+(option e_it assumed; 12 observations)
+(option u_i + e_it assumed; 12 observations)
+(option xb + u_i assumed; 12 observations)
+(12 real changes made)
+(12 real changes made)
+
+xtreg FE perfect-fit case:
+  xb = beta*x = x (since beta=1, no _cons)
+  u = alpha_i = {10, 20, 30}
+  e = 0 exactly (perfect within fit)
+  ue = y - xb
+  xbu = y
+     +          +          +          +          +          +          +          +          +
+     | panel    | x        | y        | xb_hat   | u_hat    | e_hat    | ue_hat   | xbu_hat  |
+   1.| A        | 1        | 11       | 1        | 10       | 0        | 10       | 11       |
+   2.| A        | 2        | 12       | 2        | 10       | 0        | 10       | 12       |
+   3.| A        | 3        | 13       | 3        | 10       | 0        | 10       | 13       |
+   4.| A        | 4        | 14       | 4        | 10       | 0        | 10       | 14       |
+   5.| B        | 5        | 25       | 5        | 20       | 0        | 20       | 25       |
+   6.| B        | 6        | 26       | 6        | 20       | 0        | 20       | 26       |
+   7.| B        | 7        | 27       | 7        | 20       | 0        | 20       | 27       |
+   8.| B        | 8        | 28       | 8        | 20       | 0        | 20       | 28       |
+   9.| C        | 9        | 39       | 9        | 30       | 0        | 30       | 39       |
+  10.| C        | 10       | 40       | 10       | 30       | 0        | 30       | 40       |
+  11.| C        | 11       | 41       | 11       | 30       | 0        | 30       | 41       |
+  12.| C        | 12       | 42       | 12       | 30       | 0        | 30       | 42       |
+
+=== TS-op coef name resolution after keep if ===
+number of observations set to 20
+(20 real changes made)
+(20 real changes made)
+(20 real changes made)
+panel variable: p
+ time variable: t
+         delta: 1 unit
+(option xb assumed; 19 observations)
+(option residuals assumed; 19 observations)
+(20 real changes made)
+First few rows (row 1 has L.g missing -> all missing):
+     +          +          +          +          +
+     | t        | g        | gh       | gr       |
+   1.| 1        | 1        | .        | .        |
+   2.| 2        | 2        | 2        | 0        |
+   3.| 3        | 3        | 3        | 0        |
+   4.| 4        | 4        | 4        | 0        |
+   5.| 5        | 5        | 5        | 0        |
+
+=== predict ,pr after regress should error ===
+number of observations set to 10
+(10 real changes made)
+(10 real changes made)
+predict: pr is only valid after logit or probit
+rc=.
+
+=== predict ,resid after xtreg should error ===
+number of observations set to 12
+(12 real changes made)
+(8 real changes made)
+(12 real changes made)
+(12 real changes made)
+(12 real changes made)
+panel variable: p
+ time variable: t
+         delta: 1 unit
+predict: residuals not supported after xtreg; use ,e or ,ue
+rc=.
+
+=== predict ,u after regress should error ===
+number of observations set to 10
+(10 real changes made)
+(10 real changes made)
+predict: u, e, ue, xbu are only valid after xtreg
+rc=.

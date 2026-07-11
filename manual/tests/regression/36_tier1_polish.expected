@@ -1,0 +1,111 @@
+number of observations set to 1
+=== normalden ===
+normalden(0)       = 0.3989422804
+normalden(0,1)     = 0.3989422804
+normalden(1,0,2)   = 0.1760326634
+lnnormal(0)        = -0.6931471806
+lnnormal(-10)      = -53.23157396
+lnnormalden(0)     = -0.9189385332
+
+=== regex submatch ===
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+(1 real change made)
+     +                  +          +          +          +          +
+     | s                | m        | first    | last     | age      |
+   1.| John Doe, age 42 | 1        | John     | Doe      | 42       |
+
+=== regexr replace ===
+(1 real change made)
+     +           +
+     | replaced  |
+   1.| hello tea |
+
+=== egen median/iqr/percentile ===
+number of observations set to 10
+(10 real changes made)
+     +          +          +          +          +          +
+     | x        | med      | iqr1     | p10      | p90      |
+   1.| 1        | 5.5      | 4        | 1.9      | 9.1      |
+   2.| 2        | 5.5      | 4        | 1.9      | 9.1      |
+   3.| 3        | 5.5      | 4        | 1.9      | 9.1      |
+
+=== egen rank ===
+number of observations set to 5
+(5 real changes made)
+     +          +          +
+     | z        | r        |
+   1.| 4        | 5        |
+   2.| 3        | 4        |
+   3.| 2        | 3        |
+   4.| 1        | 2        |
+   5.| 0        | 1        |
+
+=== egen tag ===
+number of observations set to 6
+(6 real changes made)
+     +          +          +
+     | g        | tg       |
+   1.| 0        | 1        |
+   2.| 0        | 0        |
+   3.| 0        | 0        |
+   4.| 1        | 1        |
+   5.| 1        | 0        |
+   6.| 1        | 0        |
+
+=== egen row functions over multiple vars ===
+number of observations set to 3
+(3 real changes made)
+(3 real changes made)
+(3 real changes made)
+     +          +          +          +          +          +          +          +
+     | a        | b        | c        | tot      | avg      | rmin     | rmax     |
+   1.| 1        | 2        | 3        | 6        | 2        | 1        | 3        |
+   2.| 2        | 4        | 6        | 12       | 4        | 2        | 6        |
+   3.| 3        | 6        | 9        | 18       | 6        | 3        | 9        |
+
+=== custom format ===
+number of observations set to 3
+(3 real changes made)
+     +          +
+     | pct      |
+   1.|  0.077   |
+   2.|  0.153   |
+   3.|  0.230   |
+
+=== _b[] and _se[] macros ===
+number of observations set to 100
+(100 real changes made)
+(100 real changes made)
+_b[x]      = 2.9879988
+_se[x]     = 0.04947478987
+_b[_cons]  = 2.060606061
+_se[_cons] = 0.2877842677
+t-stat of x = 60.39437071
+(100 real changes made)
+     +          +          +
+     | x        | pred     |
+   1.| 0.1      | 2.359    |
+   2.| 0.2      | 2.658    |
+   3.| 0.3      | 2.957    |
+
+=== _b/_se with TS-op coefficient name ===
+number of observations set to 30
+(30 real changes made)
+(10 real changes made)
+(10 real changes made)
+(30 real changes made)
+(30 real changes made)
+panel variable: cid
+ time variable: t
+         delta: 1 unit
+_b[L.z]      = 1
+_se[L.z]     = 0
+
+=== e(N) not substituted inside double quotes ===
+number of observations set to 25
+(25 real changes made)
+(25 real changes made)
+the string e(N) is literal; the value follows: 25

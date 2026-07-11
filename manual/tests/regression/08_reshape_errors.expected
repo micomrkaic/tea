@@ -1,0 +1,18 @@
+number of observations set to 2
+(2 real changes made)
+line 5: reshape: stub list and options missing.  Syntax is:
+          reshape long  stub [stub ...] , i(idvars) j(jvar)
+          reshape wide  stub [stub ...] , i(idvars) j(jvar)
+        Example:  reshape long v, i(country_id) j(year)
+case 1 done
+line 7: reshape: i() and j() are options — they go AFTER the comma.
+        Got:    reshape long i(x) j(year)
+        Try:    reshape long STUB, i(...) j(...)
+case 2 done
+number of observations set to 2
+(2 real changes made)
+(2 real changes made)
+(2 real changes made)
+line 14: reshape: i() and j() required.
+        Try:  reshape long v, i(idvars) j(jvar)
+case 3 done

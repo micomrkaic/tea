@@ -1,0 +1,32 @@
+number of observations set to 2
+(2 real changes made)
+--- before save ---
+
+Contains data
+  data label: tea regression dataset (2 rows)
+  obs: 2
+ vars: 1
+-------------------------------------------------------------
+variable         type     format     label
+x                double   %9.0g      
+-------------------------------------------------------------
+file /tmp/tea_reg17.dta saved
+--- after clear, no data label ---
+
+Contains data
+  obs: 0
+ vars: 0
+-------------------------------------------------------------
+variable         type     format     label
+-------------------------------------------------------------
+(1 vars, 2 obs)
+--- after reload, data label restored ---
+
+Contains data
+  data label: tea regression dataset (2 rows)
+  obs: 2
+ vars: 1
+-------------------------------------------------------------
+variable         type     format     label
+x                double   %9.0g      
+-------------------------------------------------------------
