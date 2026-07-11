@@ -117,6 +117,7 @@ Variable *var_add(Frame *f, const char *name, VarType t) {
             v->str = malloc(f->nobs * sizeof(char *));
             for (size_t i = 0; i < f->nobs; i++) v->str[i] = calloc(1, 1);
         }
+        v->cap = f->nobs;
     }
     return v;
 }
@@ -124,11 +125,18 @@ Variable *var_add(Frame *f, const char *name, VarType t) {
 void frame_set_nobs(Frame *f, size_t n) {
     for (int i = 0; i < f->nvar; i++) {
         Variable *v = &f->vars[i];
+        if (n > v->cap) {
+            /* geometric growth: row-at-a-time loaders (CSV, dta) call this
+             * once per row, and realloc-to-exact-size made that quadratic */
+            size_t nc = v->cap ? v->cap : 64;
+            while (nc < n) nc *= 2;
+            if (v->type == VT_NUM) v->num = realloc(v->num, nc * sizeof(double));
+            else                   v->str = realloc(v->str, nc * sizeof(char *));
+            v->cap = nc;
+        }
         if (v->type == VT_NUM) {
-            v->num = realloc(v->num, n * sizeof(double));
             for (size_t r = f->nobs; r < n; r++) v->num[r] = SV_MISS;
         } else {
-            v->str = realloc(v->str, n * sizeof(char *));
             for (size_t r = f->nobs; r < n; r++) v->str[r] = calloc(1, 1);
         }
     }

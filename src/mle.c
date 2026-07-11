@@ -226,11 +226,12 @@ const MleFamily mle_family_probit = {
 /* Poisson: μ = exp(η)
  *   score:  s = y - μ
  *   weight: w = μ
- *   loglik: y·η - μ - log(y!)    (we drop log(y!) since it's constant in β
- *                                  — this gives the right ML estimates but
- *                                  the absolute log-lik value differs from
- *                                  Stata's; pseudo-R² still works since both
- *                                  null and full models drop the same term.) */
+ *   loglik: y·η - μ - lgamma(y+1)
+ *   The lgamma(y+1) = log(y!) term is constant in β, so it doesn't affect
+ *   the estimates — but it MUST be included in the reported log-likelihood:
+ *   McFadden's pseudo-R² (1 - LL/LL0) is not invariant to adding a constant
+ *   to both LLs, and dropping it also makes LL disagree with Stata.
+ *   (Found via the bundled nmes1988 data: pseudo-R² printed 5.63.) */
 static void poisson_per_obs(double y, double eta,
                             double *score, double *weight, double *loglik)
 {
@@ -242,7 +243,7 @@ static void poisson_per_obs(double y, double eta,
     double mu = exp(eta_c);
     *score  = y - mu;
     *weight = mu;
-    *loglik = y * eta_c - mu;     /* up to constant log(y!) */
+    *loglik = y * eta_c - mu - lgamma(y + 1.0);
 }
 
 static const char *count_validate(const double *y, long N)
@@ -317,7 +318,9 @@ int mle_newton(const double *X, const double *y, long N, int K,
         for(long i=0;i<N;i++) ybar += y[i];
         ybar /= N;
         double eta0 = 0;
-        if(ybar > 0 && ybar < 1){
+        if(!strcmp(fam->name, "poisson")){
+            if(ybar > 0) eta0 = log(ybar);   /* null Poisson: μ = ȳ */
+        } else if(ybar > 0 && ybar < 1){
             if(!strcmp(fam->name, "logit")) eta0 = log(ybar/(1.0-ybar));
             else if(!strcmp(fam->name, "probit")) eta0 = tea_invnormal(ybar);
         }
@@ -433,7 +436,11 @@ int mle_newton(const double *X, const double *y, long N, int K,
      * exist in the strict sense — β diverges to ±∞ and the Hessian
      * becomes singular.  We detected the diverging part by tracking how
      * close ℓ got to 0.  This is informational; we still report β. */
-    if(fit->loglik > -1e-6 && N > 1){
+    /* Only meaningful for binary outcomes: their LL is <= 0 by construction
+     * and approaches 0 under separation.  Count models have no such bound
+     * (and the old constant-less Poisson LL was positive, making this fire
+     * spuriously on any real count data — caught by the bundled nmes1988). */
+    if(!strcmp(fam->outcome_kind, "binary") && fit->loglik > -1e-6 && N > 1){
         fit->perfect_pred = true;
     }
 

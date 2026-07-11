@@ -22,6 +22,7 @@
 #include "dta.h"
 #include "tsop.h"
 #include "plot.h"
+#include "sysdata.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2211,7 +2212,8 @@ static int load_csv_into(Frame *f,const char *fn,char delim){
             else if(*e==0){ if(v->type==VT_STR)str_set(v,row-1,flds[j]); else v->num[row-1]=x; }
             else { if(v->type==VT_NUM){ char **ns=malloc((size_t)row*sizeof(char*));
                     for(int r=0;r<row-1;r++){ char tb[64]; if(sv_is_miss(v->num[r]))tb[0]=0; else snprintf(tb,64,"%g",v->num[r]); ns[r]=strdup(sv_is_miss(v->num[r])?"":tb);}
-                    ns[row-1]=strdup(""); free(v->num);v->num=NULL;v->str=ns;v->type=VT_STR; }
+                    ns[row-1]=strdup(""); free(v->num);v->num=NULL;v->str=ns;v->type=VT_STR;
+                    v->cap=(size_t)row;  /* swapped storage: capacity is the new alloc */ }
                 str_set(v,row-1,flds[j]); } }
         row++;
     }
@@ -2865,6 +2867,7 @@ static int do_destring(Cmd *c){
             free(src->str); src->str = NULL;
             src->type = VT_NUM;
             src->num = vals;            /* take ownership */
+            src->cap = c->f->nobs;      /* swapped storage: cap = new alloc */
             snprintf(src->format, sizeof src->format, "%%9.0g");
         } else {
             /* gen(stub): create stub<varname> or use stub directly if 1 var */
@@ -2944,6 +2947,7 @@ static int do_tostring(Cmd *c){
             free(src->num); src->num = NULL;
             src->type = VT_STR;
             src->str = strs;
+            src->cap = c->f->nobs;   /* swapped storage: cap = new alloc */
             snprintf(src->format, sizeof src->format, "%%9s");
         } else {
             char newname[64];
@@ -3138,6 +3142,55 @@ static int do_save(Cmd *c){
         else for(size_t i=0;i<c->f->nobs;i++){ int L=(int)strlen(v->str[i]); fwrite(&L,4,1,fp); fwrite(v->str[i],1,L,fp);} }
     fclose(fp); if(!c->quiet)printf("file %s saved\n",fn); return 0;
 }
+/* ---- sysuse: load a bundled practice dataset ---------------------------
+ * The datasets are embedded in the binary (src/sysdata.c, generated from
+ * the CSVs in data/ by tools/gen_sysdata.py — provenance in data/SOURCES.md), so
+ * `sysuse grunfeld` works identically on native and WASM builds with no
+ * files installed.  Loading rides the existing CSV parser: the bytes are
+ * written to a temp file and fed to load_csv_into, then unlinked.
+ *
+ *   sysuse dir             list bundled datasets
+ *   sysuse NAME [, clear]  load one (clear required if data in memory)
+ * ---------------------------------------------------------------------- */
+static int do_sysuse(Cmd *c){
+    char name[64]="";
+    {   /* c->args still carries the ', options' tail — cut at the comma */
+        char buf[128]; snprintf(buf,sizeof buf,"%s",c->args);
+        buf[strcspn(buf,",")]=0;
+        sscanf(buf,"%63s",name);
+    }
+    if(!name[0] || !strcmp(name,"dir")){
+        printf("bundled practice datasets (load with: sysuse NAME):\n");
+        for(int i=0;i<SYSDATA_N;i++)
+            printf("  %-9s %s\n", SYSDATA[i].name, SYSDATA[i].desc);
+        printf("provenance & citations: data/SOURCES.md in the source tree\n");
+        return 0;
+    }
+    const SysDataset *d=NULL;
+    for(int i=0;i<SYSDATA_N;i++) if(!strcmp(name,SYSDATA[i].name)){ d=&SYSDATA[i]; break; }
+    if(!d){
+        tea_err("sysuse: no bundled dataset '%s' (try: sysuse dir)\n", name);
+        return 601;
+    }
+    if(c->f->nvar > 0 && !opt_present(c->options,"clear")){
+        tea_err("sysuse: no; data in memory would be lost (use ',clear' to discard it)\n");
+        return 4;
+    }
+    char tmp[] = "/tmp/tea_sysuse_XXXXXX";
+    int fd = mkstemp(tmp);
+    if(fd < 0){ tea_err("sysuse: cannot create temp file\n"); return 693; }
+    FILE *o = fdopen(fd, "wb");
+    if(!o){ close(fd); unlink(tmp); tea_err("sysuse: cannot open temp file\n"); return 693; }
+    fwrite(d->csv, 1, d->len, o);
+    fclose(o);
+    frame_clear(c->f);
+    int rc = load_csv_into(c->f, tmp, ',');
+    unlink(tmp);
+    if(rc==0)
+        printf("(%s: %zu obs loaded \u2014 %s)\n", d->name, c->f->nobs, d->desc);
+    return rc;
+}
+
 static int do_use(Cmd *c){
     /* ---- use ---------------------------------------------------------- *
      *
@@ -3667,6 +3720,12 @@ Disp TABLE[]={
         "save FILE [, replace]                        write Stata .dta (default) or .tea\n"
         "      e.g.  save mydata.dta, replace        — emits Stata-compatible .dta\n"
         "      e.g.  save mydata.tea, replace        — native tea binary"},
+    {"sysuse",do_sysuse,0,
+        "sysuse dir | sysuse NAME [, clear]\n"
+        "      load a practice dataset bundled inside the tea binary\n"
+        "      e.g.  sysuse grunfeld, clear\n"
+        "            xtset firm year\n"
+        "            xtreg invest value capital, fe"},
     {"use",do_use,0,
         "use FILE [, clear]                           read Stata .dta, .tea, .csv, or .tsv\n"
         "      e.g.  use mydata.dta, clear            — extension dispatch decides format\n"

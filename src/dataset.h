@@ -31,6 +31,10 @@ typedef struct {
     char    vlabel[81];   /* variable label */
     char    format[33];   /* display format, e.g. %9.0g, %td, %tq */
     char    vallab[33];   /* attached value-label name, or "" */
+    size_t  cap;      /* allocated rows in num/str (>= frame nobs);
+                         lets frame_set_nobs grow geometrically instead
+                         of realloc-per-row (found via WEO: 10k rows x
+                         149 vars = 1.5M reallocs, OOM under ASan) */
 } Variable;
 
 typedef struct Frame {

@@ -40,7 +40,7 @@ static void print_banner(const Interp *ip){
     fprintf(stderr, "%s      .........%s    %sfree Stata-like data analysis at the command line%s\n", A, R, D, R);
     fprintf(stderr, "%s      |       |]%s   %sGPLv3 \u00b7 Mico Mrkaic \u00b7 github.com/micomrkaic/tea%s\n", A, R, D, R);
     fprintf(stderr, "%s      \\       /%s\n", A, R);
-    fprintf(stderr, "%s       `-----\u00b4%s     %stype help for commands \u00b7 Ctrl-D to exit%s\n", A, R, D, R);
+    fprintf(stderr, "%s       `-----\u00b4%s     %stype help \u00b7 sysuse dir for practice datasets \u00b7 Ctrl-D exits%s\n", A, R, D, R);
     if(!ip->strict_stata)
         fprintf(stderr, "                   %s(tea-extensions enabled)%s\n", D, R);
     fprintf(stderr, "\n");

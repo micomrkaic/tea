@@ -332,6 +332,7 @@ static int append_temp_column(Frame *f, const char *name)
     snprintf(v->format, sizeof v->format, "%%9.0g");
     v->num = malloc(f->nobs * sizeof(double));
     for(size_t i = 0; i < f->nobs; i++) v->num[i] = SV_MISS;
+    v->cap = f->nobs;
     f->nvar++;
     return f->nvar - 1;
 }

@@ -75,9 +75,11 @@
       <span id="status"></span>
     </div>
     <div id="plots"><div class="placeholder">Plots will appear here — try:<br>
-      <code>set obs 200</code><br><code>gen x = rnormal()</code><br>
-      <code>gen y = 1 + 2*x + rnormal()</code><br>
-      <code>scatter y x</code> &nbsp;or&nbsp; <code>regress y x</code></div></div>
+      <code>sysuse weo</code> &nbsp;<span style="color:#bbb">(the full April-2026 WEO)</span><br>
+      <code>keep if aggregate==0</code><br>
+      <code>xtset iso year</code><br>
+      <code>xtreg ngdp_rpch pcpipch lur, fe</code><br><br>
+      <code>sysuse dir</code> lists all six bundled datasets.</div></div>
   </div>
 </div>
 
@@ -156,7 +158,7 @@ async function fetchWasm(){
   term.writeln(A + '      .........' + R + D + '    free Stata-like data analysis, in your browser' + R);
   term.writeln(A + '      |       |]' + R + D + '   GPLv3 \u00b7 Mico Mrkaic \u00b7 github.com/micomrkaic/tea' + R);
   term.writeln(A + '      \\       /' + R);
-  term.writeln(A + '       `-----\u00b4' + R + D + '     type help for commands \u00b7 upload a .dta or .csv to begin' + R);
+  term.writeln(A + '       `-----\u00b4' + R + D + '     type help for commands \u00b7 sysuse dir for practice datasets' + R);
   term.writeln('');
   term.write(PROMPT());
 

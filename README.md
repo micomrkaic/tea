@@ -319,6 +319,15 @@ formats.
   future embeddings.
 - **Backend-independent output**: see "Semantics decisions" above.  The
   suite passes byte-identically under gcc+OpenBLAS and clang+reference-BLAS.
+- **Bundled practice datasets** (`sysuse`): six serious datasets are
+  embedded in the binary itself — `weo` (the full IMF World Economic
+  Outlook, April 2026: 197 economies + 13 aggregates, 145 indicators,
+  1980-2031), `grunfeld` (panel), `airline` (ARIMA), `longley`
+  (ill-conditioned regression), `nmes1988` (health economics:
+  poisson/logit), `pwt` (Penn World Table sample, CC BY 4.0).  `sysuse dir`
+  lists them; `sysuse grunfeld, clear` loads one.  No files installed, works
+  identically in the browser build.  Provenance and citations in
+  data/SOURCES.md; regenerate the embedded source with tools/gen_sysdata.py.
 
 ## Not yet implemented (later)
 
