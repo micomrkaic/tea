@@ -96,6 +96,23 @@ weights, varlists with `*`/`?` and ranges, factor variables, TS ops.
 - `arima` uses conditional likelihood; for exact ML use R's `arima()`.
 - No `.gph` graphs — use `gnuplot` or escape to Python/R for plotting.
 
+## Updating from a release tarball
+
+`./tools/update.sh path/to/tea-vX.Y.Z.tar.gz` extracts a release over
+this repo from anywhere, detects the tarball layout (never creates a
+nested `tea/tea/`), and prints `git status` so you can review what
+changed before committing.  Or by hand: official tarballs contain a
+top-level `tea/`, so `cd` to the repo's *parent* directory and plain
+`tar xzf` lands everything in the right place.
+
+## Coming from Stata?
+
+Read `STATA-QUICKSTART.md` / `STATA-QUICKSTART.pdf` — a four-page tour
+that uses your existing Stata knowledge to get you running panel
+regressions on the bundled IMF World Economic Outlook in about a
+minute, in your browser, with nothing installed.  Rebuild the PDF with
+`make quickstart`.
+
 ## Manual
 
 The user guide and command reference: `tea-v1.2-manual.md` (single-file

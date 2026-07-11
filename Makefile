@@ -170,7 +170,7 @@ showpaths:
 	@echo "CFLAGS           = $(CFLAGS)"
 	@echo "LDFLAGS          = $(LDFLAGS)"
 
-.PHONY: clean test smoke check-deps showpaths debug release manual docs-pdf
+.PHONY: clean test smoke check-deps showpaths debug release manual docs-pdf quickstart
 
 # ---- WebAssembly build (browser demo) -------------------------------------
 # Requires emcc and the prebuilt WASM static libs (reference CLAPACK stack,
@@ -221,3 +221,10 @@ docs-pdf:
 	  -V mainfont="DejaVu Serif" -V monofont="DejaVu Sans Mono" \
 	  -H manual/docheader.tex -V colorlinks=true
 	@echo "built README.pdf COMPATIBILITY.pdf KNOWN_BUGS.pdf WASM_NOTES.pdf data/SOURCES.pdf"
+
+# The Stata-user quickstart ("hook" document): 5-page pitch, real output.
+quickstart:
+	pandoc STATA-QUICKSTART.md -o STATA-QUICKSTART.pdf --pdf-engine=xelatex \
+	  -V mainfont="DejaVu Serif" -V monofont="DejaVu Sans Mono" -V fontsize=11pt \
+	  -H manual/qsheader.tex -V colorlinks=true
+	@echo "built STATA-QUICKSTART.pdf"
