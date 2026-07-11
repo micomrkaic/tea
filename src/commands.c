@@ -549,6 +549,7 @@ static int do_list(Cmd *c){
     }
     Node *ifn=NULL; const char *pe;
     if(c->ifexp[0]) ifn=expr_parse(c->ifexp,c->f,&pe);
+    if(c->ifexp[0]&&!ifn){ tea_err("if error: %s\n", pe); free(vs); tsop_drop_temps(c->f, n_temps); return 111; }
     /* Compute column width per variable as max(header_len, max(cell_len))
      * over rows in the selection.  This is what Stata does.
      * Heap-allocated to accommodate any number of variables. */
@@ -630,7 +631,9 @@ static int do_summarize(Cmd *c){
         }
     }
     Node *ifn=NULL; const char *pe; if(c->ifexp[0]) ifn=expr_parse(c->ifexp,c->f,&pe);
+    if(c->ifexp[0]&&!ifn){ tea_err("if error: %s\n", pe); free(vs); tsop_drop_temps(c->f, n_temps); return 111; }
     Node *wn=NULL; if(c->wexp[0]) wn=expr_parse(c->wexp,c->f,&pe);
+    if(c->wexp[0]&&!wn){ node_free(ifn); tea_err("weight error: %s\n", pe); free(vs); tsop_drop_temps(c->f, n_temps); return 111; }
     EvalCtx ec={0}; ec.f=c->f;
 
     /* by-group setup: 'by[sort] g1 g2: summarize ...' iterates per group */
@@ -771,7 +774,9 @@ static int do_count(Cmd *c){
     int wrc = validate_wtype(c, WTM_FW, "count");
     if(wrc) return wrc;
     Node *ifn=NULL; const char *pe; if(c->ifexp[0]) ifn=expr_parse(c->ifexp,c->f,&pe);
+    if(c->ifexp[0]&&!ifn){ tea_err("if error: %s\n", pe); return 111; }
     Node *wn=NULL; if(c->wexp[0]&&c->wtype==1) wn=expr_parse(c->wexp,c->f,&pe);
+    if(c->wexp[0]&&c->wtype==1&&!wn){ node_free(ifn); tea_err("weight error: %s\n", pe); return 111; }
     EvalCtx ec={0}; ec.f=c->f; double n=0;
     for(size_t i=0;i<c->f->nobs;i++){
         if(c->in_lo>0&&(long)i+1<c->in_lo)continue;
@@ -815,7 +820,11 @@ static int do_describe(Cmd *c){
 /* ---- drop / keep ------------------------------------------------------- */
 static int do_dropkeep(Cmd *c,int keep){
     if(c->ifexp[0]||c->in_lo>0){           /* observation filter */
-        Node *ifn=NULL; const char *pe; if(c->ifexp[0])ifn=expr_parse(c->ifexp,c->f,&pe);
+        Node *ifn=NULL; const char *pe;
+        if(c->ifexp[0]){
+            ifn=expr_parse(c->ifexp,c->f,&pe);
+            if(!ifn){ tea_err("if error: %s\n", pe); return 111; }
+        }
         EvalCtx ec={0}; ec.f=c->f; size_t w=0;
         for(size_t i=0;i<c->f->nobs;i++){
             int sel=1;
@@ -1100,7 +1109,9 @@ static int do_tabulate(Cmd *c){
      * separately below. */
     typedef struct{char key[256];double n;}Cell; Cell *t=NULL; int nt=0,cap=0;
     Node *ifn=NULL; const char *pe; if(c->ifexp[0])ifn=expr_parse(c->ifexp,c->f,&pe);
+    if(c->ifexp[0]&&!ifn){ tea_err("if error: %s\n", pe); free(vs); tsop_drop_temps(c->f, n_temps); return 111; }
     Node *wn=NULL; if(c->wexp[0]) wn=expr_parse(c->wexp,c->f,&pe);
+    if(c->wexp[0]&&!wn){ node_free(ifn); tea_err("weight error: %s\n", pe); free(vs); tsop_drop_temps(c->f, n_temps); return 111; }
     EvalCtx ec={0}; ec.f=c->f;
     for(size_t i=0;i<c->f->nobs;i++){
         if(ifn){ec.i=i;ec.n=(long)i+1;ec.N=(long)c->f->nobs;if(!expr_eval_bool(ifn,&ec))continue;}
@@ -1300,6 +1311,7 @@ static int do_tabstat(Cmd *c){
         else { tea_err("tabstat: columns() must be 'statistics' or 'variables'\n"); free(vs); tsop_drop_temps(c->f, n_temps); return 198; }
     }
     Node *ifn=NULL; const char *pe; if(c->ifexp[0]) ifn=expr_parse(c->ifexp,c->f,&pe);
+    if(c->ifexp[0]&&!ifn){ tea_err("if error: %s\n", pe); free(vs); tsop_drop_temps(c->f, n_temps); return 111; }
     EvalCtx ec={0}; ec.f=c->f;
     /* set up by-groups (if by() given, sort first then walk groups) */
     int gcnt = 1;

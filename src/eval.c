@@ -544,6 +544,7 @@ static EVal ev(Node*n,EvalCtx*c){
         if(!strcmp(n->text,"_n")) return vnum((double)c->n);
         if(!strcmp(n->text,"_N")) return vnum((double)c->N);
         if(!strcmp(n->text,"_pi")) return vnum(M_PI);
+        if(!strcmp(n->text,"_rc")) return vnum(SV_MISS);  /* not yet wired */
         int vi=var_find(c->f,n->text);
         if(vi<0){ c->err="variable not found"; return vnum(SV_MISS); }
         if(n->a){ EVal k=ev(n->a,c); long ki=(long)as_num(k); eval_free(&k);

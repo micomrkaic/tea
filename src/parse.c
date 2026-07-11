@@ -241,12 +241,40 @@ static Node *p_or(P *p) {
     return l;
 }
 
+
+/* ---- parse-time variable validation -------------------------------------
+ * Stata errors r(111) the moment an expression names a variable that does
+ * not exist; it never evaluates.  tea used to resolve unknown names to
+ * missing at eval time (with the error flag set but ignored by callers),
+ * which meant a typo in `keep if` could silently destroy the dataset.
+ * Validate the whole AST here so every expression consumer is protected. */
+static const char *g_valerr_buf(void){
+    static char buf[128]; return buf;
+}
+static int validate_vars(Node *n, Frame *f, const char **err){
+    if(!n) return 1;
+    if(n->kind == N_VAR || n->kind == N_TSOP){
+        if(strcmp(n->text,"_n") && strcmp(n->text,"_N") &&
+           strcmp(n->text,"_pi") && strcmp(n->text,"_rc") &&
+           var_find(f, n->text) < 0){
+            char *buf = (char*)g_valerr_buf();
+            snprintf(buf, 128, "variable %s not found", n->text);
+            *err = buf;
+            return 0;
+        }
+    }
+    return validate_vars(n->a, f, err)
+        && validate_vars(n->b, f, err)
+        && validate_vars(n->next, f, err);
+}
+
 Node *expr_parse(const char *src, Frame *f, const char **err) {
     P p; lex_init(&p.L, src); p.f=f; p.err=NULL;
     Node *n = p_or(&p);
     if (!p.err && lex_peek(&p.L).kind != T_EOF) p.err = "trailing tokens in expression";
     if (!p.err && p.L.err) p.err = p.L.err;
     if (p.err) { *err = p.err; node_free(n); return NULL; }
+    if (f && !validate_vars(n, f, err)) { node_free(n); return NULL; }
     *err = NULL;
     return n;
 }

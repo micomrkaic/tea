@@ -436,8 +436,9 @@ static int exec_one(Interp *ip,Lines *L,int *i){
         char *xc=macro_expand(ip,cond);
         Frame scratch; memset(&scratch,0,sizeof scratch); scratch.ts_panel=scratch.ts_time=-1;
         const char *pe; Node *a=expr_parse(xc,&scratch,&pe); free(xc);
+        if(!a){ fprintf(stderr,"if: %s\n", pe); return 111; }
         EvalCtx ec={0}; ec.f=&scratch; ec.n=1;ec.N=1;
-        bool truth=false; if(a){ EVal v=expr_eval(a,&ec); truth=!v.is_str&&!sv_is_miss(v.num)&&v.num!=0; eval_free(&v); node_free(a); }
+        bool truth; { EVal v=expr_eval(a,&ec); truth=!v.is_str&&!sv_is_miss(v.num)&&v.num!=0; eval_free(&v); node_free(a); }
         if(brace){
             int open=*i,close=match_brace(L,open); if(close<0)return 199;
             int elseopen=-1,elseclose=-1;
