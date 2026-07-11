@@ -33,8 +33,23 @@ else {
   display "final else-branch"
 }
 
+* group rename: pairwise, atomic, swap-capable
+clear
+set obs 2
+gen aa = 1
+gen bb = 2
+gen cc = 3
+rename (aa bb) (TFR NRR)
+rename (TFR cc) (cc TFR)
+describe
+capture rename (TFR) (cc)
+display "group rename collision rc: " _rc
+capture rename (ghost) (x)
+display "group rename ghost rc: " _rc
+
 * an error inside a block aborts the do-file (was silently swallowed)
 if 1 {
   sysuse nosuchdata
 }
 display "unreachable"
+

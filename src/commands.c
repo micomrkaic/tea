@@ -942,6 +942,48 @@ static int wildcard_match_capture(const char *pat, const char *str, char caps[8]
 }
 
 static int do_rename(Cmd *c){
+    /* group form:  rename (a b c) (x y z)  — pairwise, all-or-nothing */
+    {
+        const char *p = c->varlist; while(*p==' ')p++;
+        if(*p=='('){
+            const char *c1 = strchr(p,')');
+            const char *o2 = c1 ? strchr(c1+1,'(') : NULL;
+            const char *c2 = o2 ? strchr(o2,')') : NULL;
+            if(!c1 || !o2 || !c2){
+                tea_err("rename: group form is rename (old...) (new...)\n"); return 198;
+            }
+            char olds[512], news[512];
+            snprintf(olds,sizeof olds,"%.*s",(int)(c1-p-1),p+1);
+            snprintf(news,sizeof news,"%.*s",(int)(c2-o2-1),o2+1);
+            char *ov[64], *nv[64]; int no=0, nn=0;
+            for(char *t=strtok(olds," "); t && no<64; t=strtok(NULL," ")) ov[no++]=t;
+            for(char *t=strtok(news," "); t && nn<64; t=strtok(NULL," ")) nv[nn++]=t;
+            if(no==0 || no!=nn){
+                tea_err("rename: group lists differ in length (%d vs %d)\n",no,nn); return 198;
+            }
+            int idx[64];
+            /* validate everything before touching anything */
+            for(int k=0;k<no;k++){
+                idx[k]=var_find(c->f,ov[k]);
+                if(idx[k]<0){ tea_err("rename: %s not found\n",ov[k]); return 111; }
+            }
+            for(int k=0;k<no;k++){
+                int e=var_find(c->f,nv[k]);
+                /* a new name may equal an old name being vacated in the same
+                 * group (swap); only names surviving the rename collide */
+                if(e>=0){
+                    int vacated=0;
+                    for(int m=0;m<no;m++) if(e==idx[m]){ vacated=1; break; }
+                    if(!vacated){ tea_err("rename: %s already exists\n",nv[k]); return 110; }
+                }
+                for(int m=0;m<k;m++) if(!strcmp(nv[k],nv[m])){
+                    tea_err("rename: duplicate new name %s\n",nv[k]); return 198; }
+            }
+            for(int k=0;k<no;k++) snprintf(c->f->vars[idx[k]].name,33,"%s",nv[k]);
+            frame_unsort(c->f);
+            return 0;
+        }
+    }
     char a[128], b[128];
     if(sscanf(c->varlist, "%127s %127s", a, b) != 2){
         tea_err("rename: need old new\n"); return 198;

@@ -7,5 +7,21 @@ confirm ghost rc: 111
 confirm numeric rc: 0
 then-branch
 final else-branch
-line 40: sysuse: no bundled dataset 'nosuchdata' (try: sysuse dir)
-do-file aborted at line 40 (rc=601)
+number of observations set to 2
+(2 real changes made)
+(2 real changes made)
+(2 real changes made)
+
+Contains data
+  obs: 2
+ vars: 3
+-------------------------------------------------------------
+variable         type     format     label
+cc               double   %9.0g      
+NRR              double   %9.0g      
+TFR              double   %9.0g      
+-------------------------------------------------------------
+group rename collision rc: 110
+group rename ghost rc: 111
+line 54: sysuse: no bundled dataset 'nosuchdata' (try: sysuse dir)
+do-file aborted at line 54 (rc=601)
