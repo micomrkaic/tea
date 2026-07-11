@@ -15,6 +15,7 @@
  * it to the pathname expected by import excel.
  */
 #ifndef __EMSCRIPTEN__
+#include "tea_system.h"
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
