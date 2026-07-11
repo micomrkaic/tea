@@ -1955,6 +1955,15 @@ any change keeps the manual and the implementation in agreement.*
       e.g.  save mydata.tea, replace        — native tea binary
 ```
 
+## `history`
+
+```
+  history [N] | history save FILE [, replace] | history clear
+      list, export, or clear this session's interactive commands
+      (native REPL arrow-key history persists in ~/.tea_history;
+       the browser edition persists history in the browser)
+```
+
 ## `sysuse`
 
 ```

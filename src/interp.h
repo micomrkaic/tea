@@ -43,7 +43,11 @@ typedef struct Interp {
     bool       quiet;      /* quietly suppression in effect */
     int        depth;      /* nesting (loops/if) for safety */
     bool       strict_stata; /* reject tea-only features; default true. */
+    /* interactive command history (history command; both platforms) */
+    char **hist; int nhist, histcap;
 } Interp;
+
+void interp_hist_add(Interp *ip, const char *line);
 
 Interp *interp_new(Workspace *ws);
 void    interp_free(Interp *ip);

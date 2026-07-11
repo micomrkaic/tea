@@ -1,0 +1,278 @@
+These are the early results of testing
+
+# 1. line does not take time series operators sum does. make this consistent -- all functions
+# should take these operators. see below
+
+sysuse airline
+get t=_n
+tsset t
+gen lnp = ln(passengers)
+generate: lnp already defined
+. line d.lnp t
+variable d.lnp not found
+. 
+sum d.lnp
+
+    Variable |        Obs        Mean    Std. dev.         Min         Max
+-------------+--------------------------------------------------------------
+       D.lnp |        143     0.00944       0.1066     -0.2231      0.2231
+. 
+
+# 2. need history command and history export; also history must be persistent between sesssions
+
+# 3. we need to implement sspace and arima properly -- an underlying Kalman filter/smoother 
+# will give us both for the price of one. This is a big one but totally necessary.
+
+# 4. When using WASM version -- clicking on the manual or quick start should open
+# a new browser tab and not reload the manual inside the same tab.
+# Opening a new tab is much easier to copy/paste commands
+
+# 5. the svg renderer in REPL is currently GIMP -- it is super awkward to use gimp because it 
+# opens the svg files and expects the file to be edited. this is an overkill and a simpler viewer
+# should be used.
+
+# 6. we need capture to behave just like Stata
+
+# 7. unicode characters are messed up 
+import: sheet() requires ssconvert; libreoffice will export the first sheet only.
+(19 vars, 196 obs)
+. des
+
+Contains data
+  obs: 196
+ vars: 19
+-------------------------------------------------------------
+variable         type     format     label
+ISO_code         str      %9.0g      
+ifscode          double   %9.0g      
+country          str      %9.0g      
+ae               double   %9.0g      
+emde             double   %9.0g      
+lics             double   %9.0g      
+eeur             double   %9.0g      
+dasia            double   %9.0g      
+lac              double   %9.0g      
+menap            double   %9.0g      
+cis              double   %9.0g      
+ssa              double   %9.0g      
+fuel_exporter    double   %9.0g      
+manuf_exporter   double   %9.0g      
+serv_exporter    double   %9.0g      
+commxfuel_exporter double   %9.0g      
+xfuel_exporter   double   %9.0g      
+v                double   %9.0g      
+v_2              str      %9.0g      
+-------------------------------------------------------------
+. tab country 
+                         country |      Freq.     Percent
+---------------------------------+----------------------
+                     Afghanistan |          1       0.51
+                         Albania |          1       0.51
+                         Algeria |          1       0.51
+                         Andorra |          1       0.51
+                          Angola |          1       0.51
+             Antigua and Barbuda |          1       0.51
+                       Argentina |          1       0.51
+                         Armenia |          1       0.51
+                           Aruba |          1       0.51
+                       Australia |          1       0.51
+                         Austria |          1       0.51
+                      Azerbaijan |          1       0.51
+                         Bahrain |          1       0.51
+                      Bangladesh |          1       0.51
+                        Barbados |          1       0.51
+                         Belarus |          1       0.51
+                         Belgium |          1       0.51
+                          Belize |          1       0.51
+                           Benin |          1       0.51
+                          Bhutan |          1       0.51
+                         Bolivia |          1       0.51
+          Bosnia and Herzegovina |          1       0.51
+                        Botswana |          1       0.51
+                          Brazil |          1       0.51
+               Brunei Darussalam |          1       0.51
+                        Bulgaria |          1       0.51
+                    Burkina Faso |          1       0.51
+                         Burundi |          1       0.51
+                      Cabo Verde |          1       0.51
+                        Cambodia |          1       0.51
+                        Cameroon |          1       0.51
+                          Canada |          1       0.51
+        Central African Republic |          1       0.51
+                            Chad |          1       0.51
+                           Chile |          1       0.51
+                           China |          1       0.51
+                        Colombia |          1       0.51
+                         Comoros |          1       0.51
+                      Costa Rica |          1       0.51
+                         Croatia |          1       0.51
+                          Cyprus |          1       0.51
+                  Czech Republic |          1       0.51
+                  Côte d'Ivoire |          1       0.51
+Democratic Republic of the Congo |          1       0.51
+                         Denmark |          1       0.51
+                        Djibouti |          1       0.51
+                        Dominica |          1       0.51
+              Dominican Republic |          1       0.51
+                         Ecuador |          1       0.51
+                           Egypt |          1       0.51
+                     El Salvador |          1       0.51
+               Equatorial Guinea |          1       0.51
+                         Eritrea |          1       0.51
+                         Estonia |          1       0.51
+                        Eswatini |          1       0.51
+                        Ethiopia |          1       0.51
+                            Fiji |          1       0.51
+                         Finland |          1       0.51
+                          France |          1       0.51
+                           Gabon |          1       0.51
+                         Georgia |          1       0.51
+                         Germany |          1       0.51
+                           Ghana |          1       0.51
+                          Greece |          1       0.51
+                         Grenada |          1       0.51
+                       Guatemala |          1       0.51
+                          Guinea |          1       0.51
+                   Guinea-Bissau |          1       0.51
+                          Guyana |          1       0.51
+                           Haiti |          1       0.51
+                        Honduras |          1       0.51
+                   Hong Kong SAR |          1       0.51
+                         Hungary |          1       0.51
+                         Iceland |          1       0.51
+                           India |          1       0.51
+                       Indonesia |          1       0.51
+                            Iran |          1       0.51
+                            Iraq |          1       0.51
+                         Ireland |          1       0.51
+                          Israel |          1       0.51
+                           Italy |          1       0.51
+                         Jamaica |          1       0.51
+                           Japan |          1       0.51
+                          Jordan |          1       0.51
+                      Kazakhstan |          1       0.51
+                           Kenya |          1       0.51
+                        Kiribati |          1       0.51
+                           Korea |          1       0.51
+                          Kosovo |          1       0.51
+                          Kuwait |          1       0.51
+                 Kyrgyz Republic |          1       0.51
+                      Lao P.D.R. |          1       0.51
+                          Latvia |          1       0.51
+                         Lebanon |          1       0.51
+                         Lesotho |          1       0.51
+                         Liberia |          1       0.51
+                           Libya |          1       0.51
+                       Lithuania |          1       0.51
+                      Luxembourg |          1       0.51
+                       Macao SAR |          1       0.51
+                      Madagascar |          1       0.51
+                          Malawi |          1       0.51
+                        Malaysia |          1       0.51
+                        Maldives |          1       0.51
+                            Mali |          1       0.51
+                           Malta |          1       0.51
+                Marshall Islands |          1       0.51
+                      Mauritania |          1       0.51
+                       Mauritius |          1       0.51
+                          Mexico |          1       0.51
+                      Micronesia |          1       0.51
+                         Moldova |          1       0.51
+                        Mongolia |          1       0.51
+                      Montenegro |          1       0.51
+                         Morocco |          1       0.51
+                      Mozambique |          1       0.51
+                         Myanmar |          1       0.51
+                         Namibia |          1       0.51
+                           Nauru |          1       0.51
+                           Nepal |          1       0.51
+                     New Zealand |          1       0.51
+                       Nicaragua |          1       0.51
+                           Niger |          1       0.51
+                         Nigeria |          1       0.51
+                 North Macedonia |          1       0.51
+                          Norway |          1       0.51
+                            Oman |          1       0.51
+                        Pakistan |          1       0.51
+                           Palau |          1       0.51
+                          Panama |          1       0.51
+                Papua New Guinea |          1       0.51
+                        Paraguay |          1       0.51
+                            Peru |          1       0.51
+                     Philippines |          1       0.51
+                          Poland |          1       0.51
+                        Portugal |          1       0.51
+                     Puerto Rico |          1       0.51
+                           Qatar |          1       0.51
+               Republic of Congo |          1       0.51
+                         Romania |          1       0.51
+                          Russia |          1       0.51
+                          Rwanda |          1       0.51
+                           Samoa |          1       0.51
+                      San Marino |          1       0.51
+                    Saudi Arabia |          1       0.51
+                         Senegal |          1       0.51
+                          Serbia |          1       0.51
+                      Seychelles |          1       0.51
+                    Sierra Leone |          1       0.51
+                       Singapore |          1       0.51
+                 Slovak Republic |          1       0.51
+                        Slovenia |          1       0.51
+                 Solomon Islands |          1       0.51
+                         Somalia |          1       0.51
+                    South Africa |          1       0.51
+                     South Sudan |          1       0.51
+                           Spain |          1       0.51
+                       Sri Lanka |          1       0.51
+             St. Kitts and Nevis |          1       0.51
+                       St. Lucia |          1       0.51
+  St. Vincent and the Grenadines |          1       0.51
+                           Sudan |          1       0.51
+                        Suriname |          1       0.51
+                          Sweden |          1       0.51
+                     Switzerland |          1       0.51
+                           Syria |          1       0.51
+        São Tomé and Príncipe |          1       0.51
+        Taiwan Province of China |          1       0.51
+                      Tajikistan |          1       0.51
+                        Tanzania |          1       0.51
+                        Thailand |          1       0.51
+                     The Bahamas |          1       0.51
+                      The Gambia |          1       0.51
+                 The Netherlands |          1       0.51
+                     Timor-Leste |          1       0.51
+                            Togo |          1       0.51
+                           Tonga |          1       0.51
+             Trinidad and Tobago |          1       0.51
+                         Tunisia |          1       0.51
+                    Turkmenistan |          1       0.51
+                          Tuvalu |          1       0.51
+                        Türkiye |          1       0.51
+                          Uganda |          1       0.51
+                         Ukraine |          1       0.51
+            United Arab Emirates |          1       0.51
+                  United Kingdom |          1       0.51
+                   United States |          1       0.51
+                         Uruguay |          1       0.51
+                      Uzbekistan |          1       0.51
+                         Vanuatu |          1       0.51
+                       Venezuela |          1       0.51
+                         Vietnam |          1       0.51
+              West Bank and Gaza |          1       0.51
+                           Yemen |          1       0.51
+                          Zambia |          1       0.51
+                        Zimbabwe |          1       0.51
+---------------------------------+----------------------
+                           Total |        196     100.00
+. 
+
+
+# 8. excel import hit an early snag -- this for some reason worked before installing gnumeric 
+# while stil gave me a warning. but it stopped working altogether after installing gnumeric.
+# do i have to recompile?
+. import excel country_characteristics.xlsx, sheet("All codes") cellrange(A1:Q197) firstrow clear
+import: sheet() requires ssconvert; libreoffice will export the first sheet only.
+import excel: conversion produced no usable CSV
+. 
+
+

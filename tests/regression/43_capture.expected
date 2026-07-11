@@ -1,0 +1,8 @@
+number of observations set to 5
+(5 real changes made)
+rc after bad sysuse: 601
+rc after typo keep: 111
+data intact: 5
+rc after ok display: 0
+line 13: sysuse: no bundled dataset 'nosuchdata' (try: sysuse dir)
+do-file aborted at line 13 (rc=601)

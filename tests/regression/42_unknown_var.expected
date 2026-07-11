@@ -1,14 +1,7 @@
 number of observations set to 10
 (10 real changes made)
-line 8: if error: variable nosuchvar not found
 after keep-typo: 10
-line 10: if error: variable nosuchvar not found
 after drop-typo: 10
-line 12: if error: variable ghost not found
-line 13: if error: variable ghost not found
-line 14: if error: variable ghost not found
-line 15: expression error: variable ghost not found
-line 16: expression error: variable ghost not found
 final _N: 10
 
     Variable |        Obs        Mean    Std. dev.         Min         Max

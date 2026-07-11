@@ -126,6 +126,21 @@ static int tea_fprintf(FILE *fp, const char *fmt, ...){
 /* forward decl: load_csv_into is defined further down; used by import excel */
 static int load_csv_into(Frame *f,const char *fn,char delim);
 
+/* Display width of a UTF-8 string = number of codepoints (continuation
+ * bytes 10xxxxxx don't advance the column).  Used to pad table columns
+ * correctly for names like "C\u00f4te d'Ivoire"; printf's %*s pads by
+ * BYTES, so we widen the field by (bytes - codepoints) to compensate. */
+static int u8width(const char *s){
+    int w = 0;
+    for(const unsigned char *p=(const unsigned char*)s; *p; p++)
+        if((*p & 0xC0) != 0x80) w++;
+    return w;
+}
+static int u8pad(const char *s, int want){   /* field width for %*s */
+    return want + (int)strlen(s) - u8width(s);
+}
+
+
 /* scan_filename: extract a filename from `*ps` into `out`, handling
  * Stata-style quoted paths.  Advances `*ps` past the filename and any
  * trailing whitespace.  Returns the number of chars consumed; 0 if no
@@ -555,7 +570,7 @@ static int do_list(Cmd *c){
      * Heap-allocated to accommodate any number of variables. */
     int *w = malloc((size_t)nv * sizeof(int));
     for(int j=0;j<nv;j++){
-        w[j] = (int)strlen(c->f->vars[vs[j]].name);
+        w[j] = u8width(c->f->vars[vs[j]].name);
         if(w[j]<8) w[j]=8;
         for(size_t i=0;i<c->f->nobs;i++){
             if(c->in_lo>0&&(long)i+1<c->in_lo)continue;
@@ -563,11 +578,11 @@ static int do_list(Cmd *c){
             if(ifn){ EvalCtx ec={0}; ec.f=c->f; ec.i=i; ec.n=(long)i+1; ec.N=(long)c->f->nobs;
                 if(!expr_eval_bool(ifn,&ec)) continue; }
             char b[128]; fmt_cell(&c->f->vars[vs[j]],i,b,sizeof b);
-            int L=(int)strlen(b); if(L>w[j]) w[j]=L;
+            int L=u8width(b); if(L>w[j]) w[j]=L;
         }
     }
     printf("     +");for(int j=0;j<nv;j++)printf("%-*s+",w[j]+2,"");printf("\n     |");
-    for(int j=0;j<nv;j++)printf(" %-*s |",w[j],c->f->vars[vs[j]].name);printf("\n");
+    for(int j=0;j<nv;j++)printf(" %-*s |",u8pad(c->f->vars[vs[j]].name,w[j]),c->f->vars[vs[j]].name);printf("\n");
     EvalCtx ec={0}; ec.f=c->f;
     for(size_t i=0;i<c->f->nobs;i++){
         if(c->in_lo>0&&(long)i+1<c->in_lo)continue;
@@ -575,7 +590,7 @@ static int do_list(Cmd *c){
         if(ifn){ ec.i=i;ec.n=(long)i+1;ec.N=(long)c->f->nobs; if(!expr_eval_bool(ifn,&ec))continue; }
         printf("%4zu.|",i+1);
         for(int j=0;j<nv;j++){ char b[128]; fmt_cell(&c->f->vars[vs[j]],i,b,sizeof b);
-            printf(" %-*s |",w[j],b); }
+            printf(" %-*s |",u8pad(b,w[j]),b); }
         printf("\n");
     }
     free(w); free(vs); node_free(ifn);
@@ -1130,17 +1145,21 @@ static int do_tabulate(Cmd *c){
 
     /* Dynamic column width: max of (var name, longest key, "Total"), capped
      * at 60 chars.  Anything longer is truncated with an ellipsis. */
-    int w = (int)strlen(v->name);
+    int w = u8width(v->name);
     if((int)strlen("Total") > w) w = (int)strlen("Total");
-    for(int i=0;i<nt;i++){ int k = (int)strlen(t[i].key); if(k > w) w = k; }
+    for(int i=0;i<nt;i++){ int k = u8width(t[i].key); if(k > w) w = k; }
     if(w > 60) w = 60;
     if(w < 14) w = 14;        /* keep a minimum width */
 
     /* helper: render a key, truncating with "..." if it exceeds w */
     #define RENDER_KEY(buf, sz, key) do { \
-        int kl = (int)strlen(key); \
-        if(kl <= w) snprintf(buf, sz, "%s", key); \
-        else { snprintf(buf, sz, "%.*s...", w-3, key); } \
+        if(u8width(key) <= w) snprintf(buf, sz, "%s", key); \
+        else { /* truncate at a codepoint boundary to display width w-3 */ \
+            int bytes = 0, cols = 0; \
+            for(const unsigned char *p=(const unsigned char*)(key); *p; p++){ \
+                if((*p & 0xC0) != 0x80){ if(cols == w-3) break; cols++; } \
+                bytes++; } \
+            snprintf(buf, sz, "%.*s...", bytes, key); } \
     } while(0)
 
     /* header */
@@ -1148,7 +1167,7 @@ static int do_tabulate(Cmd *c){
     for(int i=0;i<w+1;i++) putchar('-'); printf("+----------------------\n");
     for(int i=0;i<nt;i++){
         char shown[300]; RENDER_KEY(shown, sizeof shown, t[i].key);
-        printf("%*s | %10.0f   %8.2f\n", w, shown, t[i].n, 100.0*t[i].n/(tot?tot:1));
+        printf("%*s | %10.0f   %8.2f\n", u8pad(shown, w), shown, t[i].n, 100.0*t[i].n/(tot?tot:1));
     }
     for(int i=0;i<w+1;i++) putchar('-'); printf("+----------------------\n");
     printf("%*s | %10.0f     100.00\n", w, "Total", tot);
@@ -1964,17 +1983,43 @@ static int convert_spreadsheet(const char *src, const char *sheet, char *out_pat
     mkdir(tmpdir,0700);
     char cmd[4096];
     if(have_ss){
-        if(sheet && sheet[0])
-            snprintf(cmd,sizeof cmd,"ssconvert -O 'sheet=%s' %s '%s' '%s/out.csv' >/dev/null 2>&1",
-                     sheet,"--export-type=Gnumeric_stf:stf_csv",src,tmpdir);
-        else
+        if(sheet && sheet[0]){
+            /* sheet names may contain spaces ("All codes"): gnumeric's -O
+             * parser splits options on spaces, so the value must be
+             * inner-quoted.  Single quotes inside the name can't be
+             * expressed this way — error clearly rather than guess. */
+            if(strchr(sheet,'\'')){
+                tea_err("import: sheet names containing a single quote are not supported\n");
+                return 198;
+            }
+            snprintf(cmd,sizeof cmd,
+                "ssconvert -O \"sheet='%s'\" %s '%s' '%s/out.csv' >/dev/null 2>&1",
+                sheet,"--export-type=Gnumeric_stf:stf_csv",src,tmpdir);
+        } else
             snprintf(cmd,sizeof cmd,"ssconvert %s '%s' '%s/out.csv' >/dev/null 2>&1",
                      "--export-type=Gnumeric_stf:stf_csv",src,tmpdir);
-        if(system(cmd)==0){ snprintf(out_path,op_sz,"%s/out.csv",tmpdir); return 0; }
+        if(system(cmd)==0){
+            /* trust but verify: an unmatched sheet or a quiet failure can
+             * exit 0 with no/empty output */
+            char probe[600]; snprintf(probe,sizeof probe,"%s/out.csv",tmpdir);
+            struct stat st;
+            if(stat(probe,&st)==0 && st.st_size>0){
+                snprintf(out_path,op_sz,"%s",probe); return 0;
+            }
+        }
+        if(sheet && sheet[0]){
+            tea_err("import: ssconvert could not export sheet \"%s\" \u2014 check the name with the workbook open\n", sheet);
+            return 603;
+        }
+        /* whole-file ssconvert failed; fall through to libreoffice */
     }
     if(lo_path){
-        if(sheet && sheet[0])
-            tea_err("import: sheet() requires ssconvert; libreoffice will export the first sheet only.\n");
+        if(sheet && sheet[0]){
+            /* importing the WRONG sheet silently is a data-correctness
+             * hazard; refuse rather than substitute the first sheet */
+            tea_err("import: sheet() requires ssconvert (gnumeric); libreoffice cannot select sheets\n");
+            return 198;
+        }
         snprintf(cmd,sizeof cmd,
             "'%s' --headless --convert-to csv --outdir '%s' '%s' >/dev/null 2>&1",
             lo_path, tmpdir, src);
@@ -3164,6 +3209,39 @@ static int do_save(Cmd *c){
  *   sysuse dir             list bundled datasets
  *   sysuse NAME [, clear]  load one (clear required if data in memory)
  * ---------------------------------------------------------------------- */
+/* ---- history: list / save / clear the interactive command history ------ */
+static int do_history(Cmd *c){
+    extern Interp *g_tea_interp;
+    Interp *ip = g_tea_interp;
+    if(!ip){ tea_err("history: no session\n"); return 198; }
+    char sub[64]=""; sscanf(c->args,"%63s",sub);
+    if(!strcmp(sub,"clear")){
+        for(int i=0;i<ip->nhist;i++) free(ip->hist[i]);
+        ip->nhist = 0;
+        printf("(history cleared)\n");
+        return 0;
+    }
+    if(!strcmp(sub,"save")){
+        char fn[512]="";
+        { char buf[600]; snprintf(buf,sizeof buf,"%s",c->args);
+          buf[strcspn(buf,",")]=0; sscanf(buf,"%*s %511s",fn); }
+        if(!fn[0]){ tea_err("history save: filename required\n"); return 198; }
+        if(access(fn,F_OK)==0 && !opt_present(c->options,"replace")){
+            tea_err("history save: file exists (use ,replace)\n"); return 602; }
+        FILE *o=fopen(fn,"w");
+        if(!o){ tea_err("history save: cannot write %s\n",fn); return 603; }
+        for(int i=0;i<ip->nhist;i++) fprintf(o,"%s\n",ip->hist[i]);
+        fclose(o);
+        printf("(%d lines saved to %s)\n", ip->nhist, fn);
+        return 0;
+    }
+    int n = ip->nhist;                       /* history [N]: last N lines */
+    if(sub[0]){ int k=atoi(sub); if(k>0 && k<n) n=k; }
+    for(int i=ip->nhist-n; i<ip->nhist; i++)
+        printf("%5d  %s\n", i+1, ip->hist[i]);
+    return 0;
+}
+
 static int do_sysuse(Cmd *c){
     char name[64]="";
     {   /* c->args still carries the ', options' tail — cut at the comma */
@@ -3777,6 +3855,11 @@ Disp TABLE[]={
         "save FILE [, replace]                        write Stata .dta (default) or .tea\n"
         "      e.g.  save mydata.dta, replace        — emits Stata-compatible .dta\n"
         "      e.g.  save mydata.tea, replace        — native tea binary"},
+    {"history",do_history,0,
+        "history [N] | history save FILE [, replace] | history clear\n"
+        "      list, export, or clear this session's interactive commands\n"
+        "      (native REPL arrow-key history persists in ~/.tea_history;\n"
+        "       the browser edition persists history in the browser)"},
     {"sysuse",do_sysuse,0,
         "sysuse dir | sysuse NAME [, clear]\n"
         "      load a practice dataset bundled inside the tea binary\n"

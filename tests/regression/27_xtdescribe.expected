@@ -64,5 +64,4 @@ panel variable: cid
 --- xtdescribe without xtset should error ---
 number of observations set to 4
 (4 real changes made)
-line 39: xtdescribe: data not xtset
-rc=.
+rc=459

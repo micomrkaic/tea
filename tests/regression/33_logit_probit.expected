@@ -65,8 +65,7 @@ Log likelihood = -339.486982                    Pseudo R2       =     0.0204
 number of observations set to 10
 (10 real changes made)
 (10 real changes made)
-logit: outcome variable not binary (must be 0 or 1)
-rc=.
+rc=198
 
 === Logit detects perfect separation ===
 number of observations set to 20

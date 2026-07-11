@@ -58,20 +58,4 @@ Test: Ho:  difference in coefficients not systematic
 === hausman errors with no estimates ===
 number of observations set to 4
 (4 real changes made)
-
-                ---- Coefficients ----
-             |      (b)          (B)            (b-B)     sqrt(diag(V_b-V_B))
-             |      fe           re          Difference     S.E.
--------------+----------------------------------------------------------------
-           x |    2.17505       2.17718     -0.00213327    0.00074316
-------------------------------------------------------------------------------
-                  b = consistent under H0 and Ha;     obtained from xtreg, fe
-                  B = inconsistent under Ha, efficient under H0; obtained from xtreg, re
-
-Test: Ho:  difference in coefficients not systematic
-
-              chi2(1) = (b-B)'[(V_b-V_B)^(-1)](b-B)
-                       =     8.24
-            Prob > chi2 =   0.0041
-
-rc=.
+rc=0

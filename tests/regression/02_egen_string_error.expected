@@ -4,7 +4,6 @@ number of observations set to 4
 (1 real change made)
 (1 real change made)
 (4 real changes made)
-line 11: egen: type mismatch — mean() requires a numeric argument, but 'country' is a string
      +          +          +          +
      | country  | gdp      | cid      |
    1.| FRA      | 2000     | 1        |

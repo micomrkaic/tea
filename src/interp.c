@@ -22,6 +22,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+
+Interp *g_tea_interp = NULL;   /* bridge for commands needing the interp (history) */
 #include <ctype.h>
 #include <stdbool.h>
 #include <unistd.h>
@@ -31,6 +34,7 @@ Interp *interp_new(Workspace *ws){
     Interp *ip=calloc(1,sizeof*ip);
     ip->ws=ws;
     ip->strict_stata = true;  /* tea is strict-Stata by default */
+    g_tea_interp = ip;
     return ip;
 }
 
@@ -156,6 +160,24 @@ char *macro_expand(Interp *ip,const char *line){
 }
 
 /* ---- single line execution -------------------------------------------- */
+/* ---- capture support ----------------------------------------------------
+ * Stata's capture suppresses ALL output of the captured command (stdout
+ * and stderr) and records the return code in _rc.  We mute at the file-
+ * descriptor level so every printf/fprintf in every command is covered,
+ * and mirror ip->rc into g_tea_last_rc for the expression evaluator. */
+int g_tea_last_rc = 0;
+static void mute_begin(int sv[2]){
+    fflush(stdout); fflush(stderr);
+    sv[0]=dup(1); sv[1]=dup(2);
+    int nul=open("/dev/null",O_WRONLY);
+    if(nul>=0){ dup2(nul,1); dup2(nul,2); close(nul); }
+}
+static void mute_end(int sv[2]){
+    fflush(stdout); fflush(stderr);
+    if(sv[0]>=0){ dup2(sv[0],1); close(sv[0]); }
+    if(sv[1]>=0){ dup2(sv[1],2); close(sv[1]); }
+}
+
 int run_line(Interp *ip,const char *raw){
     char line[8192]; snprintf(line,sizeof line,"%s",raw);
     char *s=line; while(*s==' '||*s=='\t')s++;
@@ -189,6 +211,9 @@ int run_line(Interp *ip,const char *raw){
         else break;
         while(*s==' ')s++;
     }
+    int _mfd[2] = {-1,-1};
+    if(cap){ mute_begin(_mfd); g_tea_last_rc = 0; }  /* success leaves _rc==0 */
+    #define RL_DONE() do{ if(cap) mute_end(_mfd); }while(0)
 
     /* by / bysort prefix:  by[sort] groupvars [(sortvars)] : cmd */
     int *byv=NULL,nby=0; int *sortk=NULL,nsk=0; bool bysort=false;
@@ -216,14 +241,14 @@ int run_line(Interp *ip,const char *raw){
 
     char *ex=macro_expand(ip,s);
     char *t=ex; while(*t==' ')t++;
-    if(!*t){ free(ex); free(byv); free(sortk); return 0; }
+    if(!*t){ free(ex); free(byv); free(sortk); RL_DONE(); return 0; }
 
     /* interpreter-native statements */
 
     /* 'assert exp [if] [in]' — fail loud if exp is false anywhere selected */
     if(!strncmp(t,"assert ",7) || !strcmp(t,"assert")){
         const char *e = t+6; while(*e==' ') e++;
-        if(!*e){ fprintf(stderr,"assert: expression required\n"); free(ex);free(byv);free(sortk); ip->rc=198; return cap?0:198; }
+        if(!*e){ fprintf(stderr,"assert: expression required\n"); free(ex);free(byv);free(sortk); RL_DONE(); g_tea_last_rc=ip->rc=198; return cap?0:198; }
         /* split out optional 'if'/'in' so they constrain assertion scope */
         char esep[2048]; snprintf(esep,sizeof esep,"%s",e);
         Frame *f = ip->ws->cur;
@@ -231,7 +256,7 @@ int run_line(Interp *ip,const char *raw){
         char *ifp = strstr(esep," if ");
         if(ifp){ *ifp=0; ifn = expr_parse(ifp+4, f, &perr); }
         Node *en = expr_parse(esep, f, &perr);
-        if(!en){ fprintf(stderr,"assert: %s\n", perr?perr:"parse error"); free(ex);free(byv);free(sortk); ip->rc=198; return cap?0:198; }
+        if(!en){ fprintf(stderr,"assert: %s\n", perr?perr:"parse error"); free(ex);free(byv);free(sortk); RL_DONE(); g_tea_last_rc=ip->rc=198; return cap?0:198; }
         EvalCtx ec={0}; ec.f=f;
         long bad=0, ok=0, miss=0;
         size_t N = f->nobs ? f->nobs : 1;
@@ -248,16 +273,16 @@ int run_line(Interp *ip,const char *raw){
         node_free(en); node_free(ifn);
         if(bad){
             fprintf(stderr,"assertion is false (%ld failed, %ld true, %ld missing)\n",bad,ok,miss);
-            ip->rc=9; free(ex);free(byv);free(sortk); return cap?0:9;
+            g_tea_last_rc=ip->rc=9; free(ex);free(byv);free(sortk); RL_DONE(); return cap?0:9;
         }
         if(!ip->quiet) printf("assertion is true\n");
-        free(ex);free(byv);free(sortk); return 0;
+        free(ex);free(byv);free(sortk); RL_DONE(); return 0;
     }
 
     /* 'shell cmd' — run via $SHELL -c, return code in rc.  '!' handled earlier. */
     if(!strncmp(t,"shell ",6) || !strcmp(t,"shell")){
         const char *cmd = t+5; while(*cmd==' ') cmd++;
-        if(!*cmd){ free(ex); free(byv); free(sortk); return 0; }
+        if(!*cmd){ free(ex); free(byv); free(sortk); RL_DONE(); return 0; }
         const char *sh = getenv("SHELL"); if(!sh||!sh[0]) sh="/bin/sh";
         fflush(stdout);
 #ifdef __EMSCRIPTEN__
@@ -268,7 +293,7 @@ int run_line(Interp *ip,const char *raw){
         int st=0; waitpid(pid,&st,0);
         ip->rc = WIFEXITED(st)? WEXITSTATUS(st) : 128;
 #endif
-        free(ex);free(byv);free(sortk); return 0;
+        free(ex);free(byv);free(sortk); RL_DONE(); return 0;
     }
 
     if(!strncmp(t,"local ",6)||!strncmp(t,"loc ",4)){
@@ -284,7 +309,7 @@ int run_line(Interp *ip,const char *raw){
             if(L>=2 && val[0]=='"' && val[L-1]=='"'){
                 memmove(val, val+1, L-2); val[L-2]=0; }
         }
-        mac_set(&ip->locals,nm,val); free(ex);free(byv);free(sortk); return 0;
+        mac_set(&ip->locals,nm,val); free(ex);free(byv);free(sortk); RL_DONE(); return 0;
     }
     if(!strncmp(t,"global ",7)){
         char *p=t+7; while(*p==' ')p++; char nm[128]; int n=0;
@@ -294,7 +319,7 @@ int run_line(Interp *ip,const char *raw){
         else { snprintf(val,sizeof val,"%s",p); for(int i=(int)strlen(val)-1;i>=0&&val[i]==' ';i--)val[i]=0;
             size_t L=strlen(val);
             if(L>=2 && val[0]=='"' && val[L-1]=='"'){ memmove(val, val+1, L-2); val[L-2]=0; } }
-        mac_set(&ip->globals,nm,val); free(ex);free(byv);free(sortk); return 0;
+        mac_set(&ip->globals,nm,val); free(ex);free(byv);free(sortk); RL_DONE(); return 0;
     }
     if(!strncmp(t,"display ",8)||!strncmp(t,"di ",3)||!strcmp(t,"display")){
         char *p=t+(t[2]==' '?3:8); while(*p==' ')p++;
@@ -326,12 +351,12 @@ int run_line(Interp *ip,const char *raw){
         /* Tee display output to log file if one is open. */
         extern FILE *g_logfp;
         if(g_logfp){ fprintf(g_logfp, "%s\n", outb); fflush(g_logfp); }
-        free(ex);free(byv);free(sortk); return 0;
+        free(ex);free(byv);free(sortk); RL_DONE(); return 0;
     }
     if(!strncmp(t,"scalar ",7)){ char *p=t+7; if(!strncmp(p,"define ",7))p+=7;
         char nm[128]; int n=0; while(*p&&*p!='='&&!isspace((unsigned char)*p)&&n<127)nm[n++]=*p++; nm[n]=0;
         while(*p==' '||*p=='=')p++; char val[512]; eval_scalar(ip,p,val,sizeof val);
-        mac_set(&ip->globals,nm,val); free(ex);free(byv);free(sortk); return 0; }
+        mac_set(&ip->globals,nm,val); free(ex);free(byv);free(sortk); RL_DONE(); return 0; }
     if(!strcmp(t,"describe")||!strncmp(t,"describe ",9)){}
 
     /* build a Cmd and dispatch */
@@ -351,14 +376,14 @@ int run_line(Interp *ip,const char *raw){
         if(bysort) frame_physical_sort(c.f,sortk,nsk,NULL);
         else {
             bool ok = c.f->nsort>=nby; if(ok)for(int k=0;k<nby;k++)if(c.f->sortvars[k]!=byv[k])ok=false;
-            if(!ok){ fprintf(stderr,"not sorted (use bysort)\n"); free(ex);free(byv);free(sortk);
-                ip->rc=5; return cap?0:5; }
+            if(!ok){ fprintf(stderr,"not sorted (use bysort)\n"); free(ex);free(byv);free(sortk); RL_DONE();
+                g_tea_last_rc=ip->rc=5; return cap?0:5; }
         }
     }
     cmd_split(&c);
     int rc=cmd_dispatch(&c);
-    free(ex); free(byv); free(sortk);
-    ip->rc=rc;
+    free(ex); free(byv); free(sortk); RL_DONE();
+    g_tea_last_rc=ip->rc=rc;
     if(cap){ /* capture: swallow the error, expose it via _rc only */ return 0; }
     return rc;
 }
@@ -632,6 +657,16 @@ struct TeaSession {
     Lines   L;
 };
 
+void interp_hist_add(Interp *ip, const char *line){
+    if(!line || !*line) return;
+    if(ip->nhist && !strcmp(ip->hist[ip->nhist-1], line)) return; /* dedupe runs */
+    if(ip->nhist == ip->histcap){
+        ip->histcap = ip->histcap ? ip->histcap*2 : 64;
+        ip->hist = realloc(ip->hist, (size_t)ip->histcap * sizeof(char*));
+    }
+    ip->hist[ip->nhist++] = strdup(line);
+}
+
 TeaSession *tea_session_new(Interp *ip, bool interactive){
     TeaSession *s = calloc(1, sizeof *s);
     if(!s) return NULL;
@@ -642,6 +677,8 @@ TeaSession *tea_session_new(Interp *ip, bool interactive){
 static void session_run_block(TeaSession *s){
     /* echo every line of the block to log (Stata's behavior) */
     for(int z=0;z<s->L.n;z++) tea_log_command(s->L.v[z]);
+    if(s->interactive)
+        for(int z=0;z<s->L.n;z++) interp_hist_add(s->ip, s->L.v[z]);
     int idx=0; exec_one(s->ip,&s->L,&idx);
     for(int z=0;z<s->L.n;z++)free(s->L.v[z]); free(s->L.v);
     s->L.v=NULL; s->L.n=0;
@@ -720,6 +757,7 @@ int tea_session_feed(TeaSession *s, const char *raw, bool *need_more){
             *semi = 0;
             char *seg = p; while(*seg==' '||*seg=='\t')seg++;
             if(*seg){ tea_log_command(seg); add_line(&s->L,seg);
+                if(s->interactive) interp_hist_add(s->ip, s->L.v[s->L.n-1]);
                 int idx=s->L.n-1; int rc=exec_one(s->ip,&s->L,&idx);
                 for(int z=0;z<s->L.n;z++)free(s->L.v[z]); free(s->L.v);
                 s->L.v=NULL; s->L.n=0;
@@ -736,6 +774,7 @@ int tea_session_feed(TeaSession *s, const char *raw, bool *need_more){
     if(s->acc[0]){
         tea_log_command(s->acc);
         add_line(&s->L,s->acc); s->acc[0]=0;
+        if(s->interactive) interp_hist_add(s->ip, s->L.v[s->L.n-1]);
         int idx=s->L.n-1; int rc=exec_one(s->ip,&s->L,&idx);
         for(int z=0;z<s->L.n;z++)free(s->L.v[z]); free(s->L.v);
         s->L.v=NULL; s->L.n=0;

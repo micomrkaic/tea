@@ -196,8 +196,7 @@ corr(u_i, Xb)  = 1.0000                         Prob > F      =     0.0000
 number of observations set to 5
 (5 real changes made)
 (5 real changes made)
-regress: factor variable i.cid must be numeric (use encode to convert)
-rc=.
+rc=198
 
 === Error: i.var with only one level ===
 number of observations set to 5

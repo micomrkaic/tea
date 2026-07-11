@@ -113,8 +113,7 @@ First few rows (row 1 has L.g missing -> all missing):
 number of observations set to 10
 (10 real changes made)
 (10 real changes made)
-predict: pr is only valid after logit or probit
-rc=.
+rc=198
 
 === predict ,resid after xtreg should error ===
 number of observations set to 12
@@ -126,12 +125,10 @@ number of observations set to 12
 panel variable: p
  time variable: t
          delta: 1 unit
-predict: residuals not supported after xtreg; use ,e or ,ue
-rc=.
+rc=198
 
 === predict ,u after regress should error ===
 number of observations set to 10
 (10 real changes made)
 (10 real changes made)
-predict: u, e, ue, xbu are only valid after xtreg
-rc=.
+rc=198

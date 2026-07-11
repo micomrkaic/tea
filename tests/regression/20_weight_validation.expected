@@ -2,23 +2,17 @@ number of observations set to 4
 (4 real changes made)
 (4 real changes made)
 --- summarize ---
-line 11: summarize: pweight not allowed
 summarize pweight: rejected
 
     Variable |        Obs        Mean    Std. dev.         Min         Max
 -------------+--------------------------------------------------------------
            x |          4           3        1.155           1           4
 --- tabulate ---
-line 15: tabulate: pweight not allowed
 tabulate pweight: rejected
-line 17: tabulate: iweight not allowed
 tabulate iweight: rejected
 --- count ---
-line 20: count: aweight not allowed
 count aweight: rejected
-line 22: count: pweight not allowed
 count pweight: rejected
-line 24: count: iweight not allowed
 count iweight: rejected
   10
 --- regress accepts all four ---

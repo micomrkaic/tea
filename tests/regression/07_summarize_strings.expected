@@ -12,4 +12,3 @@ number of observations set to 4
        score |          4          25        12.91          10          40
       weight |          4         2.5        1.291           1           4
 --- explicit (will error) ---
-line 16: summarize: name is a string variable (cannot summarize)

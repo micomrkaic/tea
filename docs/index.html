@@ -55,7 +55,7 @@
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
   <div class="tagline">tiny econometric assistant</div>
-  <div class="ver">v<!--TEAVER-->1.3.0<!--/TEAVER--> &middot; runs entirely in your browser</div>
+  <div class="ver">v<!--TEAVER-->1.4.0<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
   <div class="foot">free software (GPLv3) &middot; no data leaves your machine</div>
@@ -65,8 +65,8 @@
   <img src="tea_logo.jpg" alt="">
   <h1>tea</h1>
   <div class="sub">tiny econometric assistant — running entirely in your browser (WebAssembly)</div>
-  <a href="STATA-QUICKSTART.pdf" style="margin-left:auto;font-size:13px;color:var(--accent)">Stata user? Start here</a>
-  <a href="tea-manual.pdf" style="margin-left:14px;font-size:13px;color:var(--accent)">Manual (PDF)</a>
+  <a href="STATA-QUICKSTART.pdf" target="_blank" rel="noopener" style="margin-left:auto;font-size:13px;color:var(--accent)">Stata user? Start here</a>
+  <a href="tea-manual.pdf" target="_blank" rel="noopener" style="margin-left:14px;font-size:13px;color:var(--accent)">Manual (PDF)</a>
 </header>
 <div class="wrap">
   <div id="term-pane"><div id="terminal"></div></div>
@@ -124,6 +124,18 @@ const ed = new LineEditor({
   },
   clearScreen: () => term.write('\x1b[2J\x1b[H'),
 });
+
+/* arrow-key history persists across visits (like ~/.tea_history natively) */
+const HKEY = 'tea_history_v1';
+try {
+  const saved = JSON.parse(localStorage.getItem(HKEY) || '[]');
+  if (Array.isArray(saved)) { ed.hist = saved.slice(-2000); ed.histIdx = ed.hist.length; }
+} catch (e) {}
+const _histSubmit = ed.h.submit;
+ed.h.submit = cmd => {
+  try { localStorage.setItem(HKEY, JSON.stringify(ed.hist.slice(-2000))); } catch (e) {}
+  _histSubmit(cmd);
+};
 
 /* fetch the wasm ourselves so the splash can show real download progress */
 async function fetchWasm(){

@@ -34,7 +34,6 @@ corr(u_i, Xb)  = -0.1698                        Prob > F      =     0.0000
          rho |   0.721423   (fraction of variance due to u_i)
 ------------------------------------------------------------------------------
 F test that all u_i=0:  F(9, 188) =      49.18      Prob > F = 0.0000
-line 11: sysuse: no; data in memory would be lost (use ',clear' to discard it)
 (longley: 16 obs loaded — Longley (1967) US macro, 16 obs: famously ill-conditioned (regress))
 
       Source |       SS           df       MS      Number of obs   =        16
@@ -84,7 +83,6 @@ Log likelihood = -18645.976763                   Pseudo R2       =     0.0611
     Variable |        Obs        Mean    Std. dev.         Min         Max
 -------------+--------------------------------------------------------------
         lgdp |       1538       10.13       0.6112       8.082       11.48
-line 26: sysuse: no bundled dataset 'nosuchdata' (try: sysuse dir)
 still alive
 (weo: 10168 obs loaded — IMF World Economic Outlook, April 2026: 197 countries + 13 aggregates, 145 indicators)
 weo: 10168 obs
@@ -119,3 +117,13 @@ F test that all u_i=0:  F(192, 5660) =       4.07      Prob > F = 0.0000
     Variable |        Obs        Mean    Std. dev.         Min         Max
 -------------+--------------------------------------------------------------
      pcpipch |        195       15.47        56.32      -7.714       667.4
+(weo: 10168 obs loaded — IMF World Economic Outlook, April 2026: 197 countries + 13 aggregates, 145 indicators)
+(observations now 156)
+(observations now 3)
+                                      country |      Freq.     Percent
+----------------------------------------------+----------------------
+                                Côte d'Ivoire |          1      33.33
+São Tomé and Príncipe, Democratic Republic of |          1      33.33
+                                United States |          1      33.33
+----------------------------------------------+----------------------
+                                        Total |          3     100.00

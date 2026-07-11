@@ -26,6 +26,7 @@
 #include <math.h>
 
 #include "plot.h"
+#include "tsop.h"
 #include "dataset.h"
 #include "expr.h"
 #include "value.h"
@@ -315,13 +316,26 @@ static long collect(Cmd *c, int vy, int vx, double **outy, double **outx)
 static int num_var(Cmd *c, const char *name)
 {
     int vi = var_find(c->f, name);
-    if (vi < 0)                 { tea_err("variable %s not found\n", name); return -1; }
+    if (vi < 0) {
+        /* accept time-series operators (D.x, L2.x, ...) like estimators
+         * and summarize do: expand through the shared tsop machinery,
+         * which creates a temp variable we plot from */
+        int *vs = NULL, ntemp = 0; const char *terr = NULL;
+        int nv = tsop_expand_varlist(c->f, name, &vs, &ntemp, &terr);
+        if (nv == 1) { vi = vs[0]; free(vs); return vi; }
+        free(vs);
+        tea_err("variable %s not found\n", name);
+        return -1;
+    }
     if (c->f->vars[vi].type != VT_NUM)
                                 { tea_err("%s is a string variable\n", name); return -1; }
     return vi;
 }
 
 /* shared option handling + output for all three commands */
+/* drop tsop temp vars appended after _nv0 (D.x etc. in plot varlists) */
+#define PLOT_RETURN(rc) do { tsop_drop_temps(c->f, c->f->nvar - _nv0); return (rc); } while (0)
+
 static int finish_plot(Cmd *c, PlotSpec *sp)
 {
     char fname[512] = "";
@@ -349,36 +363,61 @@ static int finish_plot(Cmd *c, PlotSpec *sp)
         char cmdbuf[600];
 #ifdef __APPLE__
         snprintf(cmdbuf, sizeof cmdbuf, "open '%s' >/dev/null 2>&1 &", fname);
-#else
-        snprintf(cmdbuf, sizeof cmdbuf, "xdg-open '%s' >/dev/null 2>&1 &", fname);
-#endif
         if (system(cmdbuf) != 0) { /* viewer optional; ignore */ }
+#else
+        /* Pick a viewer, not an editor: xdg-open often routes SVG to
+         * GIMP/Inkscape, which is hostile for a quick look.  Order:
+         *   1. $TEA_VIEWER if set (user override, documented)
+         *   2. lightweight image viewers
+         *   3. a browser (renders SVG well)
+         *   4. xdg-open as the last resort                          */
+        const char *viewer = getenv("TEA_VIEWER");
+        if (viewer && *viewer) {
+            snprintf(cmdbuf, sizeof cmdbuf, "%s '%s' >/dev/null 2>&1 &", viewer, fname);
+            if (system(cmdbuf) != 0) { /* ignore */ }
+        } else {
+            static const char *cands[] = { "eog", "feh", "ristretto", "xviewer",
+                "sensible-browser", "x-www-browser", "firefox", "chromium",
+                "xdg-open", NULL };
+            for (int ci = 0; cands[ci]; ci++) {
+                snprintf(cmdbuf, sizeof cmdbuf,
+                         "command -v %s >/dev/null 2>&1", cands[ci]);
+                if (system(cmdbuf) == 0) {
+                    snprintf(cmdbuf, sizeof cmdbuf, "%s '%s' >/dev/null 2>&1 &",
+                             cands[ci], fname);
+                    if (system(cmdbuf) != 0) { /* ignore */ }
+                    break;
+                }
+            }
+        }
+#endif /* __APPLE__ */
     }
-#endif
+#endif /* __EMSCRIPTEN__ */
     return 0;
 }
 
 /* scatter y x [if] [in] [, title() xtitle() ytitle() saving() noview] */
 int do_scatter(Cmd *c)
 {
+    int _nv0 = c->f->nvar;
     char yn[33], xn[33], rest[8];
     if (sscanf(c->varlist, "%32s %32s %7s", yn, xn, rest) != 2) {
-        tea_err("syntax: scatter yvar xvar [if] [in] [, options]\n"); return 198;
+        tea_err("syntax: scatter yvar xvar [if] [in] [, options]\n"); PLOT_RETURN(198);
     }
-    int vy = num_var(c, yn); if (vy < 0) return 111;
-    int vx = num_var(c, xn); if (vx < 0) return 111;
+    int vy = num_var(c, yn); if (vy < 0) PLOT_RETURN(111);
+    int vx = num_var(c, xn); if (vx < 0) PLOT_RETURN(111);
 
     PlotSpec sp = {0}; sp.kind = PK_SCATTER;
     long n = collect(c, vy, vx, &sp.y, &sp.x);
-    if (n < 0) return 198;
-    if (n == 0) { free(sp.x); free(sp.y); tea_err("no observations\n"); return 2000; }
+    if (n < 0) PLOT_RETURN(198);
+    if (n == 0) { free(sp.x); free(sp.y); tea_err("no observations\n"); PLOT_RETURN(2000); }
     sp.n = (size_t)n;
     snprintf(sp.xtitle, sizeof sp.xtitle, "%s", xn);   /* defaults; options may override */
     snprintf(sp.ytitle, sizeof sp.ytitle, "%s", yn);
 
     int rc = finish_plot(c, &sp);
     free(sp.x); free(sp.y);
-    return rc;
+    PLOT_RETURN(rc);
 }
 
 /* line y x [if] [in] [, sort title() ...]   connects in data order,
@@ -391,23 +430,24 @@ static int cmp_pair(const void *a, const void *b)
 
 int do_lineplot(Cmd *c)
 {
+    int _nv0 = c->f->nvar;
     char yn[33], xn[33], rest[8];
     if (sscanf(c->varlist, "%32s %32s %7s", yn, xn, rest) != 2) {
-        tea_err("syntax: line yvar xvar [if] [in] [, sort options]\n"); return 198;
+        tea_err("syntax: line yvar xvar [if] [in] [, sort options]\n"); PLOT_RETURN(198);
     }
-    int vy = num_var(c, yn); if (vy < 0) return 111;
-    int vx = num_var(c, xn); if (vx < 0) return 111;
+    int vy = num_var(c, yn); if (vy < 0) PLOT_RETURN(111);
+    int vx = num_var(c, xn); if (vx < 0) PLOT_RETURN(111);
 
     PlotSpec sp = {0}; sp.kind = PK_LINE;
     long n = collect(c, vy, vx, &sp.y, &sp.x);
-    if (n < 0) return 198;
-    if (n == 0) { free(sp.x); free(sp.y); tea_err("no observations\n"); return 2000; }
+    if (n < 0) PLOT_RETURN(198);
+    if (n == 0) { free(sp.x); free(sp.y); tea_err("no observations\n"); PLOT_RETURN(2000); }
     sp.n = (size_t)n;
 
     if (opt_present(c->options, "sort")) {
         /* pack, sort by x, unpack — stable enough for plotting */
         double *pairs = malloc(sp.n * 2 * sizeof *pairs);
-        if (!pairs) { free(sp.x); free(sp.y); tea_err("line: out of memory\n"); return 198; }
+        if (!pairs) { free(sp.x); free(sp.y); tea_err("line: out of memory\n"); PLOT_RETURN(198); }
         for (size_t i = 0; i < sp.n; i++) { pairs[2*i] = sp.x[i]; pairs[2*i+1] = sp.y[i]; }
         qsort(pairs, sp.n, 2 * sizeof(double), cmp_pair);
         for (size_t i = 0; i < sp.n; i++) { sp.x[i] = pairs[2*i]; sp.y[i] = pairs[2*i+1]; }
@@ -418,28 +458,29 @@ int do_lineplot(Cmd *c)
 
     int rc = finish_plot(c, &sp);
     free(sp.x); free(sp.y);
-    return rc;
+    PLOT_RETURN(rc);
 }
 
 /* histogram var [if] [in] [, bins(#) freq title() ...] */
 int do_histogram(Cmd *c)
 {
+    int _nv0 = c->f->nvar;
     char vn[33], rest[8];
     if (sscanf(c->varlist, "%32s %7s", vn, rest) != 1) {
-        tea_err("syntax: histogram var [if] [in] [, bins(#) freq options]\n"); return 198;
+        tea_err("syntax: histogram var [if] [in] [, bins(#) freq options]\n"); PLOT_RETURN(198);
     }
-    int vi = num_var(c, vn); if (vi < 0) return 111;
+    int vi = num_var(c, vn); if (vi < 0) PLOT_RETURN(111);
 
     PlotSpec sp = {0}; sp.kind = PK_HIST;
     long n = collect(c, vi, -1, &sp.x, NULL);          /* sample lands in x */
-    if (n < 0) return 198;
-    if (n == 0) { free(sp.x); tea_err("no observations\n"); return 2000; }
+    if (n < 0) PLOT_RETURN(198);
+    if (n == 0) { free(sp.x); tea_err("no observations\n"); PLOT_RETURN(2000); }
     sp.n = (size_t)n;
 
     char bopt[16];
     if (opt_value(c->options, "bins", bopt, sizeof bopt)) {
         sp.bins = atoi(bopt);
-        if (sp.bins < 1 || sp.bins > 1000) { free(sp.x); tea_err("bins() must be 1..1000\n"); return 198; }
+        if (sp.bins < 1 || sp.bins > 1000) { free(sp.x); tea_err("bins() must be 1..1000\n"); PLOT_RETURN(198); }
     }
     sp.freq = opt_present(c->options, "freq");
     snprintf(sp.xtitle, sizeof sp.xtitle, "%s", vn);
@@ -447,5 +488,5 @@ int do_histogram(Cmd *c)
 
     int rc = finish_plot(c, &sp);
     free(sp.x);
-    return rc;
+    PLOT_RETURN(rc);
 }

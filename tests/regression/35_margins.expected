@@ -117,15 +117,12 @@ dy/dx w.r.t.: * (average)
 number of observations set to 50
 (50 real changes made)
 (50 real changes made)
-margins: dydx(_cons) doesn't make sense
-rc=.
+rc=198
 
 === Error: unknown variable ===
-margins: zzz not a coefficient
-rc=.
+rc=111
 
 === Error: margins without estimates ===
 number of observations set to 5
 (5 real changes made)
-margins: x not in current data
-rc=.
+rc=111

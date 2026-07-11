@@ -34,3 +34,9 @@ display "countries only: " _N " obs"
 xtset iso year
 xtreg ngdp_rpch ggxwdg_ngdp if year<=2025, fe
 summarize pcpipch if year==2023
+
+* utf-8 column alignment (Côte d'Ivoire, São Tomé must not shift pipes)
+sysuse weo, clear
+keep if iso=="CIV" | iso=="USA" | iso=="STP"
+keep if year==2024
+tabulate country

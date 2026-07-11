@@ -97,8 +97,7 @@ corr(u_i, Xb)  = 1.0000                         Prob > F      =     0.0000
 number of observations set to 6
 (6 real changes made)
 (6 real changes made)
-xtreg: panel variable not set; use xtset first
-rc=.
+rc=459
 
 === xtreg rejects ,re and ,be (not yet implemented) ===
 number of observations set to 12
@@ -110,29 +109,5 @@ number of observations set to 12
 panel variable: p
  time variable: t
          delta: 1 unit
-
-Random-effects GLS regression                   Number of obs   =       12
-Group variable: p                               Number of groups =        2
-
-R-sq:                                           Obs per group:
-     within  = 1.0000                                  min =        6
-     between = 1.0000                                  avg =      6.0
-     overall = 1.0000                                  max =        6
-
-                                                Wald chi2(1)  =        inf
-corr(u_i, X)   = 0 (assumed)                    Prob > chi2   =     0.0000
-
-------------------------------------------------------------------------------
-           a | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
--------------+----------------------------------------------------------------
-           b |        0.5           0    0.00 1.000          0.5         0.5
-       _cons |          0           0    0.00 1.000            0           0
--------------+----------------------------------------------------------------
-     sigma_u |          0   
-     sigma_e |          0   
-         rho |          0   (fraction of variance due to u_i)
-       theta |          0   (quasi-demeaning factor)
-------------------------------------------------------------------------------
-rc=.
-xtreg, be: too few panels (2) for 2 regressors
-rc=.
+rc=0
+rc=198

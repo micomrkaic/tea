@@ -712,26 +712,14 @@ tokens and route them through the existing expression evaluator
 regressors (`regress D.growth L.growth` is supported).  Test 21
 covers regress with TS operators.
 
-## capture does not set `_rc`
+## capture and `_rc` (FIXED in v1.4.0)
 
-Stata's `capture` runs a command and traps any error, setting `_rc` to
-the return code (0 on success, the error code on failure).  Tea's
-`capture` runs the command and traps the error, but `_rc` is left as
-system-missing (`.`) instead of being set to the actual code.
-
-Reproducer:
-
-```
-clear
-set obs 1
-gen x = 1
-capture summarize y   /* y doesn't exist, returns rc=111 */
-display "rc=" _rc      /* should print 111, prints '.' */
-```
-
-Diagnosis: the `_rc` macro is referenced but never written by the
-capture handler in `interp.c`.  The handler swallows the error code but
-doesn't propagate it into the macro table.
+Fixed: `capture` now suppresses all output of the captured command
+(stdout and stderr, at the file-descriptor level) and `_rc` returns the
+captured return code — 0 on success, the error code otherwise — exactly
+as in Stata.  One small remaining deviation: a successful command that
+is NOT under `capture` leaves `_rc` unchanged rather than resetting it
+to 0; branch on `_rc` only immediately after a `capture`.
 
 ## test 08 captures fewer lines than expected
 

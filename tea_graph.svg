@@ -3,98 +3,53 @@
 <rect x="70" y="40" width="550" height="340" fill="none" stroke="black" stroke-width="1"/>
 <line x1="70.00" y1="40" x2="70.00" y2="380" stroke="#dddddd" stroke-width="1"/>
 <line x1="70.00" y1="380" x2="70.00" y2="385" stroke="black" stroke-width="1"/>
-<text x="70.00" y="400" text-anchor="middle" font-size="12">1980</text>
-<line x1="161.67" y1="40" x2="161.67" y2="380" stroke="#dddddd" stroke-width="1"/>
-<line x1="161.67" y1="380" x2="161.67" y2="385" stroke="black" stroke-width="1"/>
-<text x="161.67" y="400" text-anchor="middle" font-size="12">1990</text>
-<line x1="253.33" y1="40" x2="253.33" y2="380" stroke="#dddddd" stroke-width="1"/>
-<line x1="253.33" y1="380" x2="253.33" y2="385" stroke="black" stroke-width="1"/>
-<text x="253.33" y="400" text-anchor="middle" font-size="12">2000</text>
+<text x="70.00" y="400" text-anchor="middle" font-size="12">0</text>
+<line x1="138.75" y1="40" x2="138.75" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="138.75" y1="380" x2="138.75" y2="385" stroke="black" stroke-width="1"/>
+<text x="138.75" y="400" text-anchor="middle" font-size="12">20</text>
+<line x1="207.50" y1="40" x2="207.50" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="207.50" y1="380" x2="207.50" y2="385" stroke="black" stroke-width="1"/>
+<text x="207.50" y="400" text-anchor="middle" font-size="12">40</text>
+<line x1="276.25" y1="40" x2="276.25" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="276.25" y1="380" x2="276.25" y2="385" stroke="black" stroke-width="1"/>
+<text x="276.25" y="400" text-anchor="middle" font-size="12">60</text>
 <line x1="345.00" y1="40" x2="345.00" y2="380" stroke="#dddddd" stroke-width="1"/>
 <line x1="345.00" y1="380" x2="345.00" y2="385" stroke="black" stroke-width="1"/>
-<text x="345.00" y="400" text-anchor="middle" font-size="12">2010</text>
-<line x1="436.67" y1="40" x2="436.67" y2="380" stroke="#dddddd" stroke-width="1"/>
-<line x1="436.67" y1="380" x2="436.67" y2="385" stroke="black" stroke-width="1"/>
-<text x="436.67" y="400" text-anchor="middle" font-size="12">2020</text>
-<line x1="528.33" y1="40" x2="528.33" y2="380" stroke="#dddddd" stroke-width="1"/>
-<line x1="528.33" y1="380" x2="528.33" y2="385" stroke="black" stroke-width="1"/>
-<text x="528.33" y="400" text-anchor="middle" font-size="12">2030</text>
+<text x="345.00" y="400" text-anchor="middle" font-size="12">80</text>
+<line x1="413.75" y1="40" x2="413.75" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="413.75" y1="380" x2="413.75" y2="385" stroke="black" stroke-width="1"/>
+<text x="413.75" y="400" text-anchor="middle" font-size="12">100</text>
+<line x1="482.50" y1="40" x2="482.50" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="482.50" y1="380" x2="482.50" y2="385" stroke="black" stroke-width="1"/>
+<text x="482.50" y="400" text-anchor="middle" font-size="12">120</text>
+<line x1="551.25" y1="40" x2="551.25" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="551.25" y1="380" x2="551.25" y2="385" stroke="black" stroke-width="1"/>
+<text x="551.25" y="400" text-anchor="middle" font-size="12">140</text>
 <line x1="620.00" y1="40" x2="620.00" y2="380" stroke="#dddddd" stroke-width="1"/>
 <line x1="620.00" y1="380" x2="620.00" y2="385" stroke="black" stroke-width="1"/>
-<text x="620.00" y="400" text-anchor="middle" font-size="12">2040</text>
+<text x="620.00" y="400" text-anchor="middle" font-size="12">160</text>
 <line x1="70" y1="380.00" x2="620" y2="380.00" stroke="#dddddd" stroke-width="1"/>
 <line x1="65" y1="380.00" x2="70" y2="380.00" stroke="black" stroke-width="1"/>
-<text x="61" y="380.00" text-anchor="end" dominant-baseline="middle" font-size="12">-4</text>
+<text x="61" y="380.00" text-anchor="end" dominant-baseline="middle" font-size="12">-0.3</text>
 <line x1="70" y1="323.33" x2="620" y2="323.33" stroke="#dddddd" stroke-width="1"/>
 <line x1="65" y1="323.33" x2="70" y2="323.33" stroke="black" stroke-width="1"/>
-<text x="61" y="323.33" text-anchor="end" dominant-baseline="middle" font-size="12">-2</text>
+<text x="61" y="323.33" text-anchor="end" dominant-baseline="middle" font-size="12">-0.2</text>
 <line x1="70" y1="266.67" x2="620" y2="266.67" stroke="#dddddd" stroke-width="1"/>
 <line x1="65" y1="266.67" x2="70" y2="266.67" stroke="black" stroke-width="1"/>
-<text x="61" y="266.67" text-anchor="end" dominant-baseline="middle" font-size="12">0</text>
+<text x="61" y="266.67" text-anchor="end" dominant-baseline="middle" font-size="12">-0.1</text>
 <line x1="70" y1="210.00" x2="620" y2="210.00" stroke="#dddddd" stroke-width="1"/>
 <line x1="65" y1="210.00" x2="70" y2="210.00" stroke="black" stroke-width="1"/>
-<text x="61" y="210.00" text-anchor="end" dominant-baseline="middle" font-size="12">2</text>
+<text x="61" y="210.00" text-anchor="end" dominant-baseline="middle" font-size="12">0</text>
 <line x1="70" y1="153.33" x2="620" y2="153.33" stroke="#dddddd" stroke-width="1"/>
 <line x1="65" y1="153.33" x2="70" y2="153.33" stroke="black" stroke-width="1"/>
-<text x="61" y="153.33" text-anchor="end" dominant-baseline="middle" font-size="12">4</text>
+<text x="61" y="153.33" text-anchor="end" dominant-baseline="middle" font-size="12">0.1</text>
 <line x1="70" y1="96.67" x2="620" y2="96.67" stroke="#dddddd" stroke-width="1"/>
 <line x1="65" y1="96.67" x2="70" y2="96.67" stroke="black" stroke-width="1"/>
-<text x="61" y="96.67" text-anchor="end" dominant-baseline="middle" font-size="12">6</text>
+<text x="61" y="96.67" text-anchor="end" dominant-baseline="middle" font-size="12">0.2</text>
 <line x1="70" y1="40.00" x2="620" y2="40.00" stroke="#dddddd" stroke-width="1"/>
 <line x1="65" y1="40.00" x2="70" y2="40.00" stroke="black" stroke-width="1"/>
-<text x="61" y="40.00" text-anchor="end" dominant-baseline="middle" font-size="12">8</text>
-<text x="345" y="426" text-anchor="middle" font-size="13">year</text>
-<text x="18" y="210.0" text-anchor="middle" font-size="13" transform="rotate(-90 18 210.0)">ngdp_rpch</text>
-<circle cx="70.00" cy="273.95" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="79.17" cy="194.79" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="88.33" cy="317.75" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="97.50" cy="136.79" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="106.67" cy="61.65" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="115.83" cy="148.54" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="125.00" cy="168.55" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="134.17" cy="168.78" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="143.33" cy="148.32" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="152.50" cy="162.63" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="161.67" cy="213.23" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="170.83" cy="269.75" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="180.00" cy="166.88" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="189.17" cy="188.69" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="198.33" cy="152.51" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="207.50" cy="190.59" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="216.67" cy="159.77" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="225.83" cy="140.67" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="235.00" cy="139.65" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="244.17" cy="131.01" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="253.33" cy="151.12" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="262.50" cy="239.58" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="271.67" cy="218.50" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="280.83" cy="187.45" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="290.00" cy="157.64" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="299.17" cy="167.98" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="308.33" cy="187.76" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="317.50" cy="209.89" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="326.67" cy="263.44" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="335.83" cy="339.65" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="345.00" cy="190.31" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="354.17" cy="222.35" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="363.33" cy="201.81" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="372.50" cy="206.66" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="381.67" cy="195.15" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="390.83" cy="183.20" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="400.00" cy="215.10" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="409.17" cy="197.02" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="418.33" cy="182.60" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="427.50" cy="193.45" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="436.67" cy="325.63" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="445.83" cy="92.36" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="455.00" cy="195.15" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="464.17" cy="183.51" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="473.33" cy="187.53" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="482.50" cy="206.68" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="491.67" cy="200.82" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="500.83" cy="207.17" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="510.00" cy="207.17" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="519.17" cy="213.37" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="528.33" cy="217.00" r="3" fill="#1f4e79" fill-opacity="0.75"/>
-<circle cx="537.50" cy="216.94" r="3" fill="#1f4e79" fill-opacity="0.75"/>
+<text x="61" y="40.00" text-anchor="end" dominant-baseline="middle" font-size="12">0.3</text>
+<text x="345" y="426" text-anchor="middle" font-size="13">t</text>
+<text x="18" y="210.0" text-anchor="middle" font-size="13" transform="rotate(-90 18 210.0)">dlnp</text>
+<polyline fill="none" stroke="#1f4e79" stroke-width="1.5" points="76.88,180.43 80.31,146.47 83.75,223.03 87.19,246.28 90.62,147.96 94.06,157.90 97.50,210.00 100.94,257.92 104.38,285.67 107.81,286.35 111.25,138.43 114.69,224.59 118.12,158.24 121.56,146.26 125.00,234.64 128.44,253.61 131.88,110.47 135.31,135.28 138.75,210.00 142.19,251.48 145.62,307.61 149.06,297.35 152.50,93.58 155.94,190.11 159.38,190.79 162.81,113.02 166.25,259.89 169.69,179.54 173.12,190.57 176.56,146.80 180.00,210.00 183.44,254.41 186.88,282.16 190.31,268.93 193.75,137.25 197.19,193.18 200.62,180.93 204.06,170.48 207.50,246.38 210.94,203.77 214.38,110.83 217.81,179.64 221.25,181.18 224.69,293.08 228.12,261.03 231.56,269.37 235.00,141.79 238.44,204.19 241.88,210.00 245.31,104.76 248.75,212.41 252.19,224.66 255.62,176.37 259.06,163.03 262.50,193.08 265.94,288.05 269.38,275.85 272.81,300.04 276.25,147.47 279.69,201.60 283.12,256.28 286.56,83.55 290.00,229.63 293.44,192.79 296.88,141.64 300.31,133.80 303.75,227.14 307.19,279.90 310.62,279.76 314.06,278.29 317.50,141.71 320.94,178.71 324.38,231.48 327.81,132.81 331.25,205.77 334.69,207.90 338.12,122.65 341.56,128.07 345.00,237.10 348.44,270.25 351.88,283.60 355.31,292.21 358.75,119.58 362.19,197.90 365.62,224.14 369.06,133.57 372.50,217.20 375.94,201.02 379.38,118.08 382.81,153.79 386.25,221.08 389.69,284.67 393.12,294.17 396.56,278.83 400.00,141.17 403.44,193.57 406.88,235.76 410.31,114.90 413.75,222.88 417.19,198.71 420.62,112.03 424.06,155.02 427.50,207.57 430.94,292.12 434.38,296.18 437.81,283.11 441.25,155.15 444.69,203.29 448.12,247.91 451.56,136.56 455.00,232.35 458.44,186.09 461.88,107.47 465.31,141.38 468.75,194.07 472.19,336.45 475.62,276.92 479.06,293.16 482.50,162.68 485.94,172.59 489.38,239.07 492.81,112.79 496.25,224.13 499.69,176.66 503.12,143.86 506.56,125.40 510.00,198.74 513.44,316.77 516.88,283.05 520.31,276.40 523.75,146.40 527.19,193.45 530.62,246.48 534.06,170.81 537.50,155.87 540.94,196.64 544.38,139.00 547.81,124.62 551.25,224.77 554.69,309.96 558.12,265.01 561.56,304.78 565.00,152.04"/>
 </svg>
