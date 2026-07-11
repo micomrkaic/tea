@@ -402,6 +402,20 @@ static int match_brace(Lines *L,int open){
     return -1;
 }
 
+/* evaluate an if/else-if condition (macro-expanded, variable-free scratch
+ * frame).  Returns 1/0; on parse error prints and sets *err_rc. */
+static int eval_if_cond(Interp *ip, const char *cond, int *err_rc){
+    char *xc = macro_expand(ip, cond);
+    Frame scratch; memset(&scratch,0,sizeof scratch); scratch.ts_panel=scratch.ts_time=-1;
+    const char *pe; Node *a = expr_parse(xc, &scratch, &pe); free(xc);
+    if(!a){ fprintf(stderr,"if: %s\n", pe); *err_rc = 111; return 0; }
+    EvalCtx ec={0}; ec.f=&scratch; ec.n=1; ec.N=1;
+    EVal v = expr_eval(a,&ec);
+    int truth = !v.is_str && !sv_is_miss(v.num) && v.num!=0;
+    eval_free(&v); node_free(a);
+    return truth;
+}
+
 static int exec_one(Interp *ip,Lines *L,int *i){
     char *ln=L->v[*i];
     char *s=ln; while(*s==' ')s++;
@@ -429,12 +443,13 @@ static int exec_one(Interp *ip,Lines *L,int *i){
         }
         free(xl);
         int open=*i; int close=match_brace(L,open); if(close<0){fprintf(stderr,"unbalanced {\n");return 199;}
-        for(int it=0;it<ni;it++){
+        int brc=0;
+        for(int it=0;it<ni && brc==0;it++){
             mac_set(&ip->locals,var,items[it]);
-            int rc=exec_range(ip,L,open+1,close-1); if(rc&&rc!=0){}
+            brc=exec_range(ip,L,open+1,close-1);
         }
         for(int k=0;k<ni;k++)free(items[k]); free(items);
-        *i=close; return 0;
+        *i=close; return brc;
     }
     /* forvalues i = a/b  or  a(step)b { } */
     if(!strncmp(s,"forvalues ",10)||!strncmp(s,"forv ",5)){
@@ -445,34 +460,49 @@ static int exec_one(Interp *ip,Lines *L,int *i){
         if(strchr(p,'(')){ sscanf(p,"%lf(%lf)%lf",&a,&step,&b); }
         else sscanf(p,"%lf/%lf",&a,&b);
         int open=*i,close=match_brace(L,open); if(close<0){fprintf(stderr,"unbalanced {\n");return 199;}
-        for(double x=a;(step>0)?x<=b+1e-9:x>=b-1e-9;x+=step){
+        int brc=0;
+        for(double x=a;((step>0)?x<=b+1e-9:x>=b-1e-9) && brc==0;x+=step){
             char vb[32]; if(x==(long long)x)snprintf(vb,sizeof vb,"%lld",(long long)x);else snprintf(vb,sizeof vb,"%g",x);
             mac_set(&ip->locals,var,vb);
-            exec_range(ip,L,open+1,close-1);
+            brc=exec_range(ip,L,open+1,close-1);
         }
-        *i=close; return 0;
+        *i=close; return brc;
     }
-    /* if (cond) { } [else { }]  — also single-line: if (cond) cmd */
+    /* if (cond) { } [else if (cond) { }]* [else { }] — also single-line */
     if(!strncmp(s,"if ",3) && (strchr(s,'{')||1)){
         char *brace=strchr(s,'{');
         char cond[1024];
         if(brace){ snprintf(cond,sizeof cond,"%.*s",(int)(brace-(s+3)),s+3); }
         else { snprintf(cond,sizeof cond,"%s",s+3); }
-        char *xc=macro_expand(ip,cond);
-        Frame scratch; memset(&scratch,0,sizeof scratch); scratch.ts_panel=scratch.ts_time=-1;
-        const char *pe; Node *a=expr_parse(xc,&scratch,&pe); free(xc);
-        if(!a){ fprintf(stderr,"if: %s\n", pe); return 111; }
-        EvalCtx ec={0}; ec.f=&scratch; ec.n=1;ec.N=1;
-        bool truth; { EVal v=expr_eval(a,&ec); truth=!v.is_str&&!sv_is_miss(v.num)&&v.num!=0; eval_free(&v); node_free(a); }
         if(brace){
-            int open=*i,close=match_brace(L,open); if(close<0)return 199;
-            int elseopen=-1,elseclose=-1;
-            if(close+1<L->n){ char *e=L->v[close+1]; while(*e==' ')e++;
-                if(!strncmp(e,"else",4)){ elseopen=close+1; elseclose=match_brace(L,elseopen); } }
-            if(truth) exec_range(ip,L,open+1,close-1);
-            else if(elseopen>=0) exec_range(ip,L,elseopen+1,elseclose-1);
-            *i = elseclose>=0?elseclose:close; return 0;
+            int erc=0;
+            int truth = eval_if_cond(ip, cond, &erc); if(erc) return erc;
+            int open=*i, close=match_brace(L,open); if(close<0) return 199;
+            int last=close, brc=0, done=0;
+            if(truth){ brc=exec_range(ip,L,open+1,close-1); done=1; }
+            /* walk the chain: } else if (c) { ... } else { ... } */
+            while(close+1 < L->n){
+                char *e=L->v[close+1]; while(*e==' ')e++;
+                if(strncmp(e,"else",4) || (e[4] && e[4]!=' ' && e[4]!='{')) break;
+                int eo=close+1, ec2=match_brace(L,eo); if(ec2<0) return 199;
+                last=ec2;
+                e+=4; while(*e==' ')e++;
+                if(!strncmp(e,"if ",3)){
+                    char *b2=strchr(e,'{'); if(!b2) break;
+                    char c2[1024]; snprintf(c2,sizeof c2,"%.*s",(int)(b2-(e+3)),e+3);
+                    if(!done){
+                        int t2 = eval_if_cond(ip, c2, &erc); if(erc) return erc;
+                        if(t2){ brc=exec_range(ip,L,eo+1,ec2-1); done=1; }
+                    }
+                } else {
+                    if(!done){ brc=exec_range(ip,L,eo+1,ec2-1); done=1; }
+                }
+                close=ec2;
+            }
+            *i=last; return brc;
         } else {
+            int erc=0;
+            int truth = eval_if_cond(ip, cond, &erc); if(erc) return erc;
             if(truth){ char *cmd=s+3; /* skip cond up to first space-separated cmd: take after ')' */
                 char *rp=strchr(s,')'); char *body=rp?rp+1:cmd; while(*body==' ')body++;
                 return run_line(ip,body); }
@@ -654,6 +684,7 @@ struct TeaSession {
     int     inblk;
     bool    in_block;    /* accumulating a {...} block into L */
     char    delim;       /* '\n' or ';' under #delimit */
+    bool    pending;     /* block balanced; held in case `else` follows */
     Lines   L;
 };
 
@@ -674,15 +705,16 @@ TeaSession *tea_session_new(Interp *ip, bool interactive){
     return s;
 }
 
-static void session_run_block(TeaSession *s){
+static int session_run_block_rc(TeaSession *s){
     /* echo every line of the block to log (Stata's behavior) */
     for(int z=0;z<s->L.n;z++) tea_log_command(s->L.v[z]);
     if(s->interactive)
         for(int z=0;z<s->L.n;z++) interp_hist_add(s->ip, s->L.v[z]);
-    int idx=0; exec_one(s->ip,&s->L,&idx);
+    int idx=0; int rc=exec_one(s->ip,&s->L,&idx);
     for(int z=0;z<s->L.n;z++)free(s->L.v[z]); free(s->L.v);
     s->L.v=NULL; s->L.n=0;
     s->in_block=false; s->inblk=0;
+    return rc;
 }
 
 int tea_session_feed(TeaSession *s, const char *raw, bool *need_more){
@@ -690,13 +722,35 @@ int tea_session_feed(TeaSession *s, const char *raw, bool *need_more){
 
     /* block-accumulation mode: lines are taken verbatim (no // stripping,
      * no continuation), exactly as the old nested read loop did */
+    /* a balanced block is HELD one line: if the next line begins with
+     * `else`, it belongs to the same if-statement and accumulation
+     * continues (covers else-if chains); anything else flushes the held
+     * block first, then the new line is processed normally */
+    if(s->pending){
+        const char *cs=raw; while(*cs==' ')cs++;
+        if(!strncmp(cs,"else",4) && (cs[4]==0||cs[4]==' '||cs[4]=='{')){
+            s->pending=false;
+            for(const char *p=raw;*p;p++){ if(*p=='{')s->inblk++; else if(*p=='}')s->inblk--; }
+            add_line(&s->L,raw);
+            if(s->inblk>0){ s->in_block=true; if(need_more)*need_more=true; return 0; }
+            s->pending=true;       /* balanced again: another else may follow */
+            if(need_more)*need_more=true;
+            return 0;
+        }
+        s->pending=false; s->in_block=false;
+        int hrc=session_run_block_rc(s);
+        if(hrc>0 && hrc!=5 && !s->interactive) return hrc;
+        /* fall through: process `raw` as a fresh line */
+    }
+
     if(s->in_block){
         const char *cs=raw; while(*cs==' ')cs++;
         if(*cs=='*'){ if(need_more)*need_more=true; return 0; }
         for(const char *p=raw;*p;p++){ if(*p=='{')s->inblk++; else if(*p=='}')s->inblk--; }
         add_line(&s->L,raw);
         if(s->inblk>0){ if(need_more)*need_more=true; return 0; }
-        session_run_block(s);      /* rc historically not abort-checked */
+        s->in_block=false; s->pending=true;   /* hold for possible else */
+        if(need_more)*need_more=true;
         return 0;
     }
 
@@ -784,7 +838,7 @@ int tea_session_feed(TeaSession *s, const char *raw, bool *need_more){
 }
 
 void tea_session_flush(TeaSession *s){
-    if(s->in_block && s->L.n) session_run_block(s);
+    if((s->in_block || s->pending) && s->L.n) (void)session_run_block_rc(s);
 }
 
 void tea_session_free(TeaSession *s){

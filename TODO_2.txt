@@ -1,0 +1,32 @@
+# 1 I get a problem with the else brach; note kick is my deliberately 
+# wrong command to stop execution; i use it to abort at a point, nothing for you to do there. 
+# but else is serious.
+
+mico@RefurbDell:~/work/fertility/Code and analysis$ cat test_01.do 
+local raw_data_dir "/home/mico/work/fertility/Data/Raw data"
+cd "`raw_data_dir'"
+
+// Get the country codes and group characteristics
+local dtafile "`raw_data_dir'\ctr_names.dta"
+capture confirm file "`dtafile'"
+if _rc {
+  import excel "`raw_data_dir'\country_characteristics.xlsx", ///
+    sheet("All codes") cellrange(A1:Q197) firstrow clear
+  save "`dtafile'", replace
+}
+else {
+  display "Dataset `dtafile' already exists. Skipping import."
+  use "`dtafile'", clear
+}
+
+kick
+
+
+
+ do test_01.do
+/home/mico/work/fertility/Data/Raw data
+line 11: import excel: conversion produced no usable CSV
+line 15: line 15: unrecognized command: else
+line 17: line 17: unrecognized command: kick
+do-file aborted at line 17 (rc=199)
+. 

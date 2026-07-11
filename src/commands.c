@@ -1961,6 +1961,12 @@ static int do_collapse(Cmd *c){
 /* shell out to ssconvert (gnumeric) or libreoffice to turn xlsx/ods into csv.
  * Returns 0 on success and writes the temp .csv path into out_path. */
 static int convert_spreadsheet(const char *src, const char *sheet, char *out_path, size_t op_sz){
+    if(access(src,R_OK)!=0){
+        tea_err("import: file %s not found\n", src);
+        if(strchr(src,'\\'))
+            tea_err("(note: the path contains backslashes \u2014 on Linux/macOS use forward slashes)\n");
+        return 601;
+    }
     /* try ssconvert first (gnumeric — fast, scriptable) */
     int have_ss = (system("command -v ssconvert >/dev/null 2>&1")==0);
 
@@ -3210,6 +3216,49 @@ static int do_save(Cmd *c){
  *   sysuse NAME [, clear]  load one (clear required if data in memory)
  * ---------------------------------------------------------------------- */
 /* ---- history: list / save / clear the interactive command history ------ */
+/* ---- confirm: assert existence/type; the capture-confirm idiom --------- */
+static int do_confirm(Cmd *c){
+    char t1[32]="", t2[32]="", rest[512]="";
+    sscanf(c->args, "%31s %31s", t1, t2);
+    int isnew = !strcmp(t1,"new");
+    const char *kind = isnew ? t2 : t1;
+    /* the object name = remainder after the keywords, unquoted */
+    const char *p = c->args;
+    for(int k = 0; k < (isnew?2:1); k++){ while(*p==' ')p++; while(*p&&*p!=' ')p++; }
+    while(*p==' ')p++;
+    snprintf(rest,sizeof rest,"%s",p);
+    size_t L=strlen(rest); while(L&&(rest[L-1]==' '))rest[--L]=0;
+    if(L>=2 && rest[0]=='"' && rest[L-1]=='"'){ rest[L-1]=0; memmove(rest,rest+1,L-1); }
+    if(!kind[0]||!rest[0]){ tea_err("confirm: syntax is confirm [new] file|variable NAME\n"); return 198; }
+
+    if(!strcmp(kind,"file")){
+        int exists = (access(rest,F_OK)==0);
+        if(isnew){ if(exists){ tea_err("file %s already exists\n",rest); return 602; } return 0; }
+        if(!exists){
+            tea_err("file %s not found\n",rest);
+            if(strchr(rest,'\\'))
+                tea_err("(note: the path contains backslashes \u2014 on Linux/macOS use forward slashes)\n");
+            return 601;
+        }
+        return 0;
+    }
+    if(!strcmp(kind,"variable")||!strcmp(kind,"numeric")||!strcmp(kind,"string")){
+        const char *vn = rest;
+        if(!strcmp(kind,"numeric")||!strcmp(kind,"string")){
+            /* confirm numeric variable X / confirm string variable X */
+            if(!strncmp(rest,"variable ",9)) vn = rest+9;
+        }
+        int vi = var_find(c->f, vn);
+        if(isnew){ if(vi>=0){ tea_err("variable %s already defined\n",vn); return 110; } return 0; }
+        if(vi<0){ tea_err("variable %s not found\n",vn); return 111; }
+        if(!strcmp(kind,"numeric") && c->f->vars[vi].type!=VT_NUM){ tea_err("%s is a string variable\n",vn); return 7; }
+        if(!strcmp(kind,"string") && c->f->vars[vi].type==VT_NUM){ tea_err("%s is a numeric variable\n",vn); return 7; }
+        return 0;
+    }
+    tea_err("confirm: unknown kind '%s' (file|variable)\n", kind);
+    return 198;
+}
+
 static int do_history(Cmd *c){
     extern Interp *g_tea_interp;
     Interp *ip = g_tea_interp;
@@ -3855,6 +3904,11 @@ Disp TABLE[]={
         "save FILE [, replace]                        write Stata .dta (default) or .tea\n"
         "      e.g.  save mydata.dta, replace        — emits Stata-compatible .dta\n"
         "      e.g.  save mydata.tea, replace        — native tea binary"},
+    {"confirm",do_confirm,0,
+        "confirm [new] file FILENAME | confirm [new|numeric|string] variable NAME\n"
+        "      error (601/602/111/110/7) unless the condition holds; use with\n"
+        "      capture:  capture confirm file f.dta\n"
+        "                if _rc { <create it> }"},
     {"history",do_history,0,
         "history [N] | history save FILE [, replace] | history clear\n"
         "      list, export, or clear this session's interactive commands\n"

@@ -1,0 +1,11 @@
+confirm missing file rc: 601
+confirm new missing rc: 0
+number of observations set to 3
+(3 real changes made)
+confirm var rc: 0
+confirm ghost rc: 111
+confirm numeric rc: 0
+then-branch
+final else-branch
+line 40: sysuse: no bundled dataset 'nosuchdata' (try: sysuse dir)
+do-file aborted at line 40 (rc=601)
