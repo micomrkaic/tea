@@ -24,7 +24,7 @@ REGISTRY = [
     ("pwt",      "pwt.csv",
      "Penn World Table 10.0 sample: 22 countries x 1950-2019, CC BY 4.0 (growth)"),
     ("weo",      "weo.csv",
-     "IMF World Economic Outlook, April 2026: 197 economies x 1980-2031, 44 indicators"),
+     "IMF World Economic Outlook, April 2026: 197 countries + 13 aggregates, 145 indicators"),
 ]
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

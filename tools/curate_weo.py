@@ -16,9 +16,10 @@
 
 import sys, csv, io, os
 
-# Output: long panel  country iso year  + one lowercased-subject-code column
-# per indicator.  Aggregates (World, regions — non-3-letter codes) are
-# dropped: sysuse weo is a country panel.  All year columns are kept,
+# Output: long panel  country iso year aggregate  + one lowercased-subject-
+# code column per indicator.  World/regional groups (non-ISO G-codes) are
+# kept with aggregate==1, so `keep if aggregate==0` yields the country
+# panel and `keep if aggregate==1` the groups.  All year columns are kept,
 # projections included; note the vintage in data/SOURCES.md.
 
 def write_output(data, names, codes, vintage):
@@ -27,10 +28,11 @@ def write_output(data, names, codes, vintage):
     varnames = [c.lower() for c in sorted(codes)]
     with open(out, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["country", "iso", "year"] + varnames)
+        w.writerow(["country", "iso", "year", "aggregate"] + varnames)
         for (iso, yr) in sorted(data):
             d = data[(iso, yr)]
-            w.writerow([names[iso], iso, yr] + [d.get(v, "") for v in varnames])
+            agg = 0 if len(iso) == 3 else 1
+            w.writerow([names[iso], iso, yr, agg] + [d.get(v, "") for v in varnames])
     tbl = os.path.join(os.path.dirname(out), "weo_codes.txt")
     with open(tbl, "w") as f:
         f.write(f"WEO subject codes in the bundled extract ({vintage}):\n\n")
@@ -61,7 +63,6 @@ def curate_portal(path, vintage):
         parts = r[col["SERIES_CODE"]].split(".")
         if len(parts) != 3 or parts[2] != "A": continue
         iso, code = parts[0], parts[1]
-        if len(iso) != 3: continue                     # aggregates dropped
         names[iso] = r[col["COUNTRY"]].strip()
         codes.setdefault(code, (r[col["INDICATOR"]].strip(),
                                 r[col["UNIT"]].strip(),
@@ -94,7 +95,7 @@ def curate_classic(path, vintage):
         if len(r) <= col["WEO Subject Code"]: continue
         code = r[col["WEO Subject Code"]].strip()
         iso  = r[col["ISO"]].strip()
-        if not code or len(iso) != 3: continue         # aggregates dropped
+        if not code or not iso: continue
         names[iso] = r[col["Country"]].strip()
         codes.setdefault(code, (r[col["Subject Descriptor"]].strip(),
                                 r[col["Units"]].strip(),

@@ -4,7 +4,7 @@ bundled practice datasets (load with: sysuse NAME):
   longley   Longley (1967) US macro, 16 obs: famously ill-conditioned (regress)
   nmes1988  Deb-Trivedi (1997) medical care demand, 4406 persons 66+ (poisson, logit)
   pwt       Penn World Table 10.0 sample: 22 countries x 1950-2019, CC BY 4.0 (growth)
-  weo       IMF World Economic Outlook, April 2026: 197 economies x 1980-2031, 44 indicators
+  weo       IMF World Economic Outlook, April 2026: 197 countries + 13 aggregates, 145 indicators
 provenance & citations: data/SOURCES.md in the source tree
 (grunfeld: 200 obs loaded — Grunfeld (1958) investment panel: 10 US firms x 1935-1954 (xtreg, hausman))
 grunfeld: 200 obs
@@ -86,8 +86,10 @@ Log likelihood = -18645.976763                   Pseudo R2       =     0.0611
         lgdp |       1538       10.13       0.6112       8.082       11.48
 line 26: sysuse: no bundled dataset 'nosuchdata' (try: sysuse dir)
 still alive
-(weo: 9492 obs loaded — IMF World Economic Outlook, April 2026: 197 economies x 1980-2031, 44 indicators)
-weo: 9492 obs
+(weo: 10168 obs loaded — IMF World Economic Outlook, April 2026: 197 countries + 13 aggregates, 145 indicators)
+weo: 10168 obs
+(observations now 9492)
+countries only: 9492 obs
 panel variable: iso
  time variable: year
          delta: 1 unit
