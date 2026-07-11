@@ -84,6 +84,7 @@
 </div>
 
 <script src="xterm.min.js"></script>
+<script src="lineeditor.js"></script>
 <script src="tea.js"></script>
 <script>
 const splashStatus = document.getElementById('splash-status');
@@ -103,9 +104,24 @@ const term = new Terminal({ cursorBlink:true, fontSize:14,
 term.open(document.getElementById('terminal'));
 
 let M = null, needMore = false;
-let line = '', hist = [], histIdx = -1;
 const PROMPT = () => needMore ? '> ' : '. ';
 const known = new Set();
+
+const ed = new LineEditor({
+  write: s => term.write(s),
+  prompt: PROMPT,
+  cols: () => term.cols,
+  submit: cmd => {
+    if (cmd.trim().length)
+      needMore = M.ccall('tea_web_exec','number',['string'],[cmd]) === 1;
+    ed.freshPrompt();
+  },
+  complete: (line, pt) => {
+    const s = M.ccall('tea_web_complete','string',['string','number'],[line, pt]);
+    return s ? s.split('\n').filter(x => x.length) : [];
+  },
+  clearScreen: () => term.write('\x1b[2J\x1b[H'),
+});
 
 /* fetch the wasm ourselves so the splash can show real download progress */
 async function fetchWasm(){
@@ -160,7 +176,7 @@ async function fetchWasm(){
   term.writeln(A + '      \\       /' + R);
   term.writeln(A + '       `-----\u00b4' + R + D + '     type help for commands \u00b7 sysuse dir for practice datasets' + R);
   term.writeln('');
-  term.write(PROMPT());
+  ed.freshPrompt();
 
   const splash = document.getElementById('splash');
   splash.classList.add('done');
@@ -168,39 +184,7 @@ async function fetchWasm(){
   term.focus();
 })().catch(e => fatal(e && e.message ? e.message : String(e)));
 
-function exec(cmd){
-  hist.push(cmd); histIdx = hist.length;
-  needMore = M.ccall('tea_web_exec','number',['string'],[cmd]) === 1;
-}
-
-term.onData(data => {
-  if (!M) return;
-  for (const ch of data) {
-    if (ch === '\r') {
-      term.write('\r\n');
-      const cmd = line; line = '';
-      if (cmd.trim().length) exec(cmd);
-      term.write(PROMPT());
-    } else if (ch === '\x7f') {
-      if (line.length) { line = line.slice(0,-1); term.write('\b \b'); }
-    } else if (ch >= ' ' || ch === '\t') {
-      line += ch; term.write(ch);
-    }
-  }
-});
-term.attachCustomKeyEventHandler(ev => {
-  if (ev.type !== 'keydown' || !M) return true;
-  if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') {
-    if (!hist.length) return false;
-    histIdx = ev.key === 'ArrowUp' ? Math.max(0, histIdx-1)
-                                   : Math.min(hist.length, histIdx+1);
-    const repl = histIdx < hist.length ? hist[histIdx] : '';
-    term.write('\r\x1b[K' + PROMPT() + repl);
-    line = repl;
-    return false;
-  }
-  return true;
-});
+term.onData(d => { if (M) ed.feed(d); });
 
 document.getElementById('upload').addEventListener('change', async ev => {
   for (const f of ev.target.files) {
@@ -209,7 +193,7 @@ document.getElementById('upload').addEventListener('change', async ev => {
     known.add(f.name);
     term.writeln(`\r\n(uploaded ${f.name}, ${buf.length} bytes \u2014 e.g. use ${f.name} or import delimited ${f.name})`);
   }
-  term.write(PROMPT() + line);
+  ed._lastCursorRow = 0; ed.render();
 });
 
 document.getElementById('dl').addEventListener('click', () => {
@@ -225,7 +209,7 @@ document.getElementById('dl').addEventListener('click', () => {
     } catch(e) {}
   }
   term.writeln(`\r\n(${n} new file${n===1?'':'s'} downloaded)`);
-  term.write(PROMPT() + line);
+  ed._lastCursorRow = 0; ed.render();
 });
 </script>
 </body>
