@@ -84,6 +84,9 @@ typedef struct {
 } Workspace;
 
 Workspace *ws_new(void);
+
+/* completion oracle (defined in commands.c; used by the WASM front-end) */
+int tea_complete(Frame *f, const char *line, int point, char *out, size_t outsz);
 void       ws_free(Workspace *w);
 
 Frame *frame_get(Workspace *w, const char *name);   /* NULL if absent */

@@ -4,7 +4,7 @@ bundled practice datasets (load with: sysuse NAME):
   longley   Longley (1967) US macro, 16 obs: famously ill-conditioned (regress)
   nmes1988  Deb-Trivedi (1997) medical care demand, 4406 persons 66+ (poisson, logit)
   pwt       Penn World Table 10.0 sample: 22 countries x 1950-2019, CC BY 4.0 (growth)
-  weo       IMF World Economic Outlook, April 2026: 197 countries+13 aggregates, 145 indicators, 1980-2031
+  weo       IMF World Economic Outlook, April 2026: 197 economies x 1980-2031, 44 indicators
 provenance & citations: data/SOURCES.md in the source tree
 (grunfeld: 200 obs loaded — Grunfeld (1958) investment panel: 10 US firms x 1935-1954 (xtreg, hausman))
 grunfeld: 200 obs
@@ -84,38 +84,36 @@ Log likelihood = -18645.976763                   Pseudo R2       =     0.0611
     Variable |        Obs        Mean    Std. dev.         Min         Max
 -------------+--------------------------------------------------------------
         lgdp |       1538       10.13       0.6112       8.082       11.48
-(weo: 10168 obs loaded — IMF World Economic Outlook, April 2026: 197 countries+13 aggregates, 145 indicators, 1980-2031)
-weo: 10168 obs
-(observations now 9492)
+line 26: sysuse: no bundled dataset 'nosuchdata' (try: sysuse dir)
+still alive
+(weo: 9492 obs loaded — IMF World Economic Outlook, April 2026: 197 economies x 1980-2031, 44 indicators)
+weo: 9492 obs
 panel variable: iso
  time variable: year
          delta: 1 unit
 
-    Variable |        Obs        Mean    Std. dev.         Min         Max
--------------+--------------------------------------------------------------
-   ngdp_rpch |         52       2.558        1.802      -2.576       7.236
-
-Fixed-effects (within) regression               Number of obs   =     4894
-Group variable: iso                             Number of groups =      118
+Fixed-effects (within) regression               Number of obs   =     5854
+Group variable: iso                             Number of groups =      193
 
 R-sq:                                           Obs per group:
-     within  = 0.0093                                  min =        9
-     between = 0.0697                                  avg =     41.5
-     overall = 0.0086                                  max =       52
+     within  = 0.0132                                  min =       14
+     between = 0.0111                                  avg =     30.3
+     overall = 0.0115                                  max =       46
 
-                                                F(2, 4774) =      22.35
-corr(u_i, Xb)  = -0.0708                        Prob > F      =     0.0000
+                                                F(1, 5660) =      75.87
+corr(u_i, Xb)  = -0.2180                        Prob > F      =     0.0000
 
 ------------------------------------------------------------------------------
    ngdp_rpch | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
 -------------+----------------------------------------------------------------
-     pcpipch | -0.000367782  6.68508e-05   -5.50 0.000   -0.00049884  -0.000236723
-         lur | -0.0555934   0.0170624   -3.26 0.001   -0.0890435  -0.0221433
+ ggxwdg_ngdp | -0.0201611  0.00231467   -8.71 0.000   -0.0246987  -0.0156234
 -------------+----------------------------------------------------------------
-     sigma_u |    1.37982   
-     sigma_e |    4.40551   
-         rho |  0.0893327   (fraction of variance due to u_i)
+     sigma_u |    1.74613   
+     sigma_e |    5.44188   
+         rho |  0.0933459   (fraction of variance due to u_i)
 ------------------------------------------------------------------------------
-F test that all u_i=0:  F(117, 4774) =       4.41      Prob > F = 0.0000
-line 33: sysuse: no bundled dataset 'nosuchdata' (try: sysuse dir)
-still alive
+F test that all u_i=0:  F(192, 5660) =       4.07      Prob > F = 0.0000
+
+    Variable |        Obs        Mean    Std. dev.         Min         Max
+-------------+--------------------------------------------------------------
+     pcpipch |        195       15.47        56.32      -7.714       667.4

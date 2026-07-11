@@ -58,6 +58,17 @@ const char *tea_web_version(void){
     return TEA_VERSION;
 }
 
+/* completion for the browser terminal: newline-joined candidates */
+extern int tea_complete(Frame *f, const char *line, int point,
+                        char *out, size_t outsz);
+EMSCRIPTEN_KEEPALIVE
+const char *tea_web_complete(const char *line, int point){
+    static char buf[8192];
+    buf[0] = 0;
+    if(g_web_ws) tea_complete(g_web_ws->cur, line ? line : "", point, buf, sizeof buf);
+    return buf;
+}
+
 /* Batch entry point: run a do-file from MEMFS through the exact same
  * non-interactive path as the native binary (used to validate the WASM
  * build against the regression suite; also useful for a "run .do" button). */

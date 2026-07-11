@@ -189,7 +189,7 @@ web/tea.js: $(WASM_SRC)
 	emcc -std=c17 -O2 $(WASM_INC) $(WASM_SRC) \
 	  $(WASM_LIBS)/liblapack.a $(WASM_LIBS)/libblas.a $(WASM_LIBS)/libf2c.a \
 	  $(WASM_LIBS)/libgsl.a $(WASM_LIBS)/libreadstat.a \
-	  -sEXPORTED_FUNCTIONS=_tea_web_init,_tea_web_exec,_tea_web_version,_tea_web_run_dofile,_malloc,_free \
+	  -sEXPORTED_FUNCTIONS=_tea_web_init,_tea_web_exec,_tea_web_version,_tea_web_run_dofile,_tea_web_complete,_malloc,_free \
 	  -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,FS,NODEFS \
 	  -sALLOW_MEMORY_GROWTH=1 -sMODULARIZE=1 -sEXPORT_NAME=createTea \
 	  -sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 -lnodefs.js \

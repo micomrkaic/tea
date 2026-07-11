@@ -3563,6 +3563,51 @@ static int wrap_keep(Cmd*c){return do_dropkeep(c,1);}
 static int wrap_ts(Cmd*c){return do_tsset(c,0);}
 static int wrap_xt(Cmd*c){return do_tsset(c,1);} 
 
+
+/* ---- completion oracle (web front-end) ---------------------------------
+ * Newline-joined candidates for the word ending at `point` in `line`:
+ * first word -> command names; after `sysuse`/`help` -> dataset/command
+ * names; otherwise -> variable names of the current frame.  Returns the
+ * number of candidates written.  Native builds use GNU readline instead;
+ * this exists so the browser terminal completes like the real REPL. */
+int tea_complete(Frame *f, const char *line, int point, char *out, size_t outsz)
+{
+    if(point < 0 || point > (int)strlen(line)) point = (int)strlen(line);
+    int ws = point;                       /* start of the word being completed */
+    while(ws > 0 && line[ws-1] != ' ' && line[ws-1] != ',' && line[ws-1] != '(')
+        ws--;
+    const char *word = line + ws;
+    int wlen = point - ws;
+
+    /* which context? first token decides */
+    char first[64] = ""; sscanf(line, "%63s", first);
+    int first_word = 1;
+    for(int i = 0; i < ws; i++) if(line[i] != ' ') { first_word = 0; break; }
+
+    size_t o = 0; int n = 0;
+    #define EMIT(s) do{ size_t L=strlen(s); if(o+L+2<outsz){ memcpy(out+o,(s),L); out[o+L]='\n'; o+=L+1; n++; } }while(0)
+
+    if(first_word){
+        extern Disp TABLE[];
+        for(int i = 0; TABLE[i].name; i++)
+            if(!strncmp(TABLE[i].name, word, wlen)) EMIT(TABLE[i].name);
+    } else if(!strcmp(first, "sysuse")){
+        for(int i = 0; i < SYSDATA_N; i++)
+            if(!strncmp(SYSDATA[i].name, word, wlen)) EMIT(SYSDATA[i].name);
+        if(!strncmp("dir", word, wlen)) EMIT("dir");
+    } else if(!strcmp(first, "help")){
+        extern Disp TABLE[];
+        for(int i = 0; TABLE[i].name; i++)
+            if(!strncmp(TABLE[i].name, word, wlen)) EMIT(TABLE[i].name);
+    } else if(f){
+        for(int i = 0; i < f->nvar; i++)
+            if(!strncmp(f->vars[i].name, word, wlen)) EMIT(f->vars[i].name);
+    }
+    #undef EMIT
+    if(o < outsz) out[o] = 0;
+    return n;
+}
+
 Disp TABLE[]={
     {"scatter",do_scatter,1,
         "scatter yvar xvar [if] [in] [, title() xtitle() ytitle() saving() noview]\n"

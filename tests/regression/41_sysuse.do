@@ -22,13 +22,13 @@ sysuse pwt, clear
 gen lgdp = ln(rgdpna/pop)
 summarize lgdp
 
-sysuse weo, clear
-display "weo: " _N " obs"
-keep if aggregate==0
-xtset iso year
-summarize ngdp_rpch if iso=="USA"
-xtreg ngdp_rpch pcpipch lur, fe
-
 * unknown dataset errors cleanly
 capture sysuse nosuchdata, clear
 display "still alive"
+
+* weo: the full April 2026 WEO database
+sysuse weo, clear
+display "weo: " _N " obs"
+xtset iso year
+xtreg ngdp_rpch ggxwdg_ngdp if year<=2025, fe
+summarize pcpipch if year==2023

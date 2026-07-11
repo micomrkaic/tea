@@ -324,7 +324,7 @@ formats.
   Outlook, April 2026: 197 economies + 13 aggregates, 145 indicators,
   1980-2031), `grunfeld` (panel), `airline` (ARIMA), `longley`
   (ill-conditioned regression), `nmes1988` (health economics:
-  poisson/logit), `pwt` (Penn World Table sample, CC BY 4.0).  `sysuse dir`
+  poisson/logit), `pwt` (Penn World Table sample, CC BY 4.0), and `weo` — the complete IMF World Economic Outlook database, April 2026 vintage: 197 economies, 44 indicators, 1980-2031 including projections.  `sysuse dir`
   lists them; `sysuse grunfeld, clear` loads one.  No files installed, works
   identically in the browser build.  Provenance and citations in
   data/SOURCES.md; regenerate the embedded source with tools/gen_sysdata.py.
