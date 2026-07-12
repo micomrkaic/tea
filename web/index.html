@@ -67,7 +67,7 @@
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
   <div class="tagline">tiny econometric assistant</div>
-  <div class="ver">v<!--TEAVER-->1.5.0<!--/TEAVER--> &middot; runs entirely in your browser</div>
+  <div class="ver">v<!--TEAVER-->1.5.1<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
   <div class="foot">free software (GPLv3) &middot; no data leaves your machine</div>
@@ -115,6 +115,7 @@ xtreg ngdp_rpch ggxwdg_ngdp if year<=2025, fe"></textarea>
 </div>
 
 <script src="xterm.min.js"></script>
+<script src="xterm-addon-fit.js"></script>
 <script src="lineeditor.js"></script>
 <script src="tea.js"></script>
 <script>
@@ -133,6 +134,10 @@ if (typeof createTea === 'undefined') { fatal('tea.js missing'); throw new Error
 const term = new Terminal({ cursorBlink:true, fontSize:14,
   theme:{ background:'#1e1e1e' }, convertEol:true, scrollback:5000 });
 term.open(document.getElementById('terminal'));
+const fit = new FitAddon.FitAddon();
+term.loadAddon(fit);
+fit.fit();                                   /* fill the container: no 80x24 default */
+window.addEventListener('resize', () => fit.fit());
 
 let M = null, needMore = false;
 const PROMPT = () => needMore ? '> ' : '. ';
