@@ -442,6 +442,12 @@ any change keeps the manual and the implementation in agreement.*
   clear                                        drop all data in current frame
 ```
 
+## `status`
+
+```
+  status                                       one-line summary: source, obs, vars, memory, sort/xtset state
+```
+
 ## `frame`
 
 ```

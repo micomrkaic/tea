@@ -1,0 +1,14 @@
+(no data in memory)
+(grunfeld: 200 obs loaded — Grunfeld (1958) investment panel: 10 US firms x 1935-1954 (xtreg, hausman))
+grunfeld (sysuse) — 200 obs, 5 vars, 7.8 KB
+grunfeld (sysuse) — 200 obs, 5 vars, 7.8 KB  (sorted: year)
+panel variable: firm
+ time variable: year
+         delta: 1 unit
+grunfeld (sysuse) — 200 obs, 5 vars, 7.8 KB  (sorted: firm year; xtset: firm year)
+file /tmp/tea_test53.tea saved
+/tmp/tea_test53.tea — 200 obs, 5 vars, 7.8 KB  (sorted: firm year; xtset: firm year)
+(5 vars, 200 obs)
+/tmp/tea_test53.tea — 200 obs, 5 vars, 7.8 KB
+(no data in memory)
+198

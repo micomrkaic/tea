@@ -44,6 +44,10 @@ typedef struct Frame {
     int        cap_var;
     size_t     nobs;
     char       data_label[81];   /* dataset label (Stata's `label data` text) */
+    char       source[512];      /* where the data came from (use/import/sysuse;
+                                    updated by save; cleared by `clear`).  Set at
+                                    the COMMAND layer only, so internal frame ops
+                                    (reshape swap, restore) don't disturb it. */
     char       fweight_var[33];  /* name of variable declared as fweight, or "" */
     /* sort state: list of var indices the data is currently sorted by */
     int       *sortvars;

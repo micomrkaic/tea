@@ -23,6 +23,7 @@
 #include "tsop.h"
 #include "plot.h"
 #include "sysdata.h"
+#include "progress.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +32,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <dirent.h>
 #include <fnmatch.h>
 #include <errno.h>
@@ -2157,6 +2159,7 @@ static int do_import(Cmd *c){
         /* try to remove the temp dir; ignore failure */
         char *slash=strrchr(tmpcsv,'/'); if(slash){ *slash=0; rmdir(tmpcsv); }
         if(rc){ tea_err("import %s: conversion produced no usable CSV\n",w1); return rc; }
+        snprintf(c->f->source,sizeof c->f->source,"%s",fn);
         if(!c->quiet) printf("(%d vars, %zu obs)\n",c->f->nvar,c->f->nobs);
         return 0;
     }
@@ -2173,6 +2176,7 @@ static int do_import(Cmd *c){
         else if(strcmp(cb,"lower")){ tea_err("import delimited: case() must be preserve, lower, or upper\n"); return 198; } } }
     int rc2 = load_csv_into(c->f, fn, delim, CSV_DELIM, csvcase);
     if(rc2){ tea_err("import: cannot read %s (rc=%d)\n", fn, rc2); return rc2; }
+    snprintf(c->f->source,sizeof c->f->source,"%s",fn);
     if(!c->quiet) printf("(%d vars, %zu obs)\n",c->f->nvar,c->f->nobs);
     return 0;
 }
@@ -2322,6 +2326,8 @@ static void sanitize_colname_excel(const char *in, int col, char *out, size_t ou
 
 static int load_csv_into(Frame *f,const char *fn,char delim,int mode,int casemode){
     FILE *fp=fopen(fn,"r"); if(!fp)return 601;
+    { struct stat st; size_t fsz = fstat(fileno(fp),&st)==0 ? (size_t)st.st_size : 0;
+      progress_begin("importing", fsz); }
     /* Buffer for one logical record (may span multiple physical lines if a
      * quoted field contains embedded newlines). */
     size_t bufcap = 1<<16;
@@ -2352,6 +2358,7 @@ static int load_csv_into(Frame *f,const char *fn,char delim,int mode,int casemod
             /* else: quoted field continues on next physical line; keep reading */
         }
         if(!got_anything) break;
+        progress_step(len + 1);            /* +1: the stripped newline */
         /* strip trailing CR/LF from the assembled record (but only at the very end —
          * newlines inside quotes must stay as part of the field value) */
         while(len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')){
@@ -2413,6 +2420,7 @@ static int load_csv_into(Frame *f,const char *fn,char delim,int mode,int casemod
         row++;
     }
     free(line);
+    progress_end();
     fclose(fp); frame_unsort(f); return rc;
 }
 /* Case-insensitive end-of-string match.  Used for file extension dispatch
@@ -2582,8 +2590,10 @@ static int do_merge(Cmd *c){
         else { if(do_repl){ if(S->str[ur][0])str_set(D,outn,S->str[ur]); } \
             else if(R->vars[mcommon[q]].str[outn][0]==0) str_set(D,outn,S->str[ur]); } } }while(0)
 
+    progress_begin("merge", c->f->nobs + U->nobs);
     if(iter_master){
         for(size_t i=0;i<c->f->nobs;i++){
+            progress_step(1);
             keystr(c->f,km,nk,i,kb,sizeof kb); long ur=kmap_get(&map,kb);
             GROW(); COPYMASTER(i);
             if(ur>=0){ useu[ur]=1; COPYUONLY((size_t)ur); APPLYUPDATE((size_t)ur);
@@ -2597,6 +2607,7 @@ static int do_merge(Cmd *c){
         }
     } else {  /* 1:m : iterate using, map on master */
         for(size_t r=0;r<U->nobs;r++){
+            progress_step(1);
             keystr(U,ku,nk,r,kb,sizeof kb); long mr=kmap_get(&map,kb);
             GROW();
             if(mr>=0){ usem[mr]=1; COPYMASTER((size_t)mr); COPYUONLY(r); APPLYUPDATE(r);
@@ -2636,6 +2647,7 @@ static int do_merge(Cmd *c){
             if(!allow[m]){ tea_err("merge: assertion failed (found _merge==%d)\n",m);
                 /* still swap result in, like Stata leaves data; return error */ break; } }
     }
+    progress_end();
 
     long n1=0,n2=0,n3=0;
     if(mgvar>=0) for(size_t i=0;i<outn;i++){ int m=(int)R->vars[mgvar].num[i]; if(m==1)n1++;else if(m==2)n2++;else n3++; }
@@ -2893,8 +2905,10 @@ static int do_reshape(Cmd *c){
             pvmat[sIdx*nl+a]=var_find(Rsrc,nm2); }
 
         frame_set_nobs(R,Rsrc->nobs*(size_t)nl);
+        progress_begin("reshape long", Rsrc->nobs*(size_t)nl);
         size_t on=0;
         for(size_t r=0;r<Rsrc->nobs;r++) for(int a=0;a<nl;a++){
+            progress_step(1);
             for(int q=0;q<niv;q++){ Variable*S=&Rsrc->vars[iv[q]],*D=&R->vars[q];
                 if(S->type==VT_NUM)D->num[on]=S->num[r]; else str_set(D,on,S->str[r]); }
             if(jstr) str_set(&R->vars[niv],on,slev[a]); else R->vars[niv].num[on]=nlev[a];
@@ -2905,6 +2919,7 @@ static int do_reshape(Cmd *c){
                 if(S->type==VT_NUM)D->num[on]=S->num[r]; else str_set(D,on,S->str[r]); }
             on++;
         }
+        progress_end();
         free(pvmat); free(cv); free(isstub);
         if(slev){for(int q=0;q<nl;q++)free(slev[q]);} free(slev); free(nlev);
         #undef LONG_BAIL
@@ -2933,7 +2948,9 @@ static int do_reshape(Cmd *c){
 
         /* distinct j levels, kept sorted (binary-search insert).  A missing
          * or empty j value cannot name a column — Stata errors, so do we. */
+        progress_begin("reshape wide (scan)", Rsrc->nobs);
         for(size_t r=0;r<Rsrc->nobs;r++){
+            progress_step(1);
             if(jstr){
                 const char *x=Rsrc->vars[jv].str[r]; if(!x) x="";
                 if(!x[0]){ tea_err("reshape wide: j variable %s has empty values\n",jname); WIDE_BAIL(498); }
@@ -2959,6 +2976,7 @@ static int do_reshape(Cmd *c){
             }
         }
 
+        progress_end();
         /* stub source columns must exist in the long data */
         srccol=malloc((size_t)ns*sizeof(int));
         for(int sIdx=0;sIdx<ns;sIdx++){
@@ -3012,8 +3030,10 @@ static int do_reshape(Cmd *c){
             snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); }
 
         frame_set_nobs(R,(size_t)ng);
+        progress_begin("reshape wide", (size_t)ng);
         seen=malloc((size_t)(nl>0?nl:1));
         for(int g=0;g<ng;g++){
+            progress_step(1);
             for(int q=0;q<niv;q++){ Variable*S=&Rsrc->vars[iv[q]],*D=&R->vars[q];
                 if(S->type==VT_NUM)D->num[g]=S->num[lo[g]]; else str_set(D,g,S->str[lo[g]]); }
             /* carried: copy from the first row of the group; verify constancy */
@@ -3059,6 +3079,7 @@ static int do_reshape(Cmd *c){
                     if(S->type==VT_NUM)D->num[g]=S->num[r]; else str_set(D,g,S->str[r]); }
             }
         }
+        progress_end();
         if(slev){for(int q=0;q<nl;q++)free(slev[q]);} free(slev); free(nlev);
         free(srccol); free(carr); free(seen);
         free(lo); free(hi);
@@ -3524,6 +3545,7 @@ static int do_save(Cmd *c){
         const char *err = NULL;
         int rc = dta_write(c->f, c->ws, fn, version, &err);
         if(rc){ tea_err("save: %s\n", err ? err : "write failed"); return rc; }
+        snprintf(c->f->source,sizeof c->f->source,"%s",fn);
         if(!c->quiet) printf("file %s saved\n", fn);
         return 0;
     }
@@ -3531,6 +3553,7 @@ static int do_save(Cmd *c){
     /* native .tea binary format (fast internal exchange) */
     int wrc = pst_write(c->f, fn);
     if(wrc) return wrc;
+    snprintf(c->f->source,sizeof c->f->source,"%s",fn);
     if(!c->quiet)printf("file %s saved\n",fn);
     return 0;
 }
@@ -3666,11 +3689,24 @@ static int do_duplicates(Cmd *c){
 }
 
 static int g_tmpseq = 0;
-/* Session tempfiles (Stata parity): names are unique per PROCESS (pid in
- * the path — a do-file rerun must never collide with its own leftovers),
- * and every tempfile path handed out is deleted when tea exits, whether
- * or not the script got around to it.  Registered via atexit. */
+/* Session tempfiles (Stata parity): names must be unique per SESSION — a
+ * do-file rerun must never collide with its own leftovers.  pid alone is
+ * not enough: under emscripten getpid() is a constant and the node test
+ * harness mounts the HOST /tmp, so consecutive module runs would collide.
+ * The token is pid ^ nanosecond startup time, fixed at first use.
+ * Every tempfile handed out is deleted when tea exits (native; the wasm
+ * runtime never exits under NO_EXIT_RUNTIME, hence the unique names). */
 static char **g_tmpfiles = NULL; static int g_ntmp = 0, g_tmpcap = 0;
+static unsigned long long tmp_token(void){
+    static unsigned long long tok = 0;
+    if(!tok){
+        struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts);
+        tok = ((unsigned long long)ts.tv_sec*1000000000ULL + (unsigned long long)ts.tv_nsec)
+              ^ ((unsigned long long)getpid() << 48);
+        if(!tok) tok = 1;
+    }
+    return tok;
+}
 static void tempfiles_cleanup(void){
     for(int i=0;i<g_ntmp;i++){ unlink(g_tmpfiles[i]); free(g_tmpfiles[i]); }
     free(g_tmpfiles); g_tmpfiles=NULL; g_ntmp=g_tmpcap=0;
@@ -3686,7 +3722,7 @@ static int do_tempfile(Cmd *c){
     const char *q=c->args; char t[64]; int consumed;
     while(sscanf(q,"%63s%n",t,&consumed)==1){
         char path[256];
-        snprintf(path,sizeof path,"/tmp/tea_tmp%d_%d_%s",(int)getpid(),++g_tmpseq,t);
+        snprintf(path,sizeof path,"/tmp/tea_tmp%llx_%d_%s",tmp_token(),++g_tmpseq,t);
         mac_set(&g_tea_interp->locals, t, path);
         tempfile_register(path);
         q+=consumed; while(*q==' ')q++;
@@ -3907,6 +3943,7 @@ static int do_sysuse(Cmd *c){
     int rc = load_csv_into(c->f, tmp, ',', CSV_DELIM, CSVCASE_LOWER);
     unlink(tmp);
     if(rc==0)
+        snprintf(c->f->source,sizeof c->f->source,"%s (sysuse)",d->name);
         printf("(%s: %zu obs loaded \u2014 %s)\n", d->name, c->f->nobs, d->desc);
     return rc;
 }
@@ -3954,16 +3991,62 @@ static int do_use(Cmd *c){
         else         tea_err("use: cannot read %s (rc=%d)\n",fn,rc);
         return rc;
     }
+    snprintf(c->f->source,sizeof c->f->source,"%s",fn);
     if(!c->quiet)printf("(%d vars, %zu obs)\n",c->f->nvar,c->f->nobs);
     return 0;
 }
 
 /* ---- set obs / clear / frame ------------------------------------------- */
+/* ---- status: one-line dataset summary (tea extension, not in Stata) ----
+ * Source (tracked via Frame.source), obs, vars, exact in-memory data size,
+ * plus sort and panel state when set.  Memory is the logical data: 8 bytes
+ * per numeric cell; pointer + strlen+1 per string cell.  Walking the
+ * string cells is O(N) but this is an explicit command — fine. */
+static void human_bytes(size_t b, char *out, size_t outsz){
+    if(b < 1024) snprintf(out,outsz,"%zu B",b);
+    else if(b < 1024ULL*1024) snprintf(out,outsz,"%.1f KB",(double)b/1024.0);
+    else if(b < 1024ULL*1024*1024) snprintf(out,outsz,"%.1f MB",(double)b/(1024.0*1024));
+    else snprintf(out,outsz,"%.1f GB",(double)b/(1024.0*1024*1024));
+}
+static void comma_zu(size_t v, char *buf){
+    char raw[32]; int rl=snprintf(raw,sizeof raw,"%zu",v); int w=0;
+    for(int i=0;i<rl;i++){ if(i && (rl-i)%3==0) buf[w++]=','; buf[w++]=raw[i]; }
+    buf[w]=0;
+}
+static int do_status(Cmd *c){
+    if(c->f->nvar==0){ printf("(no data in memory)\n"); return 0; }
+    size_t bytes=0;
+    for(int j=0;j<c->f->nvar;j++){ Variable*v=&c->f->vars[j];
+        if(v->type==VT_NUM) bytes += c->f->nobs*sizeof(double);
+        else { bytes += c->f->nobs*sizeof(char*);
+            for(size_t r=0;r<c->f->nobs;r++) if(v->str[r]) bytes += strlen(v->str[r])+1; } }
+    char nb[32],mb[32]; comma_zu(c->f->nobs,nb); human_bytes(bytes,mb,sizeof mb);
+    printf("%s \u2014 %s obs, %d vars, %s",
+           c->f->source[0]?c->f->source:"(unnamed)", nb, c->f->nvar, mb);
+    int open_paren=0;
+    if(c->f->nsort>0){
+        printf("  (sorted: "); open_paren=1;
+        for(int q=0;q<c->f->nsort;q++) printf("%s%s",q?" ":"",c->f->vars[c->f->sortvars[q]].name);
+    }
+    if(c->f->ts_panel>=0 || c->f->ts_time>=0){
+        printf(open_paren? "; " : "  ("); open_paren=1;
+        if(c->f->ts_panel>=0 && c->f->ts_time>=0)
+            printf("xtset: %s %s", c->f->vars[c->f->ts_panel].name, c->f->vars[c->f->ts_time].name);
+        else if(c->f->ts_panel>=0)
+            printf("xtset: %s", c->f->vars[c->f->ts_panel].name);
+        else
+            printf("tsset: %s", c->f->vars[c->f->ts_time].name);
+    }
+    if(open_paren) printf(")");
+    printf("\n");
+    return 0;
+}
 static int do_clear(Cmd *c){
     frame_clear(c->f);
     ws_clear_labels(c->ws);
     c->f->data_label[0] = 0;
     c->f->fweight_var[0] = 0;
+    c->f->source[0] = 0;
     return 0;
 }
 static int do_setobs(Cmd *c){ long n=strtol(c->args,NULL,10);
@@ -4586,6 +4669,7 @@ Disp TABLE[]={
         "      e.g.  use mydata.dta, clear            — extension dispatch decides format\n"
         "      'use foo' with no extension looks for foo.dta (Stata default)."},
     {"clear",do_clear,0,"clear                                        drop all data in current frame"},
+    {"status",do_status,0,"status                                       one-line summary: source, obs, vars, memory, sort/xtset state"},
     {"frame",do_frame,0,
         "frame create|change|copy|rename|put|drop|dir  multiple datasets\n"
         "      e.g.  frame create alt   |   frame change alt   |   frame put x y, into(alt)"},
@@ -4633,6 +4717,12 @@ int run_command(Cmd *c){
     }
     if(!strcmp(c->cmd,"set")){ char w[16]; sscanf(c->args,"%15s",w);
         if(!strcmp(w,"obs")){ Cmd cc=*c; snprintf(cc.args,sizeof cc.args,"%s",c->args+3); return do_setobs(&cc);}
+        if(!strcmp(w,"progress")){
+            char v[16]=""; sscanf(c->args+8," %15s",v);
+            if(!strcmp(v,"on"))  { g_progress_enabled=1; return 0; }
+            if(!strcmp(v,"off")) { g_progress_enabled=0; return 0; }
+            tea_err("set progress: on or off\n"); return 198;
+        }
         if(!strcmp(w,"seed")){
             const char *p = c->args + 4; while(*p == ' ') p++;
             unsigned long seed = strtoul(p, NULL, 10);

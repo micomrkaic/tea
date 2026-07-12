@@ -880,3 +880,21 @@ used in `egen`.
   files accumulated in /tmp.  → **FIXED**: paths now embed the pid
   (unique per session, like Stata's), and every tempfile handed out is
   deleted when tea exits.
+
+## v1.6.4 — quality-of-life extensions (not Stata, non-conflicting)
+
+- NEW — `status`: one-line dataset summary — source filename, obs, vars,
+  exact in-memory size, sort and xtset state.  Source is tracked through
+  use/import/sysuse, updated by save, cleared by clear (new Frame.source
+  field, set at the command layer so internal frame operations like the
+  reshape swap or restore never disturb it).
+- NEW — progress indicator on long operations (import, reshape long,
+  reshape wide, merge).  Time-gated: nothing is drawn until ~1s of wall
+  time, redraws at most every 250ms, stderr-and-TTY-only, erased on
+  completion — so logs, pipes, the regression harness, `capture`, and
+  short operations see nothing, ever.  `set progress off` to disable.
+  Compiled to no-ops in the WASM build (no TTY; a JS hook can come later).
+- Bug 17 refinement: the tempfile uniqueness token is now
+  pid ^ nanosecond-startup-time, because pid alone fails under
+  emscripten (constant pid, and the node harness mounts the HOST /tmp) —
+  caught by the WASM rig colliding with its own previous run.

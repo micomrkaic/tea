@@ -389,6 +389,34 @@ The full list of functions: `mean`, `sum`, `total`, `count`, `min`,
 
 # Exploring data
 
+## `status`
+
+A one-line summary of what's in memory — a tea extension (Stata has no
+single equivalent):
+
+    . status
+    WB_final.dta — 25,808,384 obs, 7 vars, 1.9 GB  (sorted: CountryCode year; xtset: ifscode year)
+
+The source name is tracked through `use` / `import` / `sysuse`, updated
+by `save` (as Stata's "Contains data from" is), and cleared by `clear`.
+The memory figure is the exact in-memory data size: 8 bytes per numeric
+cell, pointer plus string length per string cell.
+
+## Progress indicator
+
+Long operations (import, reshape, merge) show a live progress line —
+another tea extension, useful because tea runs on one CPU and big jobs
+can otherwise look hung:
+
+    reshape long: 42% (10,800,000/25,808,384)
+
+It is deliberately invisible everywhere it could interfere: nothing is
+drawn until an operation has run for about a second (short operations
+produce zero output), it goes to stderr only when stderr is a terminal
+(logs, pipes, batch runs, and `capture` never see it), and the line is
+erased on completion so nothing lands in scrollback.  `set progress off`
+disables it entirely.
+
 ## `describe`
 
     describe                          // all variables
