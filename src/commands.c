@@ -124,7 +124,7 @@ static int tea_fprintf(FILE *fp, const char *fmt, ...){
 #define fprintf tea_fprintf
 
 /* forward decl: load_csv_into is defined further down; used by import excel */
-static int load_csv_into(Frame *f,const char *fn,char delim);
+static int load_csv_into(Frame *f,const char *fn,char delim,int excel_names);
 
 /* Display width of a UTF-8 string = number of codepoints (continuation
  * bytes 10xxxxxx don't advance the column).  Used to pad table columns
@@ -349,7 +349,12 @@ static int do_egen(Cmd *c){
     bool is_rank  = !strcmp(fn,"rank");
 
     int *bv=NULL,nbv=0; char byspec[256]="";
-    if(opt_value(c->options,"by",byspec,sizeof byspec)) nbv=varlist_expand(c->f,byspec,&bv);
+    if(opt_value(c->options,"by",byspec,sizeof byspec)){
+        nbv=varlist_expand(c->f,byspec,&bv);
+        /* SILENT NO-OP GUARD: an unknown by() var must not degrade into
+         * ungrouped computation over the whole dataset */
+        if(nbv<0){ tea_err("%s: by(): variable not found\n", c->cmd); return 111; }
+    }
 
     /* `group(v1 v2)` and `tag(v1 v2)` use the inside-paren list as their
      * group definition; `by()` is not used (and shouldn't be). */
@@ -1133,6 +1138,8 @@ static int do_format(Cmd *c){ /* format var %fmt  OR  format %fmt var */
     char a[64],b[64]; if(sscanf(c->varlist,"%63s %63s",a,b)!=2)return 198;
     char *fmt=a[0]=='%'?a:b, *vn=a[0]=='%'?b:a;
     int *vs=NULL,nv=varlist_expand(c->f,vn,&vs);
+    /* SILENT NO-OP GUARD: nv=-1 must not fall through the loop unnoticed */
+    if(nv<0){ tea_err("format: variable not found\n"); return 111; }
     for(int i=0;i<nv;i++) snprintf(c->f->vars[vs[i]].format,33,"%s",fmt);
     free(vs); return 0; }
 
@@ -1924,7 +1931,12 @@ static int do_collapse(Cmd *c){
      * Any temp columns added during TS-op resolution are freed by that
      * frame_clear, so we do not need tsop_drop_temps here. */
     char byspec[256]=""; int *bv=NULL,nbv=0;
-    if(opt_value(c->options,"by",byspec,sizeof byspec)) nbv=varlist_expand(c->f,byspec,&bv);
+    if(opt_value(c->options,"by",byspec,sizeof byspec)){
+        nbv=varlist_expand(c->f,byspec,&bv);
+        /* SILENT NO-OP GUARD: an unknown by() var must not degrade into
+         * ungrouped computation over the whole dataset */
+        if(nbv<0){ tea_err("%s: by(): variable not found\n", c->cmd); return 111; }
+    }
     /* parse stat/var groups */
     typedef struct{int vi;int stat;}Agg; Agg ag[128]; int nag=0;
     char sp[2048]; snprintf(sp,sizeof sp,"%s",c->varlist);
@@ -2129,7 +2141,7 @@ static int do_import(Cmd *c){
         if(rc) return rc;
         /* now load the temp CSV using the same code path as 'import delimited' */
         frame_clear(c->f);
-        rc = load_csv_into(c->f, tmpcsv, ',');
+        rc = load_csv_into(c->f, tmpcsv, ',', 1);  /* excel/ods: Stata firstrow naming */
         unlink(tmpcsv);
         /* try to remove the temp dir; ignore failure */
         char *slash=strrchr(tmpcsv,'/'); if(slash){ *slash=0; rmdir(tmpcsv); }
@@ -2143,7 +2155,7 @@ static int do_import(Cmd *c){
     char delim=','; char db[8]; if(opt_value(c->options,"delimiters",db,sizeof db))delim=db[0]=='\\'&&db[1]=='t'?'\t':db[0];
     if(strstr(fn,".tsv"))delim='\t';
     frame_clear(c->f);
-    int rc2 = load_csv_into(c->f, fn, delim);
+    int rc2 = load_csv_into(c->f, fn, delim, 0);
     if(rc2){ tea_err("import: cannot read %s (rc=%d)\n", fn, rc2); return rc2; }
     if(!c->quiet) printf("(%d vars, %zu obs)\n",c->f->nvar,c->f->nobs);
     return 0;
@@ -2249,7 +2261,40 @@ static void sanitize_colname(const char *in, char *out, size_t outsz){
     else snprintf(out, outsz, "%s", buf);
 }
 
-static int load_csv_into(Frame *f,const char *fn,char delim){
+/* excel_colletter: 0-based column index -> Excel column letters
+ * (0->A, 25->Z, 26->AA, 68->BQ).  Bijective base-26. */
+static void excel_colletter(int idx, char *out, size_t outsz){
+    char tmp[8]; int n=0; int x=idx+1;
+    while(x>0 && n<(int)sizeof tmp){ x--; tmp[n++]=(char)('A'+x%26); x/=26; }
+    size_t w=0; while(n>0 && w+1<outsz) out[w++]=tmp[--n];
+    out[w]=0;
+}
+
+/* sanitize_colname_excel: Stata `import excel, firstrow` naming rule,
+ * which differs from the CSV rule above:
+ *   - invalid characters are REMOVED, not underscored
+ *     ("Country Code" -> CountryCode, where the CSV rule gives Country_Code)
+ *   - if the result is still not a valid name (empty, or starts with a
+ *     digit — e.g. a year header "1960"), the Excel COLUMN LETTER is used
+ *     instead (F, G, ..., BQ), matching Stata exactly
+ *   - case preserved; truncated to 32 chars like Stata identifiers
+ * Do-files written against Stata (`duplicates report CountryCode ...`,
+ * `foreach v of varlist F-BQ`) depend on this rule. */
+static void sanitize_colname_excel(const char *in, int col, char *out, size_t outsz){
+    const char *p = in;
+    /* skip BOM */
+    if((unsigned char)p[0]==0xEF && (unsigned char)p[1]==0xBB && (unsigned char)p[2]==0xBF) p+=3;
+    char buf[33]; size_t w=0;
+    for(; *p && w<32; p++){
+        char ch = *p;
+        if(isalnum((unsigned char)ch) || ch=='_') buf[w++]=ch;
+    }
+    buf[w]=0;
+    if(!buf[0] || isdigit((unsigned char)buf[0])){ excel_colletter(col,out,outsz); return; }
+    snprintf(out,outsz,"%s",buf);
+}
+
+static int load_csv_into(Frame *f,const char *fn,char delim,int excel_names){
     FILE *fp=fopen(fn,"r"); if(!fp)return 601;
     /* Buffer for one logical record (may span multiple physical lines if a
      * quoted field contains embedded newlines). */
@@ -2297,12 +2342,20 @@ static int load_csv_into(Frame *f,const char *fn,char delim){
             ncol=nf;
             for(int j=0;j<nf;j++){
                 csv_unquote(flds[j]);
-                char nm[64]; sanitize_colname(flds[j], nm, sizeof nm);
-                /* ensure unique: if collision, append _2, _3, ... */
+                char nm[64];
+                if(excel_names) sanitize_colname_excel(flds[j], j, nm, sizeof nm);
+                else            sanitize_colname(flds[j], nm, sizeof nm);
                 char unique[64]; snprintf(unique, sizeof unique, "%s", nm);
+                /* duplicate header: in excel mode fall back to the column
+                 * letter (Stata's resolution); the _2/_3 suffix loop below
+                 * remains as a backstop for both modes (e.g. a header that
+                 * literally spells another column's letter). */
+                if(excel_names && var_find(f, unique) >= 0)
+                    excel_colletter(j, unique, sizeof unique);
+                char base[64]; snprintf(base, sizeof base, "%s", unique);
                 int suffix = 2;
                 while(var_find(f, unique) >= 0){
-                    snprintf(unique, sizeof unique, "%s_%d", nm, suffix++);
+                    snprintf(unique, sizeof unique, "%s_%d", base, suffix++);
                 }
                 var_add(f, unique, VT_NUM);
             }
@@ -2345,8 +2398,8 @@ static int load_into(Frame *f, Workspace *ws, const char *fn, const char **err_o
     if(ends_with_ci(fn, ".dta")){
         return dta_read(f, ws, fn, err);
     }
-    if(strstr(fn,".csv")) return load_csv_into(f,fn,',');
-    if(strstr(fn,".tsv")) return load_csv_into(f,fn,'\t');
+    if(strstr(fn,".csv")) return load_csv_into(f,fn,',',0);
+    if(strstr(fn,".tsv")) return load_csv_into(f,fn,'\t',0);
     return load_pst_into(f,fn);
 }
 
@@ -3614,7 +3667,7 @@ static int do_sysuse(Cmd *c){
     fwrite(d->csv, 1, d->len, o);
     fclose(o);
     frame_clear(c->f);
-    int rc = load_csv_into(c->f, tmp, ',');
+    int rc = load_csv_into(c->f, tmp, ',', 0);
     unlink(tmp);
     if(rc==0)
         printf("(%s: %zu obs loaded \u2014 %s)\n", d->name, c->f->nobs, d->desc);

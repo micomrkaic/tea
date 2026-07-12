@@ -239,6 +239,15 @@ int run_line(Interp *ip,const char *raw){
             /* sort keys = group vars then within-sort vars */
             char allk[1024]; snprintf(allk,sizeof allk,"%s %s",grp,srt);
             nsk=varlist_expand(ip->ws->cur,allk,&sortk);
+            /* SILENT NO-OP GUARD: -1 (unknown var) must not degrade into
+             * "no by-groups" — the command would run UNGROUPED over the
+             * full data and produce silently wrong results. */
+            if(nby<0 || nsk<0){
+                fprintf(stderr,"by: variable not found\n");
+                free(byv); free(sortk); RL_DONE();
+                g_tea_last_rc=ip->rc=111;
+                return cap?0:111;
+            }
             s=colon+1; while(*s==' ')s++;
         }
     }
@@ -302,6 +311,27 @@ int run_line(Interp *ip,const char *raw){
 
     if(!strncmp(t,"local ",6)||!strncmp(t,"loc ",4)){
         char *p=t+(t[3]==' '?4:6); while(*p==' ')p++;
+        /* Stata: `local ++x` / `local --x` increment/decrement macro x by 1.
+         * SILENT NO-OP GUARD: previously "++yr" was parsed as the macro NAME,
+         * silently defining a macro literally called "++yr" while `yr' never
+         * changed — every loop iteration reused the same value. */
+        if((p[0]=='+'&&p[1]=='+') || (p[0]=='-'&&p[1]=='-')){
+            int delta = p[0]=='+' ? 1 : -1;
+            p+=2; while(*p==' ')p++;
+            char inm[128]; int in_=0;
+            while(*p&&!isspace((unsigned char)*p)&&in_<127)inm[in_++]=*p++; inm[in_]=0;
+            const char *cur = inm[0]? mac_get(ip->locals,inm) : NULL;
+            char *endp=NULL; long v = cur&&*cur ? strtol(cur,&endp,10) : 0;
+            if(!inm[0] || !cur || !*cur || (endp&&*endp)){
+                fprintf(stderr,"local %s%s: macro is not defined as a number\n",
+                        delta>0?"++":"--", inm[0]?inm:"?");
+                free(ex);free(byv);free(sortk); RL_DONE();
+                g_tea_last_rc=ip->rc=198; return cap?0:198;
+            }
+            char val[64]; snprintf(val,sizeof val,"%ld",v+delta);
+            mac_set(&ip->locals,inm,val);
+            free(ex);free(byv);free(sortk); RL_DONE(); return 0;
+        }
         char nm[128]; int n=0; while(*p&&!isspace((unsigned char)*p)&&*p!='='&&n<127)nm[n++]=*p++; nm[n]=0;
         while(*p==' ')p++; int isexp=0; if(*p=='='){isexp=1;p++;while(*p==' ')p++;}
         char val[2048];
@@ -439,6 +469,18 @@ static int exec_one(Interp *ip,Lines *L,int *i){
         if(!strcmp(kind,"of")){
             char *sp=xl; char w[32]; sscanf(sp,"%31s",w); sp+=strlen(w); while(*sp==' ')sp++;
             int *vs=NULL,nv=varlist_expand(ip->ws->cur,sp,&vs);
+            /* SILENT NO-OP GUARD: an unknown variable makes varlist_expand
+             * return -1; treating that as an empty list executes the loop
+             * body ZERO times with no error — renames etc. silently don't
+             * happen and the script fails much later with a misleading
+             * message.  Fail loud, here, with the offending varlist. */
+            if(!strcmp(w,"varlist") && nv<0){
+                for(char *tz=sp+strlen(sp); tz>sp && tz[-1]==' '; ) *--tz=0;
+                fprintf(stderr,"foreach: varlist %s: variable not found\n",sp);
+                free(xl);
+                g_tea_last_rc=ip->rc=111;
+                return 111;
+            }
             for(int k=0;k<nv;k++){ items=realloc(items,(ni+1)*sizeof(char*)); items[ni++]=strdup(ip->ws->cur->vars[vs[k]].name); }
             free(vs);
         } else { /* in: literal list */

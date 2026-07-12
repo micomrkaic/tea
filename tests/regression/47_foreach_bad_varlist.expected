@@ -1,0 +1,5 @@
+number of observations set to 3
+(3 real changes made)
+(3 real changes made)
+foreach: varlist a-nosuchvar: variable not found
+do-file aborted at line 14 (rc=111)
