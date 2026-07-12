@@ -39,7 +39,19 @@
   #term-pane { flex: 1 1 60%; min-width: 420px; background:#1e1e1e; border-radius:8px; padding:10px; }
   #terminal { height:100%; }
   #side { flex: 1 1 40%; display:flex; flex-direction:column; gap:10px; overflow:auto; }
+  .tabbar { display:flex; gap:6px; }
+  .tabbar button { background:#e7ddcc; color:var(--ink); }
+  .tabbar button.on { background:var(--accent); color:white; }
   #plots { flex:1; overflow:auto; background:white; border:1px solid #ddd; border-radius:8px; padding:10px; }
+  #editor { flex:1; display:none; flex-direction:column; gap:8px; }
+  #edtext { flex:1; width:100%; resize:none; font:13px/1.5 "DejaVu Sans Mono",Menlo,Consolas,monospace;
+            border:1px solid #ddd; border-radius:8px; padding:10px; background:white; color:var(--ink);
+            tab-size:4; white-space:pre; overflow:auto; }
+  #edtext:focus { outline:2px solid var(--accent); }
+  #editor .hint { font-size:12px; color:#999; }
+  body.dragging::after { content:"drop .do to edit \00b7 data files to upload"; position:fixed; inset:0;
+      background:rgba(31,78,121,.85); color:white; display:flex; align-items:center;
+      justify-content:center; font-size:22px; z-index:20; pointer-events:none; }
   #plots .placeholder { color:#999; font-size:14px; padding:16px; line-height:1.7; }
   #plots svg { max-width:100%; height:auto; display:block; margin-bottom:12px; border-bottom:1px solid #eee; }
   .bar-ctl { display:flex; gap:8px; align-items:center; }
@@ -55,7 +67,7 @@
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
   <div class="tagline">tiny econometric assistant</div>
-  <div class="ver">v<!--TEAVER-->1.4.3<!--/TEAVER--> &middot; runs entirely in your browser</div>
+  <div class="ver">v<!--TEAVER-->1.5.0<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
   <div class="foot">free software (GPLv3) &middot; no data leaves your machine</div>
@@ -72,6 +84,10 @@
   <div id="term-pane"><div id="terminal"></div></div>
   <div id="side">
     <div class="bar-ctl">
+      <span class="tabbar">
+        <button id="tab-plots" class="on">Plots</button>
+        <button id="tab-editor">Editor</button>
+      </span>
       <label class="btn">Upload data file<input type="file" id="upload" multiple></label>
       <button id="dl">Download workspace files</button>
       <span id="status"></span>
@@ -82,6 +98,19 @@
       <code>xtset iso year</code><br>
       <code>xtreg ngdp_rpch pcpipch lur, fe</code><br><br>
       <code>sysuse dir</code> lists all six bundled datasets.</div></div>
+    <div id="editor">
+      <div class="bar-ctl">
+        <button id="ed-run">&#9654; Run</button>
+        <label class="btn">Open .do<input type="file" id="ed-open" accept=".do,.txt,.ado"></label>
+        <button id="ed-save">Save .do</button>
+        <span class="hint">Ctrl+D / Ctrl+Enter: run selection (or all) &middot; autosaves locally</span>
+      </div>
+      <textarea id="edtext" spellcheck="false" placeholder="* write or drop a .do file here
+sysuse weo
+keep if aggregate==0
+xtset iso year
+xtreg ngdp_rpch ggxwdg_ngdp if year<=2025, fe"></textarea>
+    </div>
   </div>
 </div>
 
@@ -205,7 +234,91 @@ document.getElementById('upload').addEventListener('change', async ev => {
     const buf = new Uint8Array(await f.arrayBuffer());
     M.FS.writeFile('/' + f.name, buf);
     known.add(f.name);
-    term.writeln(`\r\n(uploaded ${f.name}, ${buf.length} bytes \u2014 e.g. use ${f.name} or import delimited ${f.name})`);
+    const hint = /\.do$/i.test(f.name) ? `run it with: do ${f.name}` : `e.g. use ${f.name} or import delimited ${f.name}`;
+    term.writeln(`\r\n(uploaded ${f.name}, ${buf.length} bytes \u2014 ${hint})`);
+  }
+  ed._lastCursorRow = 0; ed.render();
+});
+
+/* ---- script editor ---- */
+const edtext = document.getElementById('edtext');
+const tabP = document.getElementById('tab-plots'), tabE = document.getElementById('tab-editor');
+function showTab(edon){
+  document.getElementById('plots').style.display  = edon ? 'none' : 'block';
+  document.getElementById('editor').style.display = edon ? 'flex' : 'none';
+  tabE.classList.toggle('on', edon); tabP.classList.toggle('on', !edon);
+  if (edon) edtext.focus();
+}
+tabP.addEventListener('click', () => showTab(false));
+tabE.addEventListener('click', () => showTab(true));
+
+const EDKEY = 'tea_editor_v1';
+try { const t = localStorage.getItem(EDKEY); if (t) edtext.value = t; } catch(e) {}
+let edTimer = null;
+edtext.addEventListener('input', () => {
+  clearTimeout(edTimer);
+  edTimer = setTimeout(() => { try { localStorage.setItem(EDKEY, edtext.value); } catch(e) {} }, 400);
+});
+
+function runScript(text){
+  if (!M || !text.trim().length) return;
+  M.FS.writeFile('/_editor.do', text.endsWith('\n') ? text : text + '\n');
+  term.writeln('');
+  needMore = M.ccall('tea_web_exec','number',['string'],['do /_editor.do']) === 1;
+  ed.freshPrompt();
+}
+document.getElementById('ed-run').addEventListener('click', () => runScript(edtext.value));
+
+/* Ctrl+D (Stata muscle memory) / Ctrl+Enter: run selection, else whole
+   buffer.  Selections expand to whole lines, like Stata's do-file editor. */
+edtext.addEventListener('keydown', ev => {
+  if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'd' || ev.key === 'Enter')) {
+    ev.preventDefault();
+    let a = edtext.selectionStart, b = edtext.selectionEnd;
+    const v = edtext.value;
+    if (a === b) { runScript(v); return; }
+    while (a > 0 && v[a-1] !== '\n') a--;
+    while (b < v.length && v[b] !== '\n') b++;
+    runScript(v.slice(a, b));
+  } else if (ev.key === 'Tab') {
+    ev.preventDefault();
+    edtext.setRangeText('    ', edtext.selectionStart, edtext.selectionEnd, 'end');
+  }
+});
+
+document.getElementById('ed-open').addEventListener('change', async ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  edtext.value = await f.text();
+  try { localStorage.setItem(EDKEY, edtext.value); } catch(e) {}
+  showTab(true);
+  ev.target.value = '';
+});
+document.getElementById('ed-save').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([edtext.value], {type:'text/plain'}));
+  a.download = 'script.do'; a.click(); URL.revokeObjectURL(a.href);
+});
+
+/* ---- drag & drop: .do opens in the editor, data files upload ---- */
+let dragDepth = 0;
+window.addEventListener('dragenter', ev => { ev.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
+window.addEventListener('dragleave', () => { if (--dragDepth <= 0){ dragDepth = 0; document.body.classList.remove('dragging'); } });
+window.addEventListener('dragover', ev => ev.preventDefault());
+window.addEventListener('drop', async ev => {
+  ev.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
+  if (!M) return;
+  for (const f of ev.dataTransfer.files) {
+    if (/\.(do|ado|txt)$/i.test(f.name)) {
+      edtext.value = await f.text();
+      try { localStorage.setItem(EDKEY, edtext.value); } catch(e) {}
+      showTab(true);
+      term.writeln(`\r\n(opened ${f.name} in the editor \u2014 Ctrl+D runs it)`);
+    } else {
+      const buf = new Uint8Array(await f.arrayBuffer());
+      M.FS.writeFile('/' + f.name, buf);
+      known.add(f.name);
+      term.writeln(`\r\n(uploaded ${f.name}, ${buf.length} bytes)`);
+    }
   }
   ed._lastCursorRow = 0; ed.render();
 });
