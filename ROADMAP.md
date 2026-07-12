@@ -105,8 +105,9 @@ must be opt-in via `--tea-extensions`.
   percentages.
 - **`egen` rank/pctile/cut family** — same shape as existing egen handlers.
 - **`merge … assert(...)` as hard error** (currently warns).
-- **`graph`** — shell out to gnuplot for `scatter`/`line`/`hist`.  Optional
-  but cheap.
+- **`graph`** — DONE natively in v1.6.6 (no gnuplot): multi-series
+  `twoway` with lowess, `graph box` with two-level `over()`, name()
+  registry + `graph combine`, on the built-in SVG engine.
 - **`reshape` with string `j()`**.  DONE in v1.6.2 — both directions,
   with carried (non-stub) variables per Stata semantics.
 - **`preserve` / `restore`**.  DONE in v1.6.2 — single-depth disk

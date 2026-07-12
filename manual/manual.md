@@ -19,7 +19,10 @@ even if you eventually move to Stata or R for the final analysis.
 
 ## What `tea` is not
 
-`tea` v1.0 does *not* implement: graphics of any kind, exact-ML ARIMA
+`tea` v1.0 did not implement graphics; since v1.6.6 it has `scatter`,
+`line`, `histogram`, multi-series `twoway` (with lowess), `graph box`,
+and `graph combine`, all on a dependency-free SVG engine.  Still not
+implemented: exact-ML ARIMA
 (we use conditional likelihood), seasonal ARIMA, GARCH, mixed-effects
 models, survival analysis, structural breaks, VAR, VECM, cointegration
 tests, Bayesian inference, or machine learning. It also does not
@@ -1052,6 +1055,68 @@ files, never opened, so batch output stays deterministic.
 binning is `min(ceil(sqrt(N)), 50)`.  In the browser edition plots
 appear in the panel beside the terminal.
 
+## twoway — overlaid series
+
+The Stata `twoway` grammar composes several series in one plot, each
+with its own `if` filter and styling:
+
+    twoway (TYPE y x [if], series-options) ... [, global-options]
+
+where `TYPE` is `scatter`, `line`, `connected`, or `lowess`.  Series
+options: `lcolor()` / `mcolor()`, `lpattern(solid|dash|dot|...)`,
+`msymbol(i)` (invisible marker — labels only), `mlabel(strvar)`,
+`mlabcolor()`, `mlabposition(#)` (clock positions), and for lowess
+`bwidth(#)` (default 0.8), `mean`, `adjust`.  Global options:
+`title()`, `xtitle()`, `ytitle()`, `note()`, `legend(off)`,
+`yline(# [, lpattern() lcolor()])` (repeatable), `yscale(range(lo hi))`,
+`ylabel(a(step)b)` / `xlabel(a(step)b)`, `name(NAME[, replace])`, and
+`saving(FILE)`.  As in Stata, axis titles given inside a series apply
+to the whole graph.  A simple legend is drawn for multi-series plots
+unless `legend(off)`.
+
+`lowess` is locally weighted regression: tricube kernel, running-line
+fit (option `mean` for a running mean), bandwidth as a fraction of the
+sample, `adjust` rescaling the smooth to the mean of y.
+
+Tick rules and plot range are separate, as in Stata: `ylabel(0(.5)2.5)`
+fixes where the ticks sit, but the plot range always extends to cover
+the data — a label rule never clips observations.
+
+    twoway (line TFR year if ISO=="KOR", lcolor(blue)) ///
+           (lowess TFR year if ISO=="KOR"), ///
+           yline(2.1, lpattern(dot)) legend(off) name(korea, replace)
+
+## graph box — grouped box plots
+
+    graph box y [if] [in], over(v1[, subopts]) [over(v2[, subopts])]
+        [noout] [title() note() name() saving()]
+
+Boxes show the median and p25–p75 (Stata's percentile interpolation);
+whiskers reach the adjacent values (most extreme observations within
+1.5 IQR of the box); points beyond are drawn as outside values unless
+`noout`.  With two `over()` levels the first varies fastest inside
+bands formed by the second, Stata's layout.  Group names honor
+attached value labels; `relabel(# "txt" ...)` renames positionally, and
+`label(angle(#) labsize(vsmall|small|...|vlarge))` styles the tick
+text.  Unknown *cosmetic* suboptions inside graphics options are
+accepted and ignored (see COMPATIBILITY.md); structural errors — an
+unknown plot type, a missing variable, a malformed series — still fail
+loudly.
+
+## Named graphs and graph combine
+
+`name(NAME[, replace])` stores the finished graph in an in-session
+registry *and* writes `NAME.svg` in the working directory (a deliberate
+deviation from Stata, where graphs live only in memory: on a CLI the
+file is the artifact, and in the browser each write feeds the Plots
+panel).  Reusing a name without `replace` is error 110.
+
+    graph combine N1 N2 ... [, cols(#) rows(#) title() note() name() saving()]
+
+composes stored graphs in a grid — panels nest as scaled SVG, so the
+result stays a crisp vector.  `graph dir` lists the registry;
+`graph drop NAME|_all` clears it.
+
 A worked example on bundled data:
 
     sysuse grunfeld
@@ -1285,11 +1350,11 @@ v1.0 that we may revisit based on testing.
 
 ## Graphics
 
-`scatter`, `line`, and `histogram` cover the everyday cases (see the
-Graphics chapter).  There is no `twoway` grammar, no faceting/`by()`
-graphics, no legends or multiple series per plot, and no graph editor;
-for figures beyond the basics, `export delimited` and pipe to
-Python / R / gnuplot.
+`scatter`, `line`, `histogram`, multi-series `twoway` (with lowess),
+`graph box` with two-level `over()`, and `graph combine` cover the
+everyday cases (see the Graphics chapter).  There is no faceting/`by()`
+graphics, no bar/pie charts, and no graph editor; for figures beyond
+these, `export delimited` and pipe to Python / R / gnuplot.
 
 # Reporting bugs
 

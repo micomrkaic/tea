@@ -4,6 +4,22 @@
 exactly what `help CMD` prints at the prompt, and regenerating it after
 any change keeps the manual and the implementation in agreement.*
 
+## `twoway`
+
+```
+  twoway (TYPE y x [if], opts) ... [, gopts]  overlay plot; TYPE: scatter line connected lowess
+      per-series: lcolor() lpattern() msymbol(i) mlabel(var) mlabposition(#) bwidth() mean adjust
+      global: title() xtitle() ytitle() note() legend(off) yline(#,..) yscale(range()) ylabel(a(s)b) name(N[,replace]) saving()
+```
+
+## `graph`
+
+```
+  graph box y [if], over(v[,sub]) [over(v2)] [noout] ...   grouped box plots
+      graph combine N1 N2 ... [, cols(#) title() note() name()]   compose named graphs
+      graph dir | graph drop NAME|_all                            registry
+```
+
 ## `scatter`
 
 ```

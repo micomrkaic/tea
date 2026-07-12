@@ -22,6 +22,7 @@
 #include "dta.h"
 #include "tsop.h"
 #include "plot.h"
+#include "graph.h"
 #include "sysdata.h"
 #include "progress.h"
 #include <stdio.h>
@@ -4531,6 +4532,14 @@ int tea_complete(Frame *f, const char *line, int point, char *out, size_t outsz)
 }
 
 Disp TABLE[]={
+    {"twoway",do_twoway,1,
+        "twoway (TYPE y x [if], opts) ... [, gopts]  overlay plot; TYPE: scatter line connected lowess\n"
+        "      per-series: lcolor() lpattern() msymbol(i) mlabel(var) mlabposition(#) bwidth() mean adjust\n"
+        "      global: title() xtitle() ytitle() note() legend(off) yline(#,..) yscale(range()) ylabel(a(s)b) name(N[,replace]) saving()"},
+    {"graph",do_graph,1,
+        "graph box y [if], over(v[,sub]) [over(v2)] [noout] ...   grouped box plots\n"
+        "      graph combine N1 N2 ... [, cols(#) title() note() name()]   compose named graphs\n"
+        "      graph dir | graph drop NAME|_all                            registry"},
     {"scatter",do_scatter,1,
         "scatter yvar xvar [if] [in] [, title() xtitle() ytitle() saving() noview]\n"
         "      SVG scatter plot; saving(FILE) writes to FILE instead of tea_graph.svg\n"

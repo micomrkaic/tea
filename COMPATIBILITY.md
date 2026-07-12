@@ -125,3 +125,24 @@ Include:
 - The tea output.
 
 These are treated as bugs, not feature requests.
+
+## Graphics option tolerance (v1.6.6)
+
+Inside graphics commands (`twoway`, `graph box`, `graph combine`, and
+their options), unknown **cosmetic** suboptions are accepted and
+ignored rather than rejected: Stata's graph grammar has a very long
+tail of decorations (`intensity()`, `medtype()`, `box()`, marker
+sizing, scheme controls, ...) and real-world do-files nearly always
+carry some.  Structure is still strict — an unknown plot type, a
+missing variable, a malformed series, an unbalanced paren, or a
+name() collision all fail loudly with the usual return codes.
+Everywhere outside graphics, tea remains strict about unknown options.
+
+Documented graphics deviations from Stata:
+
+- `name(NAME)` also writes `NAME.svg` to the working directory (Stata
+  keeps named graphs only in memory until `graph export`).
+- `twoway` sorts each `line` / `lowess` series by x before connecting
+  (Stata connects in data order); scatter order is irrelevant.
+- The legend is a simple swatch list drawn inside the plot region,
+  top-right, rather than Stata's below-plot legend.

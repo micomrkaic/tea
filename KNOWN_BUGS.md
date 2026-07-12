@@ -61,10 +61,12 @@ A residual Stata-12 limit.  Factor-variable interaction names like
 `2010.year#1985.country#c.gdp` (28 chars) fit; longer 3-way interactions
 truncate.  In practice not a problem.
 
-### No graphics
+### Graphics: covered since v1.6.6
 
-tea ships zero plotting commands.  Users wanting plots should `export delimited`
-and pipe to `gnuplot`, R's `ggplot2`, or Python's `matplotlib`/`seaborn`.
+`scatter` / `line` / `histogram` (v1.3), plus multi-series `twoway`
+with lowess, `graph box` with two-level `over()`, and the name()
+registry with `graph combine` (v1.6.6).  Remaining gaps: no `by()`
+faceting, no bar/pie, no graph editor.
 
 ---
 
@@ -940,3 +942,33 @@ used in `egen`.
 - Auto-restore of a pending `preserve` now also fires for do-files run
   from the command line (`tea script.do`), not just via the `do` command;
   preserve snapshots joined the atexit cleanup net.
+
+
+## v1.6.6 — graphics round two (the fertility-paper figures)
+
+- NEW — **multi-series `twoway`**: parenthesized series each with their
+  own `if` and options; plot types scatter / line / connected / lowess.
+  Per-series `lcolor()` `lpattern()` `msymbol(i)` `mlabel()` `mlabcolor()`
+  `mlabposition()` (clock); globals `yline(#,...)` (repeatable),
+  `legend(off)` (simple legend otherwise), `yscale(range())`,
+  `ylabel(a(s)b)` / `xlabel(a(s)b)`, `note()`.  Axis titles inside a
+  series merge upward, as in Stata.  Tick rules and plot range are
+  separate: a `ylabel()` rule never clips data.
+- NEW — **`lowess`**: tricube kernel, running-line (default) or `mean`,
+  `bwidth()` (0.8), `adjust`.  Pure C, byte-identical across rigs.
+- NEW — **`graph box`**: Stata percentile interpolation, adjacent-value
+  whiskers (1.5 IQR), outside values (`noout` hides), one- or two-level
+  `over()` (first varies fastest inside bands of the second), value
+  labels honored, `relabel()`, `label(angle() labsize())`.
+- NEW — **named-graph registry + `graph combine`**: `name(NAME[,replace])`
+  stores the SVG in-session AND writes NAME.svg (documented deviation);
+  `graph combine N1 N2, cols()/rows()` nests panels as scaled SVG;
+  `graph dir` / `graph drop NAME|_all`.  Name collision without
+  `replace` is rc 110.
+- Everything renders on the same deterministic SVG engine: %.2f
+  coordinates with -0 snapped, golden-file diffed byte-identically on
+  native, ASan, and WASM rigs (tests 56, 57).  plot.c and the test-40
+  goldens are untouched.
+- Documented deviations (COMPATIBILITY.md): name() writes a file;
+  twoway line/lowess series are sorted by x; unknown cosmetic
+  graphics suboptions are accepted-and-ignored (strict everywhere else).

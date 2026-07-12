@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="440" viewBox="0 0 640 440" font-family="Helvetica,Arial,sans-serif">
+<rect width="640" height="440" fill="white"/>
+<rect x="70" y="40" width="550" height="340" fill="none" stroke="black" stroke-width="1"/>
+<line x1="70.00" y1="40" x2="70.00" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="70.00" y1="380" x2="70.00" y2="385" stroke="black" stroke-width="1"/>
+<text x="70.00" y="400" text-anchor="middle" font-size="12">2010</text>
+<line x1="148.57" y1="40" x2="148.57" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="148.57" y1="380" x2="148.57" y2="385" stroke="black" stroke-width="1"/>
+<text x="148.57" y="400" text-anchor="middle" font-size="12">2012</text>
+<line x1="227.14" y1="40" x2="227.14" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="227.14" y1="380" x2="227.14" y2="385" stroke="black" stroke-width="1"/>
+<text x="227.14" y="400" text-anchor="middle" font-size="12">2014</text>
+<line x1="305.71" y1="40" x2="305.71" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="305.71" y1="380" x2="305.71" y2="385" stroke="black" stroke-width="1"/>
+<text x="305.71" y="400" text-anchor="middle" font-size="12">2016</text>
+<line x1="384.29" y1="40" x2="384.29" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="384.29" y1="380" x2="384.29" y2="385" stroke="black" stroke-width="1"/>
+<text x="384.29" y="400" text-anchor="middle" font-size="12">2018</text>
+<line x1="462.86" y1="40" x2="462.86" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="462.86" y1="380" x2="462.86" y2="385" stroke="black" stroke-width="1"/>
+<text x="462.86" y="400" text-anchor="middle" font-size="12">2020</text>
+<line x1="541.43" y1="40" x2="541.43" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="541.43" y1="380" x2="541.43" y2="385" stroke="black" stroke-width="1"/>
+<text x="541.43" y="400" text-anchor="middle" font-size="12">2022</text>
+<line x1="620.00" y1="40" x2="620.00" y2="380" stroke="#dddddd" stroke-width="1"/>
+<line x1="620.00" y1="380" x2="620.00" y2="385" stroke="black" stroke-width="1"/>
+<text x="620.00" y="400" text-anchor="middle" font-size="12">2024</text>
+<line x1="70" y1="380.00" x2="620" y2="380.00" stroke="#dddddd" stroke-width="1"/>
+<line x1="65" y1="380.00" x2="70" y2="380.00" stroke="black" stroke-width="1"/>
+<text x="61" y="380.00" text-anchor="end" dominant-baseline="middle" font-size="12">0</text>
+<line x1="70" y1="324.04" x2="620" y2="324.04" stroke="#dddddd" stroke-width="1"/>
+<line x1="65" y1="324.04" x2="70" y2="324.04" stroke="black" stroke-width="1"/>
+<text x="61" y="324.04" text-anchor="end" dominant-baseline="middle" font-size="12">0.5</text>
+<line x1="70" y1="268.08" x2="620" y2="268.08" stroke="#dddddd" stroke-width="1"/>
+<line x1="65" y1="268.08" x2="70" y2="268.08" stroke="black" stroke-width="1"/>
+<text x="61" y="268.08" text-anchor="end" dominant-baseline="middle" font-size="12">1</text>
+<line x1="70" y1="212.12" x2="620" y2="212.12" stroke="#dddddd" stroke-width="1"/>
+<line x1="65" y1="212.12" x2="70" y2="212.12" stroke="black" stroke-width="1"/>
+<text x="61" y="212.12" text-anchor="end" dominant-baseline="middle" font-size="12">1.5</text>
+<line x1="70" y1="156.16" x2="620" y2="156.16" stroke="#dddddd" stroke-width="1"/>
+<line x1="65" y1="156.16" x2="70" y2="156.16" stroke="black" stroke-width="1"/>
+<text x="61" y="156.16" text-anchor="end" dominant-baseline="middle" font-size="12">2</text>
+<line x1="70" y1="100.20" x2="620" y2="100.20" stroke="#dddddd" stroke-width="1"/>
+<line x1="65" y1="100.20" x2="70" y2="100.20" stroke="black" stroke-width="1"/>
+<text x="61" y="100.20" text-anchor="end" dominant-baseline="middle" font-size="12">2.5</text>
+<line x1="70" y1="144.97" x2="620" y2="144.97" stroke="#000000" stroke-width="1" stroke-dasharray="2,4"/>
+<polyline fill="none" stroke="#1f4e79" stroke-width="1.5" points="70.00,52.68 109.29,57.30 148.57,116.02 187.86,108.77 227.14,90.89 266.43,108.95 305.71,146.76 345.00,106.88 384.29,136.27 423.57,124.34 462.86,160.32 502.14,86.18 541.43,115.19 580.71,145.76 620.00,173.92"/>
+<polyline fill="none" stroke="#1f4e79" stroke-width="1.5" points="70.00,90.43 109.29,105.41 148.57,116.75 187.86,94.33 227.14,94.66 266.43,101.32 305.71,153.33 345.00,79.43 384.29,160.88 423.57,130.60 462.86,145.17 502.14,118.41 541.43,141.41 580.71,132.95 620.00,171.11"/>
+<polyline fill="none" stroke="#1f4e79" stroke-width="1.5" points="70.00,59.36 109.29,40.00 148.57,95.18 187.86,112.70 227.14,86.97 266.43,111.07 305.71,98.80 345.00,104.90 384.29,95.79 423.57,115.68 462.86,181.61 502.14,121.88 541.43,163.25 580.71,159.16 620.00,150.80"/>
+<polyline fill="none" stroke="#1f4e79" stroke-width="1.5" points="70.00,79.83 109.29,84.03 148.57,81.18 187.86,117.87 227.14,105.04 266.43,109.96 305.71,120.62 345.00,115.15 384.29,147.38 423.57,139.57 462.86,109.32 502.14,112.68 541.43,122.63 580.71,163.27 620.00,159.42"/>
+<polyline fill="none" stroke="#1f4e79" stroke-width="1.5" points="70.00,86.27 109.29,75.69 148.57,113.61 187.86,108.35 227.14,81.48 266.43,100.02 305.71,103.01 345.00,77.71 384.29,131.53 423.57,155.93 462.86,119.47 502.14,151.10 541.43,159.62 580.71,136.60 620.00,183.13"/>
+<polyline fill="none" stroke="#1f4e79" stroke-width="1.5" points="70.00,65.35 109.29,46.93 148.57,46.01 187.86,81.04 227.14,86.04 266.43,111.35 305.71,66.42 345.00,138.44 384.29,101.97 423.57,63.59 462.86,90.41 502.14,110.24 541.43,111.69 580.71,114.23 620.00,94.36"/>
+<text x="628.00" y="177.92" text-anchor="start" font-size="11" fill="#1f4e79">USA</text>
+<text x="620.00" y="163.11" text-anchor="middle" font-size="11" fill="#1f4e79">FRA</text>
+<text x="628.00" y="154.80" text-anchor="start" font-size="11" fill="#1f4e79">SWE</text>
+<text x="628.00" y="163.42" text-anchor="start" font-size="11" fill="#1f4e79">KOR</text>
+<text x="628.00" y="187.13" text-anchor="start" font-size="11" fill="#1f4e79">JPN</text>
+<text x="628.00" y="98.36" text-anchor="start" font-size="11" fill="#1f4e79">CHN</text>
+</svg>
