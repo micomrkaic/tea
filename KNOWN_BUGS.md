@@ -972,3 +972,24 @@ used in `egen`.
 - Documented deviations (COMPATIBILITY.md): name() writes a file;
   twoway line/lowess series are sorted by x; unknown cosmetic
   graphics suboptions are accepted-and-ignored (strict everywhere else).
+
+## v1.6.7 — value-label attachments survive frame rebuilds (Mico's fig1)
+
+- Bug 22 — **encoded group variables silently reverted to raw numerics**
+  in `graph box` band labels: reshape (all four carried-variable paths),
+  merge (master and using), and `frame copy` copied format+vlabel but
+  dropped `Variable.vallab`.  All eight copy sites fixed.
+- Bug 23 — the native format stored only the per-variable attachment
+  NAME, not the label-set contents, so `save`→`clear`→`use` via `.tea`
+  (and the preserve snapshot format) lost definitions.  The format is
+  now **TEA2**: value-label sets referenced by attached variables travel
+  with the dataset, exactly like Stata's `.dta`.  Legacy TEA1 files
+  still read (without attachments); old tea versions cannot read TEA2.
+- Bug 24 — `merge ... using FILE` defaulted a missing extension to
+  `.tea` while `use`/`save` default to `.dta` — so
+  `save `f'` + `merge ... using `f'` on an extensionless tempfile
+  failed with "cannot read ....tea".  Merge now defaults to `.dta`,
+  matching use/save and Stata.
+- Test 58 locks all five survival paths: reshape wide+long,
+  preserve/restore, `.tea` round-trip, `.dta` round-trip, and merge —
+  asserted via rendered `graph box` band labels.

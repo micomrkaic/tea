@@ -2244,35 +2244,94 @@ static int do_export(Cmd *c){
 }
 
 /* ---- native save / use ------------------------------------------------- */
+/* Workspace conduit for the native format's value-label block: pst_write
+ * and load_pst_into keep their frame-only signatures (many call sites);
+ * the save/use/preserve/restore entry points set this before calling. */
+static Workspace *g_pst_ws = NULL;
+
 /* write a frame in the native .tea binary format.  Shared by `save` and
  * `preserve`.  NULL string cells are written as empty (defensive: the
  * reader always materializes strings, but gen paths could leave NULLs). */
 static int pst_write(Frame *f, const char *fn){
     FILE *fp=fopen(fn,"wb"); if(!fp)return 603;
-    fwrite("TEA1",1,4,fp);
+    fwrite("TEA2",1,4,fp);
     fwrite(&f->nobs,sizeof(size_t),1,fp); fwrite(&f->nvar,sizeof(int),1,fp);
     for(int j=0;j<f->nvar;j++){ Variable*v=&f->vars[j];
         fwrite(v->name,1,33,fp); fwrite(&v->type,sizeof(VarType),1,fp);
-        fwrite(v->format,1,33,fp); fwrite(v->vlabel,1,81,fp); }
+        fwrite(v->format,1,33,fp); fwrite(v->vlabel,1,81,fp);
+        fwrite(v->vallab,1,33,fp); }
     for(int j=0;j<f->nvar;j++){ Variable*v=&f->vars[j];
         if(v->type==VT_NUM)fwrite(v->num,sizeof(double),f->nobs,fp);
         else for(size_t i=0;i<f->nobs;i++){ const char *s2=v->str[i]?v->str[i]:"";
             int L=(int)strlen(s2); fwrite(&L,4,1,fp); fwrite(s2,1,L,fp);} }
+    /* value-label SETS: like Stata's .dta, definitions travel with the
+     * dataset (the header stores only the attachment name per variable).
+     * Serialize every set referenced by an attached variable.  Needs the
+     * workspace; pst_write callers all have one via g_pst_ws (set by the
+     * save/preserve entry points). */
+    {
+        int nsets = 0;
+        VLabel *sets[256];
+        if (g_pst_ws){
+            for (int j=0;j<f->nvar;j++){
+                const char *nm = f->vars[j].vallab;
+                if (!nm[0]) continue;
+                int seen = 0;
+                for (int k=0;k<nsets;k++) if(!strcmp(sets[k]->name,nm)){ seen=1; break; }
+                if (seen) continue;
+                VLabel *L = vlabel_get(g_pst_ws, nm);
+                if (L && nsets < 256) sets[nsets++] = L;
+            }
+        }
+        fwrite(&nsets,4,1,fp);
+        for (int k=0;k<nsets;k++){
+            fwrite(sets[k]->name,1,33,fp);
+            int ni = 0; for (VLItem *it=sets[k]->items; it; it=it->next) ni++;
+            fwrite(&ni,4,1,fp);
+            for (VLItem *it=sets[k]->items; it; it=it->next){
+                fwrite(&it->val,8,1,fp);
+                int L2=(int)strlen(it->txt); fwrite(&L2,4,1,fp); fwrite(it->txt,1,L2,fp);
+            }
+        }
+    }
     fclose(fp); return 0;
 }
 /* load a .tea (or .csv/.tsv) file into an already-cleared frame. */
 static int load_pst_into(Frame *f,const char *fn){
     FILE *fp=fopen(fn,"rb"); if(!fp)return 601;
-    char mg[4]; if(fread(mg,1,4,fp)!=4||memcmp(mg,"TEA1",4)){fclose(fp);return 610;}
+    char mg[4]; if(fread(mg,1,4,fp)!=4||(memcmp(mg,"TEA1",4)&&memcmp(mg,"TEA2",4))){fclose(fp);return 610;}
+    int has_vallab = !memcmp(mg,"TEA2",4);   /* TEA1: legacy, no value-label attachments */
     size_t nobs; int nvar;
     if(fread(&nobs,sizeof(size_t),1,fp)!=1||fread(&nvar,sizeof(int),1,fp)!=1){fclose(fp);return 610;}
     for(int j=0;j<nvar;j++){ char nm[33];VarType t;char fmt[33],lbl[81];
         if(fread(nm,1,33,fp)!=33||fread(&t,sizeof t,1,fp)!=1||fread(fmt,1,33,fp)!=33||fread(lbl,1,81,fp)!=81){fclose(fp);return 610;}
-        Variable*v=var_add(f,nm,t); snprintf(v->format,33,"%s",fmt); snprintf(v->vlabel,81,"%s",lbl); }
+        Variable*v=var_add(f,nm,t); snprintf(v->format,33,"%s",fmt); snprintf(v->vlabel,81,"%s",lbl);
+        if(has_vallab){ char vl[33]; if(fread(vl,1,33,fp)!=33){fclose(fp);return 610;} snprintf(v->vallab,33,"%s",vl); } }
     frame_set_nobs(f,nobs);
     for(int j=0;j<nvar;j++){ Variable*v=&f->vars[j];
         if(v->type==VT_NUM){ if(fread(v->num,sizeof(double),nobs,fp)!=nobs){fclose(fp);return 610;} }
         else for(size_t i=0;i<nobs;i++){ int L; if(fread(&L,4,1,fp)!=1){fclose(fp);return 610;} char *b=malloc(L+1); if(L&&fread(b,1,L,fp)!=(size_t)L){free(b);fclose(fp);return 610;} b[L]=0; free(v->str[i]); v->str[i]=b; } }
+    /* TEA2 value-label sets (optional trailing block) */
+    if (g_pst_ws){
+        int nsets;
+        if (fread(&nsets,4,1,fp)==1 && nsets>=0 && nsets<=256){
+            for (int k=0;k<nsets;k++){
+                char snm[33]; int ni;
+                if (fread(snm,1,33,fp)!=33 || fread(&ni,4,1,fp)!=1 || ni<0) break;
+                snm[32]=0;
+                VLabel *L = vlabel_ensure(g_pst_ws, snm);
+                for (int q=0;q<ni;q++){
+                    double val; int L2;
+                    if (fread(&val,8,1,fp)!=1 || fread(&L2,4,1,fp)!=1 || L2<0 || L2>4096) { q=ni; k=nsets; break; }
+                    char *txt = malloc((size_t)L2+1);
+                    if (L2 && fread(txt,1,(size_t)L2,fp)!=(size_t)L2){ free(txt); q=ni; k=nsets; break; }
+                    txt[L2]=0;
+                    if (L) vlabel_put(L, val, txt);
+                    free(txt);
+                }
+            }
+        }
+    }
     fclose(fp); frame_unsort(f);
     return 0;
 }
@@ -2470,6 +2529,7 @@ static int load_into(Frame *f, Workspace *ws, const char *fn, const char **err_o
     }
     if(strstr(fn,".csv")) return load_csv_into(f,fn,',',CSV_DELIM,CSVCASE_LOWER);
     if(strstr(fn,".tsv")) return load_csv_into(f,fn,'\t',CSV_DELIM,CSVCASE_LOWER);
+    g_pst_ws = ws;
     return load_pst_into(f,fn);
 }
 
@@ -2548,7 +2608,10 @@ static int do_merge(Cmd *c){
     if(up) snprintf(kspec,sizeof kspec,"%.*s",(int)(up-s),s);
     else   snprintf(kspec,sizeof kspec,"%.*s",(int)(up2-s),s);
     char fn[1024]=""; const char *up_local = u; scan_filename(&up_local, fn, sizeof fn);
-    if(!strstr(fn,"."))strcat(fn,".tea");
+    /* default extension is .dta, same rule as use/save (and Stata);
+     * the old default of .tea broke `merge ... using \`tempfile'' after
+     * `save \`tempfile'' had written tempfile.dta */
+    if(!strstr(fn,"."))strcat(fn,".dta");
 
     int *km=NULL,nk=varlist_expand(c->f,kspec,&km);
     if(nk<1){ tea_err("merge: key variables not found\n"); free(km); return 111; }
@@ -2592,8 +2655,8 @@ static int do_merge(Cmd *c){
 
     /* result frame: master columns + using-only columns + _merge */
     Frame *R=frame_create(c->ws,"__merge_res");
-    for(int j=0;j<c->f->nvar;j++){ Variable*sv=&c->f->vars[j]; Variable*d=var_add(R,sv->name,sv->type); snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); }
-    for(int j=0;j<nuo;j++){ Variable*sv=&U->vars[uonly[j]]; Variable*d=var_add(R,sv->name,sv->type); snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); }
+    for(int j=0;j<c->f->nvar;j++){ Variable*sv=&c->f->vars[j]; Variable*d=var_add(R,sv->name,sv->type); snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); snprintf(d->vallab,33,"%s",sv->vallab); }
+    for(int j=0;j<nuo;j++){ Variable*sv=&U->vars[uonly[j]]; Variable*d=var_add(R,sv->name,sv->type); snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); snprintf(d->vallab,33,"%s",sv->vallab); }
     char mgname[33]="_merge"; { char g[33]; if(opt_value(c->options,"generate",g,sizeof g)) snprintf(mgname,33,"%s",g); }
     int wantmg = !opt_present(c->options,"nogenerate") && !opt_present(c->options,"nogen");
     var_add(R,mgname,VT_NUM); int mgvar=R->nvar-1;   /* always built; dropped at end if nogen */
@@ -2908,7 +2971,7 @@ static int do_reshape(Cmd *c){
         /* result columns: i vars, j var, one per stub, then carried vars.
          * Formats and variable labels survive on i and carried columns. */
         for(int q=0;q<niv;q++){ Variable*sv=&Rsrc->vars[iv[q]]; Variable*d=var_add(R,sv->name,sv->type);
-            snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); }
+            snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); snprintf(d->vallab,33,"%s",sv->vallab); }
         var_add(R,jname,jstr?VT_STR:VT_NUM);
         int stubcol[32];
         for(int sIdx=0;sIdx<ns;sIdx++){ VarType t=VT_NUM; char probe[80];
@@ -2919,7 +2982,7 @@ static int do_reshape(Cmd *c){
             var_add(R,stubs[sIdx],t); stubcol[sIdx]=R->nvar-1; }
         int carrybase=R->nvar;
         for(int q=0;q<ncv;q++){ Variable*sv=&Rsrc->vars[cv[q]]; Variable*d=var_add(R,sv->name,sv->type);
-            snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); }
+            snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); snprintf(d->vallab,33,"%s",sv->vallab); }
 
         /* precompute the source column of each (stub, level) once — the old
          * per-cell var_find was an O(rows x levels x vars) name scan */
@@ -3011,7 +3074,7 @@ static int do_reshape(Cmd *c){
 
         /* i vars first (formats and labels survive) */
         for(int q=0;q<niv;q++){ Variable*sv=&Rsrc->vars[iv[q]]; Variable*d=var_add(R,sv->name,sv->type);
-            snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); }
+            snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); snprintf(d->vallab,33,"%s",sv->vallab); }
         /* stub x level columns; every generated name must be a valid
          * identifier and unique — fail loud, never mangle silently */
         int base[32];
@@ -3052,7 +3115,7 @@ static int do_reshape(Cmd *c){
         }
         int carrybase=R->nvar;
         for(int q=0;q<ncarr;q++){ Variable*sv=&Rsrc->vars[carr[q]]; Variable*d=var_add(R,sv->name,sv->type);
-            snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); }
+            snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); snprintf(d->vallab,33,"%s",sv->vallab); }
 
         frame_set_nobs(R,(size_t)ng);
         progress_begin("reshape wide", (size_t)ng);
@@ -3576,6 +3639,7 @@ static int do_save(Cmd *c){
     }
 
     /* native .tea binary format (fast internal exchange) */
+    g_pst_ws = c->ws;
     int wrc = pst_write(c->f, fn);
     if(wrc) return wrc;
     snprintf(c->f->source,sizeof c->f->source,"%s",fn);
@@ -4108,7 +4172,7 @@ static int do_setobs(Cmd *c){ long n=strtol(c->args,NULL,10);
 static void clone_frame(Frame *dst,Frame *src){
     for(int j=0;j<src->nvar;j++){ Variable*s=&src->vars[j];
         Variable*d=var_add(dst,s->name,s->type);
-        snprintf(d->format,33,"%s",s->format); snprintf(d->vlabel,81,"%s",s->vlabel); }
+        snprintf(d->format,33,"%s",s->format); snprintf(d->vlabel,81,"%s",s->vlabel); snprintf(d->vallab,33,"%s",s->vallab); }
     frame_set_nobs(dst,src->nobs);
     for(int j=0;j<src->nvar;j++){ Variable*s=&src->vars[j],*d=&dst->vars[j];
         if(s->type==VT_NUM) memcpy(d->num,s->num,src->nobs*sizeof(double));
@@ -4170,7 +4234,7 @@ static int do_frame(Cmd *c){
         if(frame_get(c->ws,into2)){ tea_err("frame %s exists\n",into2); free(vv); return 110; }
         Frame*dst=frame_create(c->ws,into2);
         for(int k=0;k<nv;k++){ Variable*s=&c->f->vars[vv[k]]; Variable*d=var_add(dst,s->name,s->type);
-            snprintf(d->format,33,"%s",s->format); snprintf(d->vlabel,81,"%s",s->vlabel); }
+            snprintf(d->format,33,"%s",s->format); snprintf(d->vlabel,81,"%s",s->vlabel); snprintf(d->vallab,33,"%s",s->vallab); }
         frame_set_nobs(dst,c->f->nobs);
         for(int k=0;k<nv;k++){ Variable*s=&c->f->vars[vv[k]],*d=&dst->vars[k];
             if(s->type==VT_NUM) memcpy(d->num,s->num,c->f->nobs*sizeof(double));
@@ -4388,6 +4452,7 @@ static int do_preserve(Cmd *c){
     int fd = mkstemp(path);
     if(fd < 0){ tea_err("preserve: cannot create snapshot file\n"); return 603; }
     close(fd);
+    g_pst_ws = c->ws;
     int rc = pst_write(c->f, path);
     if(rc){ unlink(path); tea_err("preserve: cannot write snapshot\n"); return rc; }
     c->ws->preserve_path = strdup(path);
@@ -4399,6 +4464,7 @@ static int do_preserve(Cmd *c){
  * state in place (restore, preserve).  Returns 0 or an error rc. */
 static int preserve_reload(Workspace *ws, Frame *f, int keep_snapshot){
     frame_clear(f);
+    g_pst_ws = ws;
     int rc = load_pst_into(f, ws->preserve_path);
     if(rc){ tea_err("restore: snapshot unreadable (rc=%d) — data NOT restored\n", rc); return rc; }
     if(!keep_snapshot){

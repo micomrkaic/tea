@@ -1,0 +1,32 @@
+/tmp
+number of observations set to 8
+(8 real changes made)
+(8 real changes made)
+(8 real changes made)
+(8 real changes made)
+(reshaped wide; now 4 vars, 4 obs)
+(reshaped long; now 4 vars, 8 obs)
+(graph written to /tmp/t58_a.svg, n=8)
+1
+(observations now 4)
+(graph written to /tmp/t58_b.svg, n=8)
+1
+file /tmp/t58.tea saved
+(4 vars, 8 obs)
+(graph written to /tmp/t58_c.svg, n=8)
+1
+file /tmp/t58.dta saved
+(4 vars, 8 obs)
+(graph written to /tmp/t58_d.svg, n=8)
+1
+(4 observations deleted)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+        from master (_merge==1)             0
+        from using  (_merge==2)             0
+    Matched     (_merge==3)                 8
+    -----------------------------------------
+(graph written to /tmp/t58_e.svg, n=8)
+1

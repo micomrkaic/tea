@@ -291,7 +291,11 @@ to sort automatically.
 ## Importing data
 
 `tea` reads CSV, TSV, Stata `.dta`, Excel `.xlsx`, and OpenDocument
-`.ods` files, plus its own native `.tea` binary format.
+`.ods` files, plus its own native `.tea` binary format.  As of v1.6.7
+the native format (TEA2) carries value-label sets with the dataset,
+exactly like `.dta`; legacy TEA1 files still read, minus value-label
+attachments.  `use`, `save`, and `merge ... using` all default a
+missing extension to `.dta`.
 
     import delimited "data.csv", clear      // CSV
     import delimited "data.tsv", clear      // TSV (auto-detected)
