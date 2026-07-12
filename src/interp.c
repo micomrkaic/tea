@@ -106,8 +106,16 @@ char *macro_expand(Interp *ip,const char *line){
     #define PUT(s) do{ const char*_s=(s); size_t _l=strlen(_s); \
         while(len+_l+1>cap){cap*=2;out=realloc(out,cap);} memcpy(out+len,_s,_l); len+=_l; out[len]=0; }while(0)
     bool in_dquote = false;
+    int cq = 0;   /* compound-quote `"..."' nesting depth */
     for(const char *p=line;*p;){
-        if(*p == '"'){ in_dquote = !in_dquote; char c2[2]={*p,0}; PUT(c2); p++; continue; }
+        /* Stata compound quotes: `" opens, "' closes, nesting tracked.
+         * Macros still expand inside; a lone " inside is literal (does
+         * not toggle the double-quote state).  The delimiters themselves
+         * pass through so downstream parsers (display, file write, the
+         * subinstr extended fcn) can see them. */
+        if(*p=='`' && p[1]=='"'){ cq++; PUT("`\""); p+=2; continue; }
+        if(cq>0 && *p=='"' && p[1]=='\''){ cq--; PUT("\"'"); p+=2; continue; }
+        if(*p == '"'){ if(!cq) in_dquote = !in_dquote; char c2[2]={*p,0}; PUT(c2); p++; continue; }
         if(*p=='`'){
             const char *q=p+1; int d=1; while(*q&&d){ if(*q=='`')d++; else if(*q=='\'')d--; if(d)q++; }
             char inner[1024]; snprintf(inner,sizeof inner,"%.*s",(int)(q-p-1),p+1);
@@ -333,14 +341,80 @@ int run_line(Interp *ip,const char *raw){
             free(ex);free(byv);free(sortk); RL_DONE(); return 0;
         }
         char nm[128]; int n=0; while(*p&&!isspace((unsigned char)*p)&&*p!='='&&n<127)nm[n++]=*p++; nm[n]=0;
-        while(*p==' ')p++; int isexp=0; if(*p=='='){isexp=1;p++;while(*p==' ')p++;}
+        while(*p==' ')p++;
+        /* extended macro function: `local name : fcn ...` */
+        if(*p==':'){
+            p++; while(*p==' ')p++;
+            char fcn[32]; int fn2=0; while(*p&&!isspace((unsigned char)*p)&&fn2<31)fcn[fn2++]=*p++; fcn[fn2]=0;
+            while(*p==' ')p++;
+            if(!strcmp(fcn,"subinstr")){
+                /* : subinstr local|global SRC FROM TO [, all]
+                 * FROM/TO are "..." or compound `"..."' (the way to say
+                 * a literal double quote).  Default replaces the FIRST
+                 * occurrence; `, all` replaces every one — Stata rules. */
+                char scope[16]; int sn=0; while(*p&&!isspace((unsigned char)*p)&&sn<15)scope[sn++]=*p++; scope[sn]=0;
+                while(*p==' ')p++;
+                char srcnm[128]; int qn=0; while(*p&&!isspace((unsigned char)*p)&&qn<127)srcnm[qn++]=*p++; srcnm[qn]=0;
+                while(*p==' ')p++;
+                if(strcmp(scope,"local") && strcmp(scope,"global")){
+                    fprintf(stderr,"local %s: subinstr requires `local' or `global'\n",nm);
+                    free(ex);free(byv);free(sortk); RL_DONE(); return 198;
+                }
+                char from[512], to[512]; int ok=1;
+                for(int a2=0;a2<2 && ok;a2++){
+                    char *dst = a2? to : from; size_t w=0, dcap=511;
+                    while(*p==' ')p++;
+                    if(p[0]=='`' && p[1]=='"'){          /* compound-quoted */
+                        p+=2; int d=1;
+                        while(*p && d){
+                            if(p[0]=='`' && p[1]=='"'){ d++; if(w+1<dcap){dst[w++]='`';dst[w++]='"';} p+=2; continue; }
+                            if(p[0]=='"' && p[1]=='\''){ d--; if(d && w+1<dcap){dst[w++]='"';dst[w++]='\'';} p+=2; continue; }
+                            if(w<dcap) dst[w++]=*p; p++;
+                        }
+                    } else if(p[0]=='"'){
+                        p++; while(*p && *p!='"'){ if(w<dcap)dst[w++]=*p; p++; }
+                        if(*p=='"')p++;
+                    } else ok=0;
+                    dst[w]=0;
+                }
+                if(!ok || !from[0]){
+                    fprintf(stderr,"local %s: subinstr needs quoted from/to strings (from must be non-empty)\n",nm);
+                    free(ex);free(byv);free(sortk); RL_DONE(); return 198;
+                }
+                while(*p==' ')p++;
+                int all = 0;
+                if(*p==','){ p++; while(*p==' ')p++; char w2[16]; sscanf(p,"%15s",w2); if(!strcmp(w2,"all")) all=1; }
+                const char *sv = !strcmp(scope,"local") ? mac_get(ip->locals,srcnm)
+                                                        : mac_get(ip->globals,srcnm);
+                if(!sv) sv="";
+                /* replace */
+                size_t flen=strlen(from), tlen=strlen(to);
+                size_t vcap=strlen(sv)+ (tlen>flen? (strlen(sv)/(flen?flen:1)+1)*(tlen-flen) : 0) + 64;
+                char *out2=malloc(vcap); size_t w=0; int done_one=0;
+                for(const char *s2=sv; *s2; ){
+                    if((!done_one || all) && !strncmp(s2,from,flen)){
+                        memcpy(out2+w,to,tlen); w+=tlen; s2+=flen; done_one=1;
+                    } else out2[w++]=*s2++;
+                }
+                out2[w]=0;
+                mac_set(&ip->locals,nm,out2);
+                free(out2);
+                free(ex);free(byv);free(sortk); RL_DONE(); return 0;
+            }
+            fprintf(stderr,"local %s: extended macro function `%s' not supported (tea has: subinstr)\n",nm,fcn);
+            free(ex);free(byv);free(sortk); RL_DONE(); return 198;
+        }
+        int isexp=0; if(*p=='='){isexp=1;p++;while(*p==' ')p++;}
         char val[2048];
         if(isexp){ eval_scalar(ip,p,val,sizeof val); }
         else { snprintf(val,sizeof val,"%s",p);
             for(int i=(int)strlen(val)-1;i>=0&&val[i]==' ';i--)val[i]=0;
-            /* strip surrounding double quotes: `local v "x y"` -> v = `x y` */
+            /* strip surrounding double quotes: `local v "x y"` -> v = `x y`;
+             * likewise compound quotes: `local v \`"x"y"'` -> v = x"y */
             size_t L=strlen(val);
-            if(L>=2 && val[0]=='"' && val[L-1]=='"'){
+            if(L>=4 && val[0]=='`' && val[1]=='"' && val[L-2]=='"' && val[L-1]=='\''){
+                memmove(val, val+2, L-4); val[L-4]=0; }
+            else if(L>=2 && val[0]=='"' && val[L-1]=='"'){
                 memmove(val, val+1, L-2); val[L-2]=0; }
         }
         mac_set(&ip->locals,nm,val); free(ex);free(byv);free(sortk); RL_DONE(); return 0;
@@ -361,7 +435,38 @@ int run_line(Interp *ip,const char *raw){
         while(*p){
             while(*p==' ')p++;
             if(!*p) break;
-            if(*p=='"'){ p++; while(*p&&*p!='"'&&ob<4090) outb[ob++]=*p++; if(*p=='"')p++; }
+            /* Stata display styles are directives, not output: `as error`,
+             * `as text/result/input`, and the old `in red` color syntax.
+             * Recognize and skip them (tea draws no colors). */
+            if(!strncmp(p,"as ",3)){
+                char *q=p+3; while(*q==' ')q++;
+                static const char *sty[]={"error","err","text","txt","result","res","input","inp",NULL};
+                for(int k=0;sty[k];k++){ size_t L=strlen(sty[k]);
+                    if(!strncmp(q,sty[k],L) && (q[L]==0||q[L]==' ')){ p=q+L; goto disp_continue; } }
+            }
+            if(!strncmp(p,"in ",3)){
+                char *q=p+3; while(*q==' ')q++;
+                static const char *col[]={"red","green","yellow","blue","white","smcl",NULL};
+                for(int k=0;col[k];k++){ size_t L=strlen(col[k]);
+                    if(!strncmp(q,col[k],L) && (q[L]==0||q[L]==' ')){ p=q+L; goto disp_continue; } }
+            }
+            /* compound-quoted string `"..."' — contents verbatim, nesting kept */
+            if(p[0]=='`' && p[1]=='"'){
+                p+=2; int d=1;
+                while(*p && d && ob<4090){
+                    if(p[0]=='`' && p[1]=='"'){ d++; outb[ob++]='`'; if(ob<4090)outb[ob++]='"'; p+=2; continue; }
+                    if(p[0]=='"' && p[1]=='\''){ d--; if(d){ outb[ob++]='"'; if(ob<4090)outb[ob++]='\''; } p+=2; continue; }
+                    outb[ob++]=*p++;
+                }
+                goto disp_continue;
+            }
+            if(*p=='"'){ p++;
+                while(*p && ob<4090){
+                    if(p[0]=='"' && p[1]=='"'){ outb[ob++]='"'; p+=2; continue; }  /* "" = literal " */
+                    if(p[0]=='"') break;
+                    outb[ob++]=*p++;
+                }
+                if(*p=='"')p++; }
             else { char seg[1024]; int n=0; int paren=0; int inq=0;
                 while(*p && ob<4090 && n<1023){
                     if(*p=='"' && paren==0) break;  /* end of bareword segment */
@@ -379,12 +484,17 @@ int run_line(Interp *ip,const char *raw){
                 if(seg[0]&&eval_scalar(ip,seg,vb,sizeof vb)==0){ int l=strlen(vb); if(ob+l<4090){memcpy(outb+ob,vb,l);ob+=l;} }
                 else { int l=strlen(seg); if(ob+l<4090){memcpy(outb+ob,seg,l);ob+=l;} }
             }
+            disp_continue: ;
         }
         outb[ob]=0;
-        printf("%s\n",outb);
-        /* Tee display output to log file if one is open. */
-        extern FILE *g_logfp;
-        if(g_logfp){ fprintf(g_logfp, "%s\n", outb); fflush(g_logfp); }
+        /* quietly suppresses display too (Stata) — both the prefix form
+         * and a surrounding quietly { ... } block (ip->quiet). */
+        if(!quiet && !ip->quiet){
+            printf("%s\n",outb);
+            /* Tee display output to log file if one is open. */
+            extern FILE *g_logfp;
+            if(g_logfp){ fprintf(g_logfp, "%s\n", outb); fflush(g_logfp); }
+        }
         free(ex);free(byv);free(sortk); RL_DONE(); return 0;
     }
     if(!strncmp(t,"scalar ",7)){ char *p=t+7; if(!strncmp(p,"define ",7))p+=7;
@@ -439,11 +549,19 @@ static int match_brace(Lines *L,int open){
 /* evaluate an if/else-if condition (macro-expanded, variable-free scratch
  * frame).  Returns 1/0; on parse error prints and sets *err_rc. */
 static int eval_if_cond(Interp *ip, const char *cond, int *err_rc){
+    /* BUG FIX: this used to evaluate against an empty scratch frame with
+     * ec.N hardwired to 1 — so `if _N > 0 {` was ALWAYS true and
+     * `if _N == 0 {` ALWAYS false, independent of the data.  Wrong control
+     * flow, silently.  Evaluate against the active frame (like display and
+     * `=expr` do), with _n=1 and _N = the real observation count, so
+     * conditions like `if _N > 0` and `if x[1] == 5` mean what they say. */
     char *xc = macro_expand(ip, cond);
-    Frame scratch; memset(&scratch,0,sizeof scratch); scratch.ts_panel=scratch.ts_time=-1;
-    const char *pe; Node *a = expr_parse(xc, &scratch, &pe); free(xc);
+    Frame scratch, *f;
+    if(ip && ip->ws && ip->ws->cur){ f = ip->ws->cur; }
+    else { memset(&scratch,0,sizeof scratch); scratch.ts_panel=scratch.ts_time=-1; f = &scratch; }
+    const char *pe; Node *a = expr_parse(xc, f, &pe); free(xc);
     if(!a){ fprintf(stderr,"if: %s\n", pe); *err_rc = 111; return 0; }
-    EvalCtx ec={0}; ec.f=&scratch; ec.n=1; ec.N=1;
+    EvalCtx ec={0}; ec.f=f; ec.n=1; ec.N=(long)f->nobs;
     EVal v = expr_eval(a,&ec);
     int truth = !v.is_str && !sv_is_miss(v.num) && v.num!=0;
     eval_free(&v); node_free(a);
@@ -502,9 +620,22 @@ static int exec_one(Interp *ip,Lines *L,int *i){
         char *p=s+(s[4]==' '?5:10); while(*p==' ')p++;
         char var[64]; int n=0; while(*p&&*p!='='&&!isspace((unsigned char)*p))var[n++]=*p++; var[n]=0;
         while(*p==' '||*p=='=')p++;
-        double a=0,b=0,step=1;
-        if(strchr(p,'(')){ sscanf(p,"%lf(%lf)%lf",&a,&step,&b); }
-        else sscanf(p,"%lf/%lf",&a,&b);
+        /* the range may contain macros — `forvalues i = 1/\`=_N''` is the
+         * standard Stata idiom — so expand before parsing.  Strip the
+         * opening brace first (it isn't part of the range). */
+        char rng[256]; snprintf(rng,sizeof rng,"%.*s",(int)(strchr(p,'{')?strchr(p,'{')-p:(long)strlen(p)),p);
+        char *xr = macro_expand(ip,rng);
+        double a=0,b=0,step=1; int nparsed;
+        if(strchr(xr,'(')) nparsed = (sscanf(xr,"%lf(%lf)%lf",&a,&step,&b)==3);
+        else               nparsed = (sscanf(xr,"%lf/%lf",&a,&b)==2);
+        if(!nparsed || step==0){
+            /* SILENT NO-OP GUARD: an unparseable range used to run the
+             * body ZERO times with no error.  Fail loud. */
+            for(char *tz=xr+strlen(xr); tz>xr && (tz[-1]==' '||tz[-1]=='\t'); ) *--tz=0;
+            fprintf(stderr,"forvalues: cannot parse range `%s' (want a/b or a(step)b)\n",xr);
+            free(xr); g_tea_last_rc=ip->rc=198; return 198;
+        }
+        free(xr);
         int open=*i,close=match_brace(L,open); if(close<0){fprintf(stderr,"unbalanced {\n");return 199;}
         int brc=0;
         for(double x=a;((step>0)?x<=b+1e-9:x>=b-1e-9) && brc==0;x+=step){
@@ -515,6 +646,36 @@ static int exec_one(Interp *ip,Lines *L,int *i){
         *i=close; return brc;
     }
     /* if (cond) { } [else if (cond) { }]* [else { }] — also single-line */
+    /* quietly { ... } / capture { ... } / noisily { ... } block forms.
+     * The prefix machinery in run_line handles `quietly CMD`; a prefix
+     * chain ending in a bare `{` is a BLOCK and must be handled here,
+     * where the brace-matched line range is visible.  Prefixes chain:
+     * `capture quietly { ... }` works. */
+    {
+        const char *r=s; int bcap=0,bquiet=0,bnoisy=0,any=0;
+        for(;;){
+            if(!strncmp(r,"capture ",8)||!strncmp(r,"cap ",4)){ bcap=1; r+=(r[3]==' '?4:8); any=1; }
+            else if(!strncmp(r,"quietly ",8)||!strncmp(r,"qui ",4)){ bquiet=1; r+=(r[3]==' '?4:8); any=1; }
+            else if(!strncmp(r,"noisily ",8)||!strncmp(r,"noi ",4)){ bnoisy=1; r+=(r[3]==' '?4:8); any=1; }
+            else break;
+            while(*r==' ')r++;
+        }
+        if(any && r[0]=='{'){
+            const char *r2=r+1; while(*r2==' ')r2++;
+            if(!*r2){
+                int open=*i, close=match_brace(L,open); if(close<0) return 199;
+                int savq = ip->quiet;
+                if(bquiet) ip->quiet=1;
+                if(bnoisy) ip->quiet=0;
+                int mfd[2]={-1,-1};
+                if(bcap){ mute_begin(mfd); g_tea_last_rc=0; }
+                int brc = exec_range(ip,L,open+1,close-1);
+                if(bcap){ mute_end(mfd); if(brc>0){ g_tea_last_rc=ip->rc=brc; brc=0; } }
+                ip->quiet = savq;
+                *i=close; return brc;
+            }
+        }
+    }
     if(!strncmp(s,"if ",3) && (strchr(s,'{')||1)){
         char *brace=strchr(s,'{');
         char cond[1024];

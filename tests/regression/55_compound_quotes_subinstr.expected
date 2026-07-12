@@ -1,0 +1,21 @@
+hello compound
+expanded: abc end
+He said ""hi"" twice: ""hi""
+He said "bye" twice: "hi"
+number of observations set to 2
+(2 real changes made)
+(2 real changes made)
+(2 real changes made)
+(2 real changes made)
+
+Contains data
+  obs: 2
+ vars: 4
+-------------------------------------------------------------
+variable         type     format     label
+nm               str      %9s        
+lab              str      %9s        
+alpha            double   %9.0g      says "A"
+beta             double   %9.0g      plain
+-------------------------------------------------------------
+199

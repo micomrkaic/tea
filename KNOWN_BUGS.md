@@ -898,3 +898,45 @@ used in `egen`.
   pid ^ nanosecond-startup-time, because pid alone fails under
   emscripten (constant pid, and the node harness mounts the HOST /tmp) —
   caught by the WASM rig colliding with its own previous run.
+
+## reported by Mico during WEO test_04 (v1.6.5)
+
+- Bug 18 — **`if COND {` evaluated against an empty scratch frame with
+  `_N` hardwired to 1** — so `if _N > 0 {` was ALWAYS true and
+  `if _N == 0 {` ALWAYS false, independent of the data.  The diagnostic
+  guard blocks in the WEO script ran unconditionally.  Silently wrong
+  control flow — the worst class.  → **FIXED**: conditions evaluate
+  against the active frame (_n=1, _N = real obs count); variable
+  references like `x[1] == 5` now work in if-conditions too.
+- Bug 19 — `forvalues i = 1/`=_N'` ran the body **ZERO times silently**:
+  the range was parsed before macro expansion, `sscanf` failed on the
+  backtick, and 1/0 looped zero times with no error.  → **FIXED**: the
+  range is macro-expanded first, and an unparseable range is a loud
+  rc=198 (a legitimately empty range like 1/0 still runs zero times, as
+  in Stata).
+- Bug 20 — compound quotes `"..."' were unsupported in macro expansion:
+  the expander treated `" as a macro reference and swallowed the text.
+  → **FIXED** per Stata's rules: `" opens, "' closes, nesting tracked,
+  macros still expand inside, a lone " inside is literal.  display,
+  `local x `"..."'`, and label variable accept them; plain "..." strings
+  in display and label variable also accept the "" doubled-quote escape.
+- Bug 21 — `label variable` stripped ALL trailing quotes from the label,
+  mangling labels that contain quotes.  → **FIXED** with a real quoted-
+  string parser (see Bug 20).
+- NEW — `quietly { ... }` / `capture { ... }` / `noisily { ... }` block
+  forms (prefixes chain: `capture quietly { ... }`).  `quietly` now also
+  suppresses `display`, as in Stata (prefix and block forms both).
+- NEW — extended macro function `local x : subinstr local|global y
+  "from" "to" [, all]`, with compound-quoted arguments (the way to say a
+  literal double quote).  Other extended functions error loudly with the
+  supported list rather than silently assigning the text.
+- NEW — `error #` (abort with a return code; the do-file assertion idiom
+  `if (bad) { ... error 459 }`) and `compress` (accepted for do-file
+  compatibility; tea storage is already minimal — reports "(0 bytes
+  saved)").
+- NEW — `display as error|as text|as result|as input` and old-style
+  `display in red|green|...` are recognized as style directives and no
+  longer printed as literal text.
+- Auto-restore of a pending `preserve` now also fires for do-files run
+  from the command line (`tea script.do`), not just via the `do` command;
+  preserve snapshots joined the atexit cleanup net.

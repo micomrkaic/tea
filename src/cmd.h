@@ -64,6 +64,7 @@ int  by_groups(Frame *f, int *byvars, int nby, size_t **los, size_t **his);
 
 /* physical stable sort of all columns by keys (asc), used by sort/by. */
 void frame_physical_sort(Frame *f, int *keys, int nkeys, const int *desc);
+int  tea_preserve_autorestore(Workspace *ws);   /* pending preserve at do-file end */
 
 /* command dispatch entry point (defined in commands.c) */
 int run_command(Cmd *c);

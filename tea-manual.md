@@ -2133,6 +2133,18 @@ any change keeps the manual and the implementation in agreement.*
   clear                                        drop all data in current frame
 ```
 
+## `error`
+
+```
+  error #                                      abort with return code # (Stata do-file assertions)
+```
+
+## `compress`
+
+```
+  compress                                     accepted for compatibility; tea storage is already minimal
+```
+
 ## `status`
 
 ```

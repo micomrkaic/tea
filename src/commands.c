@@ -1102,8 +1102,32 @@ static int do_label(Cmd *c){
     char sub[16]; const char *s=c->args; while(*s==' ')s++;
     sscanf(s,"%15s",sub); s+=strlen(sub); while(*s==' ')s++;
     if(!strcmp(sub,"variable")||!strcmp(sub,"var")){ char vn[64]; sscanf(s,"%63s",vn); s+=strlen(vn);
-        while(*s==' '||*s=='"')s++; char lbl[81]; snprintf(lbl,sizeof lbl,"%s",s);
-        for(int i=(int)strlen(lbl)-1;i>=0&&(lbl[i]=='"'||lbl[i]==' ');i--)lbl[i]=0;
+        while(*s==' ')s++;
+        /* label text: compound-quoted `"..."' (contents verbatim), plain
+         * "..." with Stata's doubled-quote escape ("" = one literal "),
+         * or bare text.  The old strip-trailing-quotes hack mangled
+         * labels containing quotes, e.g. the escaped labels a WEO-style
+         * label-generation loop writes. */
+        char lbl[81]; size_t w=0;
+        if(s[0]=='`' && s[1]=='"'){
+            s+=2; int d=1;
+            while(*s && d && w<80){
+                if(s[0]=='`' && s[1]=='"'){ d++; lbl[w++]='`'; if(w<80)lbl[w++]='"'; s+=2; continue; }
+                if(s[0]=='"' && s[1]=='\''){ d--; if(d){ lbl[w++]='"'; if(w<80)lbl[w++]='\''; } s+=2; continue; }
+                lbl[w++]=*s++;
+            }
+        } else if(s[0]=='"'){
+            s++;
+            while(*s && w<80){
+                if(s[0]=='"' && s[1]=='"'){ lbl[w++]='"'; s+=2; continue; }
+                if(s[0]=='"') break;
+                lbl[w++]=*s++;
+            }
+        } else {
+            while(*s && w<80) lbl[w++]=*s++;
+            while(w>0 && lbl[w-1]==' ') w--;
+        }
+        lbl[w]=0;
         int vi=var_find(c->f,vn); if(vi<0){tea_err("label: %s not found\n",vn);return 111;}
         snprintf(c->f->vars[vi].vlabel,81,"%s",lbl); return 0; }
     if(!strcmp(sub,"define")){           /* label define name # "txt" # "txt" ... */
@@ -3708,7 +3732,14 @@ static unsigned long long tmp_token(void){
     return tok;
 }
 static void tempfiles_cleanup(void){
-    for(int i=0;i<g_ntmp;i++){ unlink(g_tmpfiles[i]); free(g_tmpfiles[i]); }
+    for(int i=0;i<g_ntmp;i++){
+        unlink(g_tmpfiles[i]);
+        /* `save \`f'` on an extensionless tempfile writes f.dta (Stata's
+         * default-extension rule) — clean that sibling up too */
+        char with_ext[300]; snprintf(with_ext,sizeof with_ext,"%s.dta",g_tmpfiles[i]);
+        unlink(with_ext);
+        free(g_tmpfiles[i]);
+    }
     free(g_tmpfiles); g_tmpfiles=NULL; g_ntmp=g_tmpcap=0;
 }
 static void tempfile_register(const char *path){
@@ -4013,6 +4044,26 @@ static void comma_zu(size_t v, char *buf){
     for(int i=0;i<rl;i++){ if(i && (rl-i)%3==0) buf[w++]=','; buf[w++]=raw[i]; }
     buf[w]=0;
 }
+/* ---- error: abort with a given return code (Stata's `error #`) --------
+ * Used in do-file assertions: `if (bad) { ... error 459 }`.  Stata prints
+ * the standard message text for the code; tea returns the code and lets
+ * the abort line report it — no invented message text. */
+static int do_error(Cmd *c){
+    char *e; long n = strtol(c->args, &e, 10);
+    while(*e==' ')e++;
+    if(n < 0 || *e){ tea_err("error: usage is `error #' (a nonnegative return code)\n"); return 198; }
+    return (int)n;
+}
+
+/* ---- compress: accepted for do-file compatibility ----------------------
+ * Stata shrinks storage types (double->byte etc.).  tea stores numerics
+ * as double and strings variable-length, so there is nothing to shrink;
+ * the command is accepted and reports honestly. */
+static int do_compress(Cmd *c){
+    if(!c->quiet) printf("(0 bytes saved)\n");
+    return 0;
+}
+
 static int do_status(Cmd *c){
     if(c->f->nvar==0){ printf("(no data in memory)\n"); return 0; }
     size_t bytes=0;
@@ -4339,6 +4390,8 @@ static int do_preserve(Cmd *c){
     int rc = pst_write(c->f, path);
     if(rc){ unlink(path); tea_err("preserve: cannot write snapshot\n"); return rc; }
     c->ws->preserve_path = strdup(path);
+    tempfile_register(path);   /* atexit safety net: never litter /tmp with
+                                  snapshots, even on paths that skip restore */
     return 0;
 }
 /* reload the snapshot into frame f.  keep_snapshot: leave the file and
@@ -4352,6 +4405,15 @@ static int preserve_reload(Workspace *ws, Frame *f, int keep_snapshot){
         free(ws->preserve_path); ws->preserve_path=NULL;
     }
     return 0;
+}
+/* auto-restore a pending preserve — shared by do_dofile (a preserve issued
+ * inside a do-file, still pending at its conclusion) and main.c (the same
+ * rule for a do-file run from the command line: `tea script.do`). */
+int tea_preserve_autorestore(Workspace *ws){
+    if(!ws || !ws->preserve_path) return 0;
+    int rc = preserve_reload(ws, ws->cur, 0);
+    if(rc==0) printf("(preserved data restored at end of do-file)\n");
+    return rc;
 }
 static int do_restore(Cmd *c){
     if(!c->ws->preserve_path){
@@ -4379,10 +4441,7 @@ static int do_dofile(Cmd *c){
     fclose(fp);
     /* Stata: a preserve issued inside this do-file that is still pending
      * when it concludes — normally or via abort — is restored now. */
-    if(!had_preserve && c->ws->preserve_path){
-        int rrc = preserve_reload(c->ws, c->ws->cur, 0);
-        if(rrc==0) printf("(preserved data restored at end of do-file)\n");
-    }
+    if(!had_preserve && c->ws->preserve_path) tea_preserve_autorestore(c->ws);
     return rc;
 }
 
@@ -4669,6 +4728,8 @@ Disp TABLE[]={
         "      e.g.  use mydata.dta, clear            — extension dispatch decides format\n"
         "      'use foo' with no extension looks for foo.dta (Stata default)."},
     {"clear",do_clear,0,"clear                                        drop all data in current frame"},
+    {"error",do_error,0,"error #                                      abort with return code # (Stata do-file assertions)"},
+    {"compress",do_compress,1,"compress                                     accepted for compatibility; tea storage is already minimal"},
     {"status",do_status,0,"status                                       one-line summary: source, obs, vars, memory, sort/xtset state"},
     {"frame",do_frame,0,
         "frame create|change|copy|rename|put|drop|dir  multiple datasets\n"

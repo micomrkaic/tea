@@ -17,6 +17,7 @@
  */
 #include "interp.h"
 #include "dataset.h"
+#include "cmd.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -108,6 +109,9 @@ int main(int argc,char **argv){
         if(!f){ fprintf(stderr,"cannot open do-file %s\n",argv[argi]); return 1; }
         rc=run_stream(ip,f,false);
         fclose(f);
+        /* a preserve still pending when the do-file concludes (normally or
+         * via abort) is restored, same rule as the `do` command */
+        tea_preserve_autorestore(ws);
     } else if(argi < argc){
         /* explicit '-' — read do-file commands from stdin, non-interactive */
         rc=run_stream(ip,stdin,false);
