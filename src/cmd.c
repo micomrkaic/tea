@@ -35,7 +35,7 @@ int varlist_expand(Frame *f,const char *spec,int **out){
         if(!strcmp(tok,"_all")){ for(int i=0;i<f->nvar;i++)push(&a,&n,&cap,i); continue; }
         char *dash=strchr(tok,'-');
         if(dash && dash!=tok && dash[1]){            /* range a-b by position */
-            *dash=0; int lo=var_find(f,tok), hi=var_find(f,dash+1);
+            *dash=0; int lo=var_find_abbrev(f,tok), hi=var_find_abbrev(f,dash+1);
             if(lo>=0&&hi>=0){ if(lo>hi){int t=lo;lo=hi;hi=t;} for(int i=lo;i<=hi;i++)push(&a,&n,&cap,i); continue; }
             *dash='-';
         }
@@ -48,7 +48,7 @@ int varlist_expand(Frame *f,const char *spec,int **out){
             if(!matched){ /* Stata: no match is OK (silently empty), not an error */ }
             continue;
         }
-        int vi=var_find(f,tok);
+        int vi=var_find_abbrev(f,tok);
         if(vi>=0) push(&a,&n,&cap,vi);
         else { free(a); *out=NULL; return -1; }      /* unknown var */
     }

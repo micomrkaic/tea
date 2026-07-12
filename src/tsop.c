@@ -204,7 +204,8 @@ static int materialize_tsop(Frame *f, char op, int lag, const char *varname,
     /* lag=0 → just reference the variable directly (no temp needed).
      * The column with that name already exists in the frame. */
     if(lag == 0){
-        int vi = var_find(f, varname);
+        int vi = var_find_abbrev(f, varname);
+        if(vi == -2){ *err = "ambiguous abbreviation"; return -1; }
         if(vi < 0){ *err = "variable not found"; return -1; }
         return vi;
     }

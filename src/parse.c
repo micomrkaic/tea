@@ -255,12 +255,21 @@ static int validate_vars(Node *n, Frame *f, const char **err){
     if(!n) return 1;
     if(n->kind == N_VAR || n->kind == N_TSOP){
         if(strcmp(n->text,"_n") && strcmp(n->text,"_N") &&
-           strcmp(n->text,"_pi") && strcmp(n->text,"_rc") &&
-           var_find(f, n->text) < 0){
+           strcmp(n->text,"_pi") && strcmp(n->text,"_rc")){
+            int vi = var_find_abbrev(f, n->text);
             char *buf = (char*)g_valerr_buf();
-            snprintf(buf, 128, "variable %s not found", n->text);
-            *err = buf;
-            return 0;
+            if(vi == -2){
+                snprintf(buf, 128, "%s is an ambiguous abbreviation", n->text);
+                *err = buf; return 0;
+            }
+            if(vi < 0){
+                snprintf(buf, 128, "variable %s not found", n->text);
+                *err = buf; return 0;
+            }
+            /* canonicalize: rewrite the abbreviation to the full name so the
+             * evaluator and all downstream consumers see the real variable */
+            if(strcmp(n->text, f->vars[vi].name))
+                snprintf(n->text, sizeof n->text, "%s", f->vars[vi].name);
         }
     }
     return validate_vars(n->a, f, err)

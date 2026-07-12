@@ -99,6 +99,24 @@ int var_find(Frame *f, const char *name) {
     return -1;
 }
 
+/* Stata-style unique-abbreviation lookup: exact match wins; otherwise a
+ * prefix matching exactly ONE variable resolves to it; an ambiguous
+ * prefix returns -2 so callers can report it distinctly.  Used on the
+ * READ side only (expressions, varlists) — creation stays exact. */
+int var_find_abbrev(Frame *f, const char *name){
+    int vi = var_find(f, name);
+    if(vi >= 0) return vi;
+    size_t L = strlen(name);
+    if(!L) return -1;
+    int hit = -1;
+    for(int i = 0; i < f->nvar; i++)
+        if(!strncmp(f->vars[i].name, name, L)){
+            if(hit >= 0) return -2;          /* ambiguous */
+            hit = i;
+        }
+    return hit;
+}
+
 Variable *var_add(Frame *f, const char *name, VarType t) {
     if (f->nvar == f->cap_var) {
         f->cap_var = f->cap_var ? f->cap_var * 2 : 8;

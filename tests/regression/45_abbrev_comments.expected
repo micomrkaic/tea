@@ -1,0 +1,17 @@
+number of observations set to 3
+(3 real changes made)
+(3 real changes made)
+abbrev read: 1
+(3 real changes made)
+
+    Variable |        Obs        Mean    Std. dev.         Min         Max
+-------------+--------------------------------------------------------------
+        lics |          3           5            0           5           5
+ambiguous rc: 111
+(3 real changes made)
+exact creation: 99
+after block comment
+2
+(3 real changes made)
+nested ok: 7
+10

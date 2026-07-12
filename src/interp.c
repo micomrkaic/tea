@@ -685,6 +685,8 @@ struct TeaSession {
     bool    in_block;    /* accumulating a {...} block into L */
     char    delim;       /* '\n' or ';' under #delimit */
     bool    pending;     /* block balanced; held in case `else` follows */
+    int     cdepth;      /* block-comment nesting depth */
+    char    cjoin[16384];/* pre-comment fragment awaiting the closing */
     Lines   L;
 };
 
@@ -718,6 +720,41 @@ static int session_run_block_rc(TeaSession *s){
 }
 
 int tea_session_feed(TeaSession *s, const char *raw, bool *need_more){
+    /* ---- block comments (slash-star ... star-slash; nesting) --------------
+     * Text inside is removed; a comment spanning lines JOINS the code
+     * before the opener with the code after the closer (Stata's old-style
+     * line continuation).  Runs first so every later stage — blocks,
+     * #delimit, history — sees comment-free input. */
+    char _cstrip[16384]; size_t _cw = 0;
+    {
+        const char *p = raw;
+        while(*p && _cw < sizeof _cstrip - 1){
+            if(s->cdepth == 0){
+                if(p[0]=='/' && p[1]=='*'){ s->cdepth = 1; p += 2; continue; }
+                _cstrip[_cw++] = *p++;
+            } else {
+                if(p[0]=='/' && p[1]=='*'){ s->cdepth++; p += 2; continue; }
+                if(p[0]=='*' && p[1]=='/'){ s->cdepth--; p += 2; continue; }
+                p++;
+            }
+        }
+        _cstrip[_cw] = 0;
+        if(s->cdepth > 0){
+            /* unterminated on this line: stash any code fragment, ask for more */
+            size_t have = strlen(s->cjoin);
+            snprintf(s->cjoin + have, sizeof s->cjoin - have, "%s", _cstrip);
+            if(need_more) *need_more = true;
+            return 0;
+        }
+        if(s->cjoin[0]){
+            char joined[16384];
+            snprintf(joined, sizeof joined, "%s%s", s->cjoin, _cstrip);
+            s->cjoin[0] = 0;
+            snprintf(_cstrip, sizeof _cstrip, "%s", joined);
+        }
+        raw = _cstrip;
+    }
+
     if(need_more) *need_more = false;
 
     /* block-accumulation mode: lines are taken verbatim (no // stripping,
