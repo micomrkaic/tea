@@ -129,3 +129,25 @@ libm) — byte-identical output across two maximally different numerical
 backends.  The WASM harness (web/run_wasm_tests.cjs) runs each test in a
 subprocess with host /tmp mounted via NODEFS so `shell` semantics match
 the native harness.
+
+## Toolchain bootstrap without emsdk (v1.6.3 session)
+
+emsdk's binary downloads (storage.googleapis.com) can be unreachable; the
+whole build works from distro packages + GitHub sources instead:
+
+1. `apt-get install binaryen clang-15 lld-15 llvm-15 node-acorn`, then
+   `apt-get download emscripten && dpkg -i --force-depends emscripten_*.deb`
+   (the only unmet dep is a nodejs version PIN — any node >= 12 works).
+   If node is modern (>= 18), `npm install acorn` inside
+   /usr/share/emscripten/tools/ so acorn-optimizer.js finds its module.
+2. Static libs, all from GitHub, per the recipe above: alphacep/clapack
+   (pre-seed arith.h, strip the arithchk custom command from
+   F2CLIBS/libf2c/CMakeLists.txt, sed the 46 s_copy/s_cat int->void
+   declarations), ampl/gsl (emcmake), WizardMac/ReadStat (autoreconf +
+   emconfigure).  Stage the five .a files in $WASM_LIBS.
+3. `make wasm` — note web/tea.js does NOT depend on ./VERSION in the
+   Makefile, so after a version bump run `make wasm-clean && make wasm`
+   or the engine reports the old version.
+4. Node harness note: emscripten 3.1.6's loader predates node's global
+   fetch; the test harness is unaffected (it passes wasmBinary directly),
+   but ad-hoc `node tea.js` runs need `delete globalThis.fetch` first.

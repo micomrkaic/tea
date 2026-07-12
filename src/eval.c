@@ -330,6 +330,16 @@ static EVal call_fn(Node*n,EvalCtx*c){
         r=vstr(s);free(s);
     }
     else if(!strcmp(fn,"trim")||!strcmp(fn,"strtrim")){NEED(1) const char*s=a[0].is_str?a[0].str:""; while(*s==' '||*s=='\t')s++; const char*e=s+strlen(s); while(e>s&&(e[-1]==' '||e[-1]=='\t'))e--; char*o=strndup(s,e-s);r=vstr(o);free(o);}
+    else if(!strcmp(fn,"strtoname")){NEED(1) /* Stata: strtoname(s) — make a valid
+        * variable name: every invalid char becomes '_'; if the first char is a
+        * digit, prefix '_' ("CC.EST"->"CC_EST", "1960"->"_1960").  Truncated
+        * to 32 chars like Stata identifiers. */
+        const char*s=a[0].is_str?a[0].str:"";
+        char o[33]; size_t w=0;
+        if(s[0] && isdigit((unsigned char)s[0])) o[w++]='_';
+        for(const char*q=s; *q && w<32; q++)
+            o[w++]=(isalnum((unsigned char)*q)||*q=='_')?(char)*q:'_';
+        o[w]=0; r=vstr(o);}
     else if(!strcmp(fn,"ltrim")){NEED(1) const char*s=a[0].is_str?a[0].str:""; while(*s==' '||*s=='\t')s++; char*o=strdup(s); r=vstr(o); free(o);}
     else if(!strcmp(fn,"rtrim")){NEED(1) const char*s=a[0].is_str?a[0].str:""; const char*e=s+strlen(s); while(e>s&&(e[-1]==' '||e[-1]=='\t'))e--; char*o=strndup(s,e-s); r=vstr(o); free(o);}
     else if(!strcmp(fn,"itrim")){NEED(1) /* collapse consecutive whitespace to single space */

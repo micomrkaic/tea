@@ -344,6 +344,71 @@ any change keeps the manual and the implementation in agreement.*
       e.g.  save mydata.tea, replace        — native tea binary
 ```
 
+## `outreg2`
+
+```
+  outreg2 using FILE [, replace|append ctitle() dec() bdec() se label
+      symbol() alpha() addstat("Name", expr, ...) addtext() addnote()]
+      regression-table exporter (tab-separated; opens in Excel)
+```
+
+## `which`
+
+```
+  which CMD  — report whether CMD is a built-in tea command
+```
+
+## `ssc`
+
+```
+  ssc install PKG  — accepted and skipped (no package system)
+```
+
+## `isid`
+
+```
+  isid varlist  — error 459 unless varlist uniquely identifies obs
+```
+
+## `duplicates`
+
+```
+  duplicates report|drop [varlist]
+```
+
+## `tempfile`
+
+```
+  tempfile NAME...  — set local macros to fresh temp-file paths
+```
+
+## `tempname`
+
+```
+  tempname NAME...  — set local macros to fresh scratch names
+```
+
+## `pwcorr`
+
+```
+  pwcorr varlist  — pairwise correlation matrix
+```
+
+## `file`
+
+```
+  file open H using F, write [replace|append] | file write H "..." _n | file close H
+```
+
+## `confirm`
+
+```
+  confirm [new] file FILENAME | confirm [new|numeric|string] variable NAME
+      error (601/602/111/110/7) unless the condition holds; use with
+      capture:  capture confirm file f.dta
+                if _rc { <create it> }
+```
+
 ## `history`
 
 ```
@@ -461,6 +526,18 @@ any change keeps the manual and the implementation in agreement.*
 
 ```
   do FILENAME                                  run another do-file
+```
+
+## `preserve`
+
+```
+  preserve                                     snapshot the data in memory
+```
+
+## `restore`
+
+```
+  restore [, not preserve]                     bring the preserve snapshot back
 ```
 
 ## `version`

@@ -81,6 +81,7 @@ typedef struct {
     struct Estimates *fe_est;
     struct Estimates *re_est;
     StoredEst *stored_est;  /* named saved estimates */
+    char *preserve_path;    /* preserve/restore snapshot (.tea tempfile), or NULL */
 } Workspace;
 
 Workspace *ws_new(void);

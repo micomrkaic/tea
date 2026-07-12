@@ -124,7 +124,16 @@ static int tea_fprintf(FILE *fp, const char *fmt, ...){
 #define fprintf tea_fprintf
 
 /* forward decl: load_csv_into is defined further down; used by import excel */
-static int load_csv_into(Frame *f,const char *fn,char delim,int excel_names);
+/* load_csv_into modes */
+#define CSV_DELIM        0   /* import delimited: Stata naming (case + strip) */
+#define CSV_XL_FIRSTROW  1   /* import excel, firstrow: row 1 = names        */
+#define CSV_XL_NOHEADER  2   /* import excel w/o firstrow: A,B,C + row1=data */
+/* casemode (CSV_DELIM only) */
+#define CSVCASE_LOWER    0
+#define CSVCASE_PRESERVE 1
+#define CSVCASE_UPPER    2
+static int load_csv_into(Frame *f,const char *fn,char delim,int mode,int casemode);
+static int pst_write(Frame *f, const char *fn);
 
 /* Display width of a UTF-8 string = number of codepoints (continuation
  * bytes 10xxxxxx don't advance the column).  Used to pad table columns
@@ -2141,7 +2150,9 @@ static int do_import(Cmd *c){
         if(rc) return rc;
         /* now load the temp CSV using the same code path as 'import delimited' */
         frame_clear(c->f);
-        rc = load_csv_into(c->f, tmpcsv, ',', 1);  /* excel/ods: Stata firstrow naming */
+        rc = load_csv_into(c->f, tmpcsv, ',',
+                           opt_present(c->options,"firstrow") ? CSV_XL_FIRSTROW : CSV_XL_NOHEADER,
+                           CSVCASE_PRESERVE);  /* excel/ods: Stata naming rules */
         unlink(tmpcsv);
         /* try to remove the temp dir; ignore failure */
         char *slash=strrchr(tmpcsv,'/'); if(slash){ *slash=0; rmdir(tmpcsv); }
@@ -2155,7 +2166,12 @@ static int do_import(Cmd *c){
     char delim=','; char db[8]; if(opt_value(c->options,"delimiters",db,sizeof db))delim=db[0]=='\\'&&db[1]=='t'?'\t':db[0];
     if(strstr(fn,".tsv"))delim='\t';
     frame_clear(c->f);
-    int rc2 = load_csv_into(c->f, fn, delim, 0);
+    int csvcase = CSVCASE_LOWER;                 /* Stata default: lowercase */
+    { char cb[16]=""; if(opt_value(c->options,"case",cb,sizeof cb)){
+        if(!strcmp(cb,"preserve")) csvcase=CSVCASE_PRESERVE;
+        else if(!strcmp(cb,"upper")) csvcase=CSVCASE_UPPER;
+        else if(strcmp(cb,"lower")){ tea_err("import delimited: case() must be preserve, lower, or upper\n"); return 198; } } }
+    int rc2 = load_csv_into(c->f, fn, delim, CSV_DELIM, csvcase);
     if(rc2){ tea_err("import: cannot read %s (rc=%d)\n", fn, rc2); return rc2; }
     if(!c->quiet) printf("(%d vars, %zu obs)\n",c->f->nvar,c->f->nobs);
     return 0;
@@ -2199,6 +2215,22 @@ static int do_export(Cmd *c){
 }
 
 /* ---- native save / use ------------------------------------------------- */
+/* write a frame in the native .tea binary format.  Shared by `save` and
+ * `preserve`.  NULL string cells are written as empty (defensive: the
+ * reader always materializes strings, but gen paths could leave NULLs). */
+static int pst_write(Frame *f, const char *fn){
+    FILE *fp=fopen(fn,"wb"); if(!fp)return 603;
+    fwrite("TEA1",1,4,fp);
+    fwrite(&f->nobs,sizeof(size_t),1,fp); fwrite(&f->nvar,sizeof(int),1,fp);
+    for(int j=0;j<f->nvar;j++){ Variable*v=&f->vars[j];
+        fwrite(v->name,1,33,fp); fwrite(&v->type,sizeof(VarType),1,fp);
+        fwrite(v->format,1,33,fp); fwrite(v->vlabel,1,81,fp); }
+    for(int j=0;j<f->nvar;j++){ Variable*v=&f->vars[j];
+        if(v->type==VT_NUM)fwrite(v->num,sizeof(double),f->nobs,fp);
+        else for(size_t i=0;i<f->nobs;i++){ const char *s2=v->str[i]?v->str[i]:"";
+            int L=(int)strlen(s2); fwrite(&L,4,1,fp); fwrite(s2,1,L,fp);} }
+    fclose(fp); return 0;
+}
 /* load a .tea (or .csv/.tsv) file into an already-cleared frame. */
 static int load_pst_into(Frame *f,const char *fn){
     FILE *fp=fopen(fn,"rb"); if(!fp)return 601;
@@ -2230,35 +2262,29 @@ static void csv_unquote(char *s){
     s[w] = 0;
 }
 
-/* sanitize_colname: turn a raw CSV header field into a valid identifier:
- *   - drop leading UTF-8 BOM
- *   - any non-alphanumeric (and non-_) char becomes _
- *   - collapse consecutive _ to a single _
- *   - strip leading _ (Stata identifiers can't start with _ either)
- *   - if it would start with a digit, prepend 'v'
- *   - if empty, use 'v' */
-static void sanitize_colname(const char *in, char *out, size_t outsz){
+/* sanitize_colname_delim: Stata `import delimited` naming rule.
+ *   - invalid characters are REMOVED (not underscored): "Country Code" ->
+ *     CountryCode; existing underscores are kept
+ *   - case folded per casemode (Stata default: lower -> countrycode)
+ *   - empty after cleaning, or starting with a digit: fall back to v<col+1>
+ *     (Stata's position-based names, 1-based)
+ * Duplicate resolution happens at the call site (also v<col+1>). */
+static void sanitize_colname_delim(const char *in, int col, int casemode,
+                                   char *out, size_t outsz){
     const char *p = in;
-    /* skip BOM */
-    if((unsigned char)p[0]==0xEF && (unsigned char)p[1]==0xBB && (unsigned char)p[2]==0xBF) p+=3;
+    if((unsigned char)p[0]==0xEF && (unsigned char)p[1]==0xBB && (unsigned char)p[2]==0xBF) p+=3; /* BOM */
     char buf[256]; size_t w=0;
-    int last_underscore = 1;   /* treat start as "after underscore" so leading _ is dropped */
     for(; *p && w<sizeof(buf)-1; p++){
-        char c = *p;
-        if(isalnum((unsigned char)c) || c=='_'){
-            if(c=='_'){ if(last_underscore) continue; buf[w++]='_'; last_underscore=1; }
-            else { buf[w++]=c; last_underscore=0; }
-        } else {
-            /* non-identifier char becomes underscore; collapsed */
-            if(!last_underscore){ buf[w++]='_'; last_underscore=1; }
-        }
+        unsigned char ch=(unsigned char)*p;
+        if(!(isalnum(ch) || ch=='_')) continue;          /* strip, don't underscore */
+        if(casemode==CSVCASE_LOWER)      buf[w++]=(char)tolower(ch);
+        else if(casemode==CSVCASE_UPPER) buf[w++]=(char)toupper(ch);
+        else                             buf[w++]=(char)ch;
     }
-    /* trim trailing underscore */
-    while(w>0 && buf[w-1]=='_') w--;
-    buf[w] = 0;
-    if(!buf[0]){ snprintf(out, outsz, "v"); return; }
-    if(isdigit((unsigned char)buf[0])) snprintf(out, outsz, "v%s", buf);
-    else snprintf(out, outsz, "%s", buf);
+    buf[w]=0;
+    if(!buf[0] || isdigit((unsigned char)buf[0])){ snprintf(out,outsz,"v%d",col+1); return; }
+    if(w>32) buf[32]=0;                                   /* Stata name cap */
+    snprintf(out,outsz,"%s",buf);
 }
 
 /* excel_colletter: 0-based column index -> Excel column letters
@@ -2294,7 +2320,7 @@ static void sanitize_colname_excel(const char *in, int col, char *out, size_t ou
     snprintf(out,outsz,"%s",buf);
 }
 
-static int load_csv_into(Frame *f,const char *fn,char delim,int excel_names){
+static int load_csv_into(Frame *f,const char *fn,char delim,int mode,int casemode){
     FILE *fp=fopen(fn,"r"); if(!fp)return 601;
     /* Buffer for one logical record (may span multiple physical lines if a
      * quoted field contains embedded newlines). */
@@ -2340,26 +2366,37 @@ static int load_csv_into(Frame *f,const char *fn,char delim,int excel_names){
         }
         if(row==0){
             ncol=nf;
-            for(int j=0;j<nf;j++){
-                csv_unquote(flds[j]);
-                char nm[64];
-                if(excel_names) sanitize_colname_excel(flds[j], j, nm, sizeof nm);
-                else            sanitize_colname(flds[j], nm, sizeof nm);
-                char unique[64]; snprintf(unique, sizeof unique, "%s", nm);
-                /* duplicate header: in excel mode fall back to the column
-                 * letter (Stata's resolution); the _2/_3 suffix loop below
-                 * remains as a backstop for both modes (e.g. a header that
-                 * literally spells another column's letter). */
-                if(excel_names && var_find(f, unique) >= 0)
-                    excel_colletter(j, unique, sizeof unique);
-                char base[64]; snprintf(base, sizeof base, "%s", unique);
-                int suffix = 2;
-                while(var_find(f, unique) >= 0){
-                    snprintf(unique, sizeof unique, "%s_%d", base, suffix++);
+            if(mode==CSV_XL_NOHEADER){
+                /* Stata `import excel` WITHOUT firstrow: columns are named
+                 * by their Excel letter and row 1 is DATA — fall through
+                 * to the data path below with this same record. */
+                for(int j=0;j<nf;j++){ char nm[8]; excel_colletter(j,nm,sizeof nm); var_add(f,nm,VT_NUM); }
+                row++;   /* row 1 = first data row; no continue */
+            } else {
+                for(int j=0;j<nf;j++){
+                    csv_unquote(flds[j]);
+                    char nm[64];
+                    if(mode==CSV_XL_FIRSTROW) sanitize_colname_excel(flds[j], j, nm, sizeof nm);
+                    else sanitize_colname_delim(flds[j], j, casemode, nm, sizeof nm);
+                    char unique[64]; snprintf(unique, sizeof unique, "%s", nm);
+                    /* duplicate header: excel mode falls back to the column
+                     * letter, delimited mode to v<col+1> (both Stata's rule);
+                     * the _2/_3 suffix loop below remains as a backstop
+                     * (e.g. a header that literally spells another column's
+                     * fallback name). */
+                    if(var_find(f, unique) >= 0){
+                        if(mode==CSV_XL_FIRSTROW) excel_colletter(j, unique, sizeof unique);
+                        else snprintf(unique, sizeof unique, "v%d", j+1);
+                    }
+                    char base[64]; snprintf(base, sizeof base, "%s", unique);
+                    int suffix = 2;
+                    while(var_find(f, unique) >= 0){
+                        snprintf(unique, sizeof unique, "%s_%d", base, suffix++);
+                    }
+                    var_add(f, unique, VT_NUM);
                 }
-                var_add(f, unique, VT_NUM);
+                row++; continue;
             }
-            row++; continue;
         }
         frame_set_nobs(f,(size_t)row);
         for(int j=0;j<ncol&&j<nf;j++){
@@ -2398,8 +2435,8 @@ static int load_into(Frame *f, Workspace *ws, const char *fn, const char **err_o
     if(ends_with_ci(fn, ".dta")){
         return dta_read(f, ws, fn, err);
     }
-    if(strstr(fn,".csv")) return load_csv_into(f,fn,',',0);
-    if(strstr(fn,".tsv")) return load_csv_into(f,fn,'\t',0);
+    if(strstr(fn,".csv")) return load_csv_into(f,fn,',',CSV_DELIM,CSVCASE_LOWER);
+    if(strstr(fn,".tsv")) return load_csv_into(f,fn,'\t',CSV_DELIM,CSVCASE_LOWER);
     return load_pst_into(f,fn);
 }
 
@@ -2522,8 +2559,8 @@ static int do_merge(Cmd *c){
 
     /* result frame: master columns + using-only columns + _merge */
     Frame *R=frame_create(c->ws,"__merge_res");
-    for(int j=0;j<c->f->nvar;j++){ Variable*sv=&c->f->vars[j]; Variable*d=var_add(R,sv->name,sv->type); snprintf(d->format,33,"%s",sv->format); }
-    for(int j=0;j<nuo;j++){ Variable*sv=&U->vars[uonly[j]]; Variable*d=var_add(R,sv->name,sv->type); snprintf(d->format,33,"%s",sv->format); }
+    for(int j=0;j<c->f->nvar;j++){ Variable*sv=&c->f->vars[j]; Variable*d=var_add(R,sv->name,sv->type); snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); }
+    for(int j=0;j<nuo;j++){ Variable*sv=&U->vars[uonly[j]]; Variable*d=var_add(R,sv->name,sv->type); snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); }
     char mgname[33]="_merge"; { char g[33]; if(opt_value(c->options,"generate",g,sizeof g)) snprintf(mgname,33,"%s",g); }
     int wantmg = !opt_present(c->options,"nogenerate") && !opt_present(c->options,"nogen");
     var_add(R,mgname,VT_NUM); int mgvar=R->nvar-1;   /* always built; dropped at end if nogen */
@@ -2634,6 +2671,23 @@ static int do_merge(Cmd *c){
     #undef APPLYUPDATE
 }
 
+/* drop a temporary workspace frame (e.g. the reshape result buffer) on
+ * error paths: unlink from the frame list and free it. */
+static void ws_drop_frame(Workspace *ws, Frame *R){
+    for(Frame **pp=&ws->frames; *pp; pp=&(*pp)->next)
+        if(*pp==R){ *pp=R->next; frame_clear(R); free(R->sortvars); free(R); break; }
+}
+
+/* valid Stata identifier: [A-Za-z_][A-Za-z0-9_]*, at most 32 chars */
+static bool valid_varname(const char *s){
+    if(!s[0]) return false;
+    if(!(isalpha((unsigned char)s[0]) || s[0]=='_')) return false;
+    size_t L=0;
+    for(const char *p=s; *p; p++,L++)
+        if(!(isalnum((unsigned char)*p) || *p=='_')) return false;
+    return L<=32;
+}
+
 /* ---- reshape (in-place; user must `frame copy` first if they want a copy) */
 static int do_reshape(Cmd *c){
     const char *s=c->args; while(*s==' ')s++;
@@ -2698,6 +2752,7 @@ static int do_reshape(Cmd *c){
         }
     }
     if(ns==0){ tea_err("reshape: at least one stub required\n"); return 198; }
+    bool jstr = opt_present(c->options,"string");
     int *iv=NULL,niv=varlist_expand(c->f,iopt,&iv);
     if(niv<1){ tea_err("reshape: i() vars not found\n"); free(iv); return 111; }
 
@@ -2706,46 +2761,72 @@ static int do_reshape(Cmd *c){
     Frame *R=frame_create(c->ws,"__reshape_res");
 
     if(islong){
-        /* discover j levels from columns stub<level> */
-        double levels[512]; int nl=0;
+        /* the new j column must not collide with an existing variable */
+        if(var_find(Rsrc,jname)>=0){
+            tea_err("reshape long: variable %s already exists — choose another j() name\n",jname);
+            ws_drop_frame(c->ws,R); free(iv); return 110;
+        }
+        /* Discover j levels from columns named stub<level>.
+         *   numeric j (default): the suffix must parse fully as a number
+         *   string  j (,string): any non-empty suffix is a level
+         * Levels are kept SORTED in dynamically grown arrays.  (The old
+         * fixed levels[512] with `nl<512` silently DROPPED level 513
+         * onward — a data-loss hazard: real WB pulls have ~1900 codes.) */
+        int nl=0,lcap=0; double *nlev=NULL; char **slev=NULL;
+        unsigned char *isstub=calloc((size_t)Rsrc->nvar,1);
+        int *cv=NULL;                              /* carried column indices */
+        #define LONG_BAIL(rc_) do{ ws_drop_frame(c->ws,R); free(iv); free(isstub); free(cv); \
+            if(slev){for(int q_=0;q_<nl;q_++)free(slev[q_]);} free(slev); free(nlev); return rc_; }while(0)
         for(int j=0;j<Rsrc->nvar;j++){ const char *nm=Rsrc->vars[j].name;
             for(int sIdx=0;sIdx<ns;sIdx++){ size_t L=strlen(stubs[sIdx]);
-                if(!strncmp(nm,stubs[sIdx],L)&&nm[L]){ char *e; double lv=strtod(nm+L,&e);
-                    if(*e==0){ int seen=0; for(int q=0;q<nl;q++)if(levels[q]==lv)seen=1; if(!seen&&nl<512)levels[nl++]=lv; } } } }
-        if(nl==0){ tea_err("reshape long: no variables matching stub(s) found\n");
-            /* drop the temp frame */
-            for(Frame**pp=&c->ws->frames;*pp;pp=&(*pp)->next)
-                if(*pp==R){ *pp=R->next; frame_clear(R); free(R->sortvars); free(R); break; }
-            free(iv); return 111; }
-        for(int a=0;a<nl;a++)for(int b=a+1;b<nl;b++)if(levels[a]>levels[b]){double t=levels[a];levels[a]=levels[b];levels[b]=t;}
+                if(strncmp(nm,stubs[sIdx],L)||!nm[L]) continue;
+                if(jstr){
+                    const char *lv=nm+L;
+                    int l2=0,h2=nl-1,found=0;
+                    while(l2<=h2){ int m=(l2+h2)/2; int cc=strcmp(slev[m],lv);
+                        if(cc==0){found=1;break;} if(cc<0)l2=m+1; else h2=m-1; }
+                    if(!found){
+                        if(nl==lcap){ lcap=lcap?lcap*2:64; slev=realloc(slev,(size_t)lcap*sizeof(char*)); }
+                        memmove(slev+l2+1,slev+l2,(size_t)(nl-l2)*sizeof(char*));
+                        slev[l2]=strdup(lv); nl++;
+                    }
+                } else {
+                    char *e; double lv=strtod(nm+L,&e);
+                    if(*e) continue;              /* suffix not numeric: not a match */
+                    int l2=0,h2=nl-1,found=0;
+                    while(l2<=h2){ int m=(l2+h2)/2;
+                        if(nlev[m]==lv){found=1;break;} if(nlev[m]<lv)l2=m+1; else h2=m-1; }
+                    if(!found){
+                        if(nl==lcap){ lcap=lcap?lcap*2:64; nlev=realloc(nlev,(size_t)lcap*sizeof(double)); }
+                        memmove(nlev+l2+1,nlev+l2,(size_t)(nl-l2)*sizeof(double));
+                        nlev[l2]=lv; nl++;
+                    }
+                }
+                isstub[j]=1; break;
+            }
+        }
+        if(nl==0){ tea_err("reshape long: no variables matching stub(s) found\n"); LONG_BAIL(111); }
 
-        /* Validate: per stub, all the stub<level> variables must have the SAME
-         * type — otherwise we can't fit them in one column.  Stata errors here
-         * with "type mismatch in long format".  Also error if any i() var is
-         * also matched by a stub (e.g. user passed `i(z*)` with stub `z`). */
+        /* Validate: per stub, all matched variables must share ONE type.
+         * Also error if an i() var is itself matched by a stub. */
         for(int sIdx=0;sIdx<ns;sIdx++){
-            /* Collect matched variables per type so we can give a useful
-             * error if types disagree.  Two-pass keeps the error message
-             * concrete: name both groups and suggest the fix. */
             char numvars[32][64]; int n_num=0;
             char strvars[32][64]; int n_str=0;
             for(int a=0;a<nl;a++){
-                char probe[64]; snprintf(probe,sizeof probe,"%s%g",stubs[sIdx],levels[a]);
+                char probe[80];
+                if(jstr) snprintf(probe,sizeof probe,"%s%s",stubs[sIdx],slev[a]);
+                else     snprintf(probe,sizeof probe,"%s%g",stubs[sIdx],nlev[a]);
                 int pv=var_find(Rsrc,probe); if(pv<0) continue;
                 if(Rsrc->vars[pv].type==VT_NUM && n_num<32) snprintf(numvars[n_num++],64,"%s",probe);
                 else if(Rsrc->vars[pv].type==VT_STR && n_str<32) snprintf(strvars[n_str++],64,"%s",probe);
-                /* check overlap with i() in same loop */
                 for(int q=0;q<niv;q++){
                     if(pv == iv[q]){
                         tea_err("reshape long: variable %s appears in both i() and the stub list\n", probe);
-                        for(Frame**pp=&c->ws->frames;*pp;pp=&(*pp)->next)
-                            if(*pp==R){ *pp=R->next; frame_clear(R); free(R->sortvars); free(R); break; }
-                        free(iv); return 198;
+                        LONG_BAIL(198);
                     }
                 }
             }
             if(n_num > 0 && n_str > 0){
-                /* concatenate each list into a comma-separated string */
                 char num_list[512]={0}, str_list[512]={0};
                 for(int q=0;q<n_num;q++){
                     if(q) strncat(num_list, " ", sizeof num_list-strlen(num_list)-1);
@@ -2764,65 +2845,224 @@ static int do_reshape(Cmd *c){
                   "      drop %s\n"
                   "      reshape long %s, i(...) j(...)\n",
                   stubs[sIdx], num_list, str_list,
-                  /* suggest dropping the smaller group; reshape the rest */
                   n_str <= n_num ? str_list : num_list,
                   stubs[sIdx]);
-                for(Frame**pp=&c->ws->frames;*pp;pp=&(*pp)->next)
-                    if(*pp==R){ *pp=R->next; frame_clear(R); free(R->sortvars); free(R); break; }
-                free(iv); return 109;
+                LONG_BAIL(109);
             }
         }
 
-        /* result columns: i vars, j var, one per stub (type from first found col) */
-        for(int q=0;q<niv;q++){ Variable*sv=&Rsrc->vars[iv[q]]; var_add(R,sv->name,sv->type); }
-        var_add(R,jname,VT_NUM);
+        /* Carried variables: everything that is not an i() var and not a
+         * stub-matched column comes along, replicated across the j-rows of
+         * its wide observation.  (Stata semantics — the old code silently
+         * DROPPED them, e.g. IndicatorName vanished after reshape long.) */
+        int ncv=0,ccap=0;
+        for(int j=0;j<Rsrc->nvar;j++){
+            if(isstub[j]) continue;
+            int isI=0; for(int q=0;q<niv;q++) if(iv[q]==j){isI=1;break;}
+            if(isI) continue;
+            for(int sIdx=0;sIdx<ns;sIdx++) if(!strcmp(Rsrc->vars[j].name,stubs[sIdx])){
+                tea_err("reshape long: variable %s conflicts with the stub output name\n",stubs[sIdx]);
+                LONG_BAIL(110);
+            }
+            if(ncv==ccap){ ccap=ccap?ccap*2:16; cv=realloc(cv,(size_t)ccap*sizeof(int)); }
+            cv[ncv++]=j;
+        }
+
+        /* result columns: i vars, j var, one per stub, then carried vars.
+         * Formats and variable labels survive on i and carried columns. */
+        for(int q=0;q<niv;q++){ Variable*sv=&Rsrc->vars[iv[q]]; Variable*d=var_add(R,sv->name,sv->type);
+            snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); }
+        var_add(R,jname,jstr?VT_STR:VT_NUM);
         int stubcol[32];
-        for(int sIdx=0;sIdx<ns;sIdx++){ VarType t=VT_NUM; char probe[64];
-            for(int a=0;a<nl;a++){ snprintf(probe,sizeof probe,"%s%g",stubs[sIdx],levels[a]); int pv=var_find(Rsrc,probe); if(pv>=0){t=Rsrc->vars[pv].type;break;} }
+        for(int sIdx=0;sIdx<ns;sIdx++){ VarType t=VT_NUM; char probe[80];
+            for(int a=0;a<nl;a++){
+                if(jstr) snprintf(probe,sizeof probe,"%s%s",stubs[sIdx],slev[a]);
+                else     snprintf(probe,sizeof probe,"%s%g",stubs[sIdx],nlev[a]);
+                int pv=var_find(Rsrc,probe); if(pv>=0){t=Rsrc->vars[pv].type;break;} }
             var_add(R,stubs[sIdx],t); stubcol[sIdx]=R->nvar-1; }
+        int carrybase=R->nvar;
+        for(int q=0;q<ncv;q++){ Variable*sv=&Rsrc->vars[cv[q]]; Variable*d=var_add(R,sv->name,sv->type);
+            snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); }
+
+        /* precompute the source column of each (stub, level) once — the old
+         * per-cell var_find was an O(rows x levels x vars) name scan */
+        int *pvmat=malloc((size_t)ns*(size_t)nl*sizeof(int));
+        for(int sIdx=0;sIdx<ns;sIdx++)for(int a=0;a<nl;a++){ char nm2[80];
+            if(jstr) snprintf(nm2,sizeof nm2,"%s%s",stubs[sIdx],slev[a]);
+            else     snprintf(nm2,sizeof nm2,"%s%g",stubs[sIdx],nlev[a]);
+            pvmat[sIdx*nl+a]=var_find(Rsrc,nm2); }
+
         frame_set_nobs(R,Rsrc->nobs*(size_t)nl);
         size_t on=0;
         for(size_t r=0;r<Rsrc->nobs;r++) for(int a=0;a<nl;a++){
             for(int q=0;q<niv;q++){ Variable*S=&Rsrc->vars[iv[q]],*D=&R->vars[q];
                 if(S->type==VT_NUM)D->num[on]=S->num[r]; else str_set(D,on,S->str[r]); }
-            R->vars[niv].num[on]=levels[a];
-            for(int sIdx=0;sIdx<ns;sIdx++){ char nm[64]; snprintf(nm,sizeof nm,"%s%g",stubs[sIdx],levels[a]);
-                int pv=var_find(Rsrc,nm); Variable*D=&R->vars[stubcol[sIdx]];
+            if(jstr) str_set(&R->vars[niv],on,slev[a]); else R->vars[niv].num[on]=nlev[a];
+            for(int sIdx=0;sIdx<ns;sIdx++){ int pv=pvmat[sIdx*nl+a]; Variable*D=&R->vars[stubcol[sIdx]];
                 if(pv<0){ if(D->type==VT_NUM)D->num[on]=SV_MISS; else str_set(D,on,""); }
                 else { Variable*S=&Rsrc->vars[pv]; if(S->type==VT_NUM)D->num[on]=S->num[r]; else str_set(D,on,S->str[r]); } }
+            for(int q=0;q<ncv;q++){ Variable*S=&Rsrc->vars[cv[q]],*D=&R->vars[carrybase+q];
+                if(S->type==VT_NUM)D->num[on]=S->num[r]; else str_set(D,on,S->str[r]); }
             on++;
         }
+        free(pvmat); free(cv); free(isstub);
+        if(slev){for(int q=0;q<nl;q++)free(slev[q]);} free(slev); free(nlev);
+        #undef LONG_BAIL
     } else {
-        /* reshape wide: group by i vars; spread stub over distinct j values */
+        /* ---- reshape wide ------------------------------------------------ */
+        int jv=var_find(Rsrc,jname);
+        if(jv<0){ tea_err("reshape: j var %s not found\n",jname);
+            ws_drop_frame(c->ws,R); free(iv); return 111; }
+        bool jv_is_str=(Rsrc->vars[jv].type==VT_STR);
+        if(jv_is_str && !jstr){
+            tea_err("reshape wide: j variable %s is a string — add the string option:\n"
+                    "        reshape wide %s, i(%s) j(%s) string\n", jname, head, iopt, jname);
+            ws_drop_frame(c->ws,R); free(iv); return 109;
+        }
+        if(!jv_is_str && jstr){
+            tea_err("reshape wide: string option given but j variable %s is numeric\n",jname);
+            ws_drop_frame(c->ws,R); free(iv); return 109;
+        }
         frame_physical_sort(Rsrc,iv,niv,NULL);
         size_t *lo=NULL,*hi=NULL; int ng=by_groups(Rsrc,iv,niv,&lo,&hi);
-        int jv=var_find(Rsrc,jname); if(jv<0){ tea_err("reshape: j var %s not found\n",jname);
-            for(Frame**pp=&c->ws->frames;*pp;pp=&(*pp)->next)
-                if(*pp==R){ *pp=R->next; frame_clear(R); free(R->sortvars); free(R); break; }
-            free(iv);free(lo);free(hi); return 111; }
-        /* distinct j levels (numeric) */
-        double levels[512]; int nl=0;
-        for(size_t r=0;r<Rsrc->nobs;r++){ double lv=Rsrc->vars[jv].num[r]; int seen=0;
-            for(int q=0;q<nl;q++)if(levels[q]==lv)seen=1; if(!seen&&nl<512)levels[nl++]=lv; }
-        for(int a=0;a<nl;a++)for(int b=a+1;b<nl;b++)if(levels[a]>levels[b]){double t=levels[a];levels[a]=levels[b];levels[b]=t;}
-        for(int q=0;q<niv;q++){ Variable*sv=&Rsrc->vars[iv[q]]; var_add(R,sv->name,sv->type); }
+        int nl=0,lcap=0; double *nlev=NULL; char **slev=NULL;
+        int *srccol=NULL; int *carr=NULL; unsigned char *seen=NULL;
+        #define WIDE_BAIL(rc_) do{ ws_drop_frame(c->ws,R); free(iv); free(lo); free(hi); \
+            if(slev){for(int q_=0;q_<nl;q_++)free(slev[q_]);} free(slev); free(nlev); \
+            free(srccol); free(carr); free(seen); return rc_; }while(0)
+
+        /* distinct j levels, kept sorted (binary-search insert).  A missing
+         * or empty j value cannot name a column — Stata errors, so do we. */
+        for(size_t r=0;r<Rsrc->nobs;r++){
+            if(jstr){
+                const char *x=Rsrc->vars[jv].str[r]; if(!x) x="";
+                if(!x[0]){ tea_err("reshape wide: j variable %s has empty values\n",jname); WIDE_BAIL(498); }
+                int l2=0,h2=nl-1,found=0;
+                while(l2<=h2){ int m=(l2+h2)/2; int cc=strcmp(slev[m],x);
+                    if(cc==0){found=1;break;} if(cc<0)l2=m+1; else h2=m-1; }
+                if(!found){
+                    if(nl==lcap){ lcap=lcap?lcap*2:64; slev=realloc(slev,(size_t)lcap*sizeof(char*)); }
+                    memmove(slev+l2+1,slev+l2,(size_t)(nl-l2)*sizeof(char*));
+                    slev[l2]=strdup(x); nl++;
+                }
+            } else {
+                double x=Rsrc->vars[jv].num[r];
+                if(sv_is_miss(x)){ tea_err("reshape wide: j variable %s has missing values\n",jname); WIDE_BAIL(498); }
+                int l2=0,h2=nl-1,found=0;
+                while(l2<=h2){ int m=(l2+h2)/2;
+                    if(nlev[m]==x){found=1;break;} if(nlev[m]<x)l2=m+1; else h2=m-1; }
+                if(!found){
+                    if(nl==lcap){ lcap=lcap?lcap*2:64; nlev=realloc(nlev,(size_t)lcap*sizeof(double)); }
+                    memmove(nlev+l2+1,nlev+l2,(size_t)(nl-l2)*sizeof(double));
+                    nlev[l2]=x; nl++;
+                }
+            }
+        }
+
+        /* stub source columns must exist in the long data */
+        srccol=malloc((size_t)ns*sizeof(int));
+        for(int sIdx=0;sIdx<ns;sIdx++){
+            srccol[sIdx]=var_find(Rsrc,stubs[sIdx]);
+            if(srccol[sIdx]<0){ tea_err("reshape wide: variable %s not found\n",stubs[sIdx]); WIDE_BAIL(111); }
+        }
+
+        /* i vars first (formats and labels survive) */
+        for(int q=0;q<niv;q++){ Variable*sv=&Rsrc->vars[iv[q]]; Variable*d=var_add(R,sv->name,sv->type);
+            snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); }
+        /* stub x level columns; every generated name must be a valid
+         * identifier and unique — fail loud, never mangle silently */
         int base[32];
-        for(int sIdx=0;sIdx<ns;sIdx++){ int src=var_find(Rsrc,stubs[sIdx]); VarType t=src>=0?Rsrc->vars[src].type:VT_NUM;
+        for(int sIdx=0;sIdx<ns;sIdx++){ VarType t=Rsrc->vars[srccol[sIdx]].type;
             base[sIdx]=R->nvar;
-            for(int a=0;a<nl;a++){ char nm[64]; snprintf(nm,sizeof nm,"%s%g",stubs[sIdx],levels[a]); var_add(R,nm,t); } }
+            for(int a=0;a<nl;a++){ char nm2[128];
+                if(jstr) snprintf(nm2,sizeof nm2,"%s%s",stubs[sIdx],slev[a]);
+                else     snprintf(nm2,sizeof nm2,"%s%g",stubs[sIdx],nlev[a]);
+                if(!valid_varname(nm2)){
+                    tea_err("reshape wide: generated name %s is not a valid variable name (%s).\n"
+                            "        j values must form valid identifiers when appended to the stub —\n"
+                            "        clean them first, e.g.:  gen %s_safe = strtoname(%s)\n",
+                            nm2, strlen(nm2)>32?"longer than 32 chars":"invalid characters",
+                            jname, jname);
+                    WIDE_BAIL(198);
+                }
+                if(var_find(R,nm2)>=0){
+                    tea_err("reshape wide: generated column %s collides with an existing name\n",nm2);
+                    WIDE_BAIL(110);
+                }
+                var_add(R,nm2,t);
+            }
+        }
+        /* carried variables: not i, not j, not a stub column.  They must be
+         * constant within each i() group (Stata r(9)) — checked below. */
+        int ncarr=0; carr=malloc((size_t)Rsrc->nvar*sizeof(int));
+        for(int j2=0;j2<Rsrc->nvar;j2++){
+            if(j2==jv) continue;
+            int skip=0;
+            for(int q=0;q<niv;q++) if(iv[q]==j2){skip=1;break;}
+            for(int sIdx=0;sIdx<ns && !skip;sIdx++) if(srccol[sIdx]==j2) skip=1;
+            if(skip) continue;
+            if(var_find(R,Rsrc->vars[j2].name)>=0){
+                tea_err("reshape wide: variable %s collides with a generated column name\n",Rsrc->vars[j2].name);
+                WIDE_BAIL(110);
+            }
+            carr[ncarr++]=j2;
+        }
+        int carrybase=R->nvar;
+        for(int q=0;q<ncarr;q++){ Variable*sv=&Rsrc->vars[carr[q]]; Variable*d=var_add(R,sv->name,sv->type);
+            snprintf(d->format,33,"%s",sv->format); snprintf(d->vlabel,81,"%s",sv->vlabel); }
+
         frame_set_nobs(R,(size_t)ng);
+        seen=malloc((size_t)(nl>0?nl:1));
         for(int g=0;g<ng;g++){
             for(int q=0;q<niv;q++){ Variable*S=&Rsrc->vars[iv[q]],*D=&R->vars[q];
                 if(S->type==VT_NUM)D->num[g]=S->num[lo[g]]; else str_set(D,g,S->str[lo[g]]); }
-            for(int sIdx=0;sIdx<ns;sIdx++){ int src=var_find(Rsrc,stubs[sIdx]); if(src<0)continue;
-                Variable*S=&Rsrc->vars[src];
-                for(size_t r=lo[g];r<=hi[g];r++){ double lv=Rsrc->vars[jv].num[r]; int idx=-1;
-                    for(int a=0;a<nl;a++)if(levels[a]==lv){idx=a;break;} if(idx<0)continue;
-                    Variable*D=&R->vars[base[sIdx]+idx];
+            /* carried: copy from the first row of the group; verify constancy */
+            for(int q=0;q<ncarr;q++){
+                Variable*S=&Rsrc->vars[carr[q]],*D=&R->vars[carrybase+q];
+                if(S->type==VT_NUM){ double v0=S->num[lo[g]];
+                    for(size_t r=lo[g]+1;r<=hi[g];r++){ double v=S->num[r];
+                        if(!(v==v0 || (sv_is_miss(v)&&sv_is_miss(v0)))){
+                            tea_err("reshape wide: variable %s is not constant within i() groups —\n"
+                                    "        drop it, or add it to i() if it identifies rows\n",S->name);
+                            WIDE_BAIL(9); } }
+                    D->num[g]=v0;
+                } else { const char *v0=S->str[lo[g]]?S->str[lo[g]]:"";
+                    for(size_t r=lo[g]+1;r<=hi[g];r++){ const char *v=S->str[r]?S->str[r]:"";
+                        if(strcmp(v,v0)){
+                            tea_err("reshape wide: variable %s is not constant within i() groups —\n"
+                                    "        drop it, or add it to i() if it identifies rows\n",S->name);
+                            WIDE_BAIL(9); } }
+                    str_set(D,g,v0);
+                }
+            }
+            /* spread stubs by j level (binary search into the sorted levels);
+             * a j value repeating within a group is a data error (Stata r(9)),
+             * not a last-write-wins overwrite */
+            memset(seen,0,(size_t)(nl>0?nl:1));
+            for(size_t r=lo[g];r<=hi[g];r++){
+                int idx=-1;
+                if(jstr){ const char *x=Rsrc->vars[jv].str[r]; if(!x)x="";
+                    int l2=0,h2=nl-1;
+                    while(l2<=h2){ int m=(l2+h2)/2; int cc=strcmp(slev[m],x);
+                        if(cc==0){idx=m;break;} if(cc<0)l2=m+1; else h2=m-1; } }
+                else { double x=Rsrc->vars[jv].num[r];
+                    int l2=0,h2=nl-1;
+                    while(l2<=h2){ int m=(l2+h2)/2;
+                        if(nlev[m]==x){idx=m;break;} if(nlev[m]<x)l2=m+1; else h2=m-1; } }
+                if(idx<0){ tea_err("reshape wide: internal error: j level lookup failed\n"); WIDE_BAIL(499); }
+                if(seen[idx]){
+                    tea_err("reshape wide: values of %s are not unique within i() groups\n",jname);
+                    WIDE_BAIL(9);
+                }
+                seen[idx]=1;
+                for(int sIdx=0;sIdx<ns;sIdx++){ Variable*S=&Rsrc->vars[srccol[sIdx]]; Variable*D=&R->vars[base[sIdx]+idx];
                     if(S->type==VT_NUM)D->num[g]=S->num[r]; else str_set(D,g,S->str[r]); }
             }
         }
+        if(slev){for(int q=0;q<nl;q++)free(slev[q]);} free(slev); free(nlev);
+        free(srccol); free(carr); free(seen);
         free(lo); free(hi);
+        #undef WIDE_BAIL
     }
 
     /* swap R's contents into the active frame, then drop R from the workspace. */
@@ -3289,16 +3529,10 @@ static int do_save(Cmd *c){
     }
 
     /* native .tea binary format (fast internal exchange) */
-    FILE *fp=fopen(fn,"wb"); if(!fp)return 603;
-    fwrite("TEA1",1,4,fp);
-    fwrite(&c->f->nobs,sizeof(size_t),1,fp); fwrite(&c->f->nvar,sizeof(int),1,fp);
-    for(int j=0;j<c->f->nvar;j++){ Variable*v=&c->f->vars[j];
-        fwrite(v->name,1,33,fp); fwrite(&v->type,sizeof(VarType),1,fp);
-        fwrite(v->format,1,33,fp); fwrite(v->vlabel,1,81,fp); }
-    for(int j=0;j<c->f->nvar;j++){ Variable*v=&c->f->vars[j];
-        if(v->type==VT_NUM)fwrite(v->num,sizeof(double),c->f->nobs,fp);
-        else for(size_t i=0;i<c->f->nobs;i++){ int L=(int)strlen(v->str[i]); fwrite(&L,4,1,fp); fwrite(v->str[i],1,L,fp);} }
-    fclose(fp); if(!c->quiet)printf("file %s saved\n",fn); return 0;
+    int wrc = pst_write(c->f, fn);
+    if(wrc) return wrc;
+    if(!c->quiet)printf("file %s saved\n",fn);
+    return 0;
 }
 /* ---- sysuse: load a bundled practice dataset ---------------------------
  * The datasets are embedded in the binary (src/sysdata.c, generated from
@@ -3432,28 +3666,31 @@ static int do_duplicates(Cmd *c){
 }
 
 static int g_tmpseq = 0;
+/* Session tempfiles (Stata parity): names are unique per PROCESS (pid in
+ * the path — a do-file rerun must never collide with its own leftovers),
+ * and every tempfile path handed out is deleted when tea exits, whether
+ * or not the script got around to it.  Registered via atexit. */
+static char **g_tmpfiles = NULL; static int g_ntmp = 0, g_tmpcap = 0;
+static void tempfiles_cleanup(void){
+    for(int i=0;i<g_ntmp;i++){ unlink(g_tmpfiles[i]); free(g_tmpfiles[i]); }
+    free(g_tmpfiles); g_tmpfiles=NULL; g_ntmp=g_tmpcap=0;
+}
+static void tempfile_register(const char *path){
+    if(!g_tmpfiles) atexit(tempfiles_cleanup);
+    if(g_ntmp==g_tmpcap){ g_tmpcap=g_tmpcap?g_tmpcap*2:16;
+        g_tmpfiles=realloc(g_tmpfiles,(size_t)g_tmpcap*sizeof(char*)); }
+    g_tmpfiles[g_ntmp++]=strdup(path);
+}
 static int do_tempfile(Cmd *c){
     extern Interp *g_tea_interp;
-    char nm[64]; const char *p=c->args;
-    while(sscanf(p,"%63s",nm)==1){
+    const char *q=c->args; char t[64]; int consumed;
+    while(sscanf(q,"%63s%n",t,&consumed)==1){
         char path[256];
-        snprintf(path,sizeof path,"/tmp/tea_tmp%d_%s", ++g_tmpseq, nm);
-        mac_set(&g_tea_interp->locals, nm, path);
-        p+=strlen(nm); while(*p==' ')p++;
-        if(!*p)break;
-        p=strstr(p,nm)?p:p;   /* advance past token */
-        break;
-    }
-    /* handle multiple names properly */
-    { const char *q=c->args; char t[64];
-      int consumed;
-      while(sscanf(q,"%63s%n",t,&consumed)==1){
-          char path[256];
-          snprintf(path,sizeof path,"/tmp/tea_tmp%d_%s", ++g_tmpseq, t);
-          mac_set(&g_tea_interp->locals, t, path);
-          q+=consumed; while(*q==' ')q++;
-          if(!*q)break;
-      }
+        snprintf(path,sizeof path,"/tmp/tea_tmp%d_%d_%s",(int)getpid(),++g_tmpseq,t);
+        mac_set(&g_tea_interp->locals, t, path);
+        tempfile_register(path);
+        q+=consumed; while(*q==' ')q++;
+        if(!*q)break;
     }
     return 0;
 }
@@ -3667,7 +3904,7 @@ static int do_sysuse(Cmd *c){
     fwrite(d->csv, 1, d->len, o);
     fclose(o);
     frame_clear(c->f);
-    int rc = load_csv_into(c->f, tmp, ',', 0);
+    int rc = load_csv_into(c->f, tmp, ',', CSV_DELIM, CSVCASE_LOWER);
     unlink(tmp);
     if(rc==0)
         printf("(%s: %zu obs loaded \u2014 %s)\n", d->name, c->f->nobs, d->desc);
@@ -3996,6 +4233,56 @@ static int do_copy(Cmd *c){
 }
 
 /* do FILENAME [args] — source another do-file from inside a session. */
+/* ---- preserve / restore -------------------------------------------------
+ * Stata semantics: `preserve` snapshots the data in memory; `restore`
+ * brings the snapshot back.  One level deep (preserve while preserved is
+ * an error, as in Stata).  The snapshot lives on disk as a native .tea
+ * tempfile, so 25M-row frames don't double peak memory.
+ *   restore            reload snapshot, discard it
+ *   restore, preserve  reload snapshot, KEEP it for another restore
+ *   restore, not       discard snapshot without reloading
+ * A preserve issued inside a do-file that is still pending when the
+ * do-file concludes (normally or via abort) is restored automatically —
+ * see do_dofile. */
+static int do_preserve(Cmd *c){
+    if(c->ws->preserve_path){
+        tea_err("preserve: data already preserved (restore or `restore, not` first)\n");
+        return 621;
+    }
+    char path[] = "/tmp/tea_preserve_XXXXXX";
+    int fd = mkstemp(path);
+    if(fd < 0){ tea_err("preserve: cannot create snapshot file\n"); return 603; }
+    close(fd);
+    int rc = pst_write(c->f, path);
+    if(rc){ unlink(path); tea_err("preserve: cannot write snapshot\n"); return rc; }
+    c->ws->preserve_path = strdup(path);
+    return 0;
+}
+/* reload the snapshot into frame f.  keep_snapshot: leave the file and
+ * state in place (restore, preserve).  Returns 0 or an error rc. */
+static int preserve_reload(Workspace *ws, Frame *f, int keep_snapshot){
+    frame_clear(f);
+    int rc = load_pst_into(f, ws->preserve_path);
+    if(rc){ tea_err("restore: snapshot unreadable (rc=%d) — data NOT restored\n", rc); return rc; }
+    if(!keep_snapshot){
+        unlink(ws->preserve_path);
+        free(ws->preserve_path); ws->preserve_path=NULL;
+    }
+    return 0;
+}
+static int do_restore(Cmd *c){
+    if(!c->ws->preserve_path){
+        tea_err("restore: nothing preserved\n");
+        return 622;
+    }
+    if(opt_present(c->options,"not")){
+        unlink(c->ws->preserve_path);
+        free(c->ws->preserve_path); c->ws->preserve_path=NULL;
+        return 0;
+    }
+    return preserve_reload(c->ws, c->f, opt_present(c->options,"preserve"));
+}
+
 static int do_dofile(Cmd *c){
     char fn[1024]=""; const char *s=c->varlist; scan_filename(&s, fn, sizeof fn);
     if(!fn[0]){ tea_err("do: filename required\n"); return 198; }
@@ -4003,9 +4290,16 @@ static int do_dofile(Cmd *c){
     if(!fp){ tea_err("do: cannot open %s\n",fn); return 601; }
     extern int g_current_line;
     int saved = g_current_line; g_current_line = 0;
+    bool had_preserve = (c->ws->preserve_path != NULL);
     int rc = run_stream(c->ip, fp, false);
     g_current_line = saved;
     fclose(fp);
+    /* Stata: a preserve issued inside this do-file that is still pending
+     * when it concludes — normally or via abort — is restored now. */
+    if(!had_preserve && c->ws->preserve_path){
+        int rrc = preserve_reload(c->ws, c->ws->cur, 0);
+        if(rrc==0) printf("(preserved data restored at end of do-file)\n");
+    }
     return rc;
 }
 
@@ -4314,6 +4608,8 @@ Disp TABLE[]={
     {"rm",do_erase,0,NULL},
     {"copy",do_copy,0,"copy SRC DST [, replace]                     copy a file"},
     {"do",do_dofile,0,"do FILENAME                                  run another do-file"},
+    {"preserve",do_preserve,1,"preserve                                     snapshot the data in memory"},
+    {"restore",do_restore,0,"restore [, not preserve]                     bring the preserve snapshot back"},
     {"version",do_version,0,"version                                      tea version & build info"},
     {"about",do_version,0,NULL},
     {"log",do_log,0,"log using FILE [, replace append] | log close   tee output to a file"},

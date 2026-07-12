@@ -1,0 +1,52 @@
+number of observations set to 2
+(2 real changes made)
+(1 real change made)
+(2 real changes made)
+(1 real change made)
+(2 real changes made)
+(2 real changes made)
+(reshaped long; now 4 vars, 4 obs)
+     +          +          +          +          +
+     | id       | year     | y        | name     |
+   1.| A        | 1990     | 1        | alpha    |
+   2.| A        | 1991     | 10       | alpha    |
+   3.| B        | 1990     | 2        | beta     |
+   4.| B        | 1991     | 20       | beta     |
+(reshaped wide; now 4 vars, 2 obs)
+     +          +          +          +          +
+     | id       | y1990    | y1991    | name     |
+   1.| A        | 1        | 10       | alpha    |
+   2.| B        | 2        | 20       | beta     |
+number of observations set to 4
+(4 real changes made)
+(4 real changes made)
+(4 real changes made)
+(reshaped wide; now 3 vars, 2 obs)
+     +          +          +          +
+     | id       | vX_ONE   | vY_TWO   |
+   1.| A        | 1        | 2        |
+   2.| B        | 3        | 4        |
+(reshaped long; now 3 vars, 4 obs)
+     +          +          +          +
+     | id       | code     | v        |
+   1.| A        | X_ONE    | 1        |
+   2.| A        | Y_TWO    | 2        |
+   3.| B        | X_ONE    | 3        |
+   4.| B        | Y_TWO    | 4        |
+number of observations set to 4
+(4 real changes made)
+(4 real changes made)
+(4 real changes made)
+(4 real changes made)
+9
+number of observations set to 2
+(2 real changes made)
+(2 real changes made)
+(2 real changes made)
+109
+198
+number of observations set to 2
+(2 real changes made)
+(2 real changes made)
+(2 real changes made)
+9

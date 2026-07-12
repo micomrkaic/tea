@@ -1,0 +1,43 @@
+(6 vars, 1 obs)
+
+Contains data
+  obs: 1
+ vars: 6
+-------------------------------------------------------------
+variable         type     format     label
+countrycode      str      %9.0g      
+gdpgrowth        double   %9.0g      
+v3               double   %9.0g      
+gdp_pc           double   %9.0g      
+x                double   %9.0g      
+v6               double   %9.0g      
+-------------------------------------------------------------
+(6 vars, 1 obs)
+
+Contains data
+  obs: 1
+ vars: 6
+-------------------------------------------------------------
+variable         type     format     label
+CountryCode      str      %9.0g      
+GDPgrowth        double   %9.0g      
+v3               double   %9.0g      
+gdp_pc           double   %9.0g      
+x                double   %9.0g      
+v6               double   %9.0g      
+-------------------------------------------------------------
+(6 vars, 1 obs)
+
+Contains data
+  obs: 1
+ vars: 6
+-------------------------------------------------------------
+variable         type     format     label
+COUNTRYCODE      str      %9.0g      
+GDPGROWTH        double   %9.0g      
+v3               double   %9.0g      
+GDP_PC           double   %9.0g      
+X                double   %9.0g      
+v6               double   %9.0g      
+-------------------------------------------------------------
+198

@@ -61,21 +61,6 @@ A residual Stata-12 limit.  Factor-variable interaction names like
 `2010.year#1985.country#c.gdp` (28 chars) fit; longer 3-way interactions
 truncate.  In practice not a problem.
 
-### `import excel` without `firstrow` still treats row 1 as headers
-
-Stata's rule when `firstrow` is *omitted*: name every column by its Excel
-letter (`A`, `B`, ...) and keep row 1 as a data row.  tea currently always
-consumes row 1 as headers, whether or not `firstrow` was given — so omitting
-`firstrow` silently loses the first data row.  With `firstrow` given, tea now
-matches Stata exactly (v1.6.x: invalid chars removed, digit-leading headers
-like `1960` fall back to the column letter).  Fixing the no-`firstrow` case
-means restructuring `load_csv_into`'s header/data row accounting; it also
-changes behavior for any existing tea script that omitted `firstrow` and
-relied on the lenient reading.  Deferred pending a scope decision.
-
-**Workaround**: always pass `firstrow` (which Stata do-files written against
-WB/WEO-style sheets do anyway), or add a header row to the sheet.
-
 ### No graphics
 
 tea ships zero plotting commands.  Users wanting plots should `export delimited`
@@ -834,3 +819,64 @@ used in `egen`.
   second iteration.  → **FIXED**: `local ++x` / `local --x` now
   increment/decrement per Stata; `++` on an undefined or non-numeric macro
   errors (rc=198) instead of silently minting a new macro.
+
+## reported by Mico during WB fertility replication, round 2 (v1.6.2)
+
+- Bug 12 — `reshape long` silently **DROPPED every non-stub variable**:
+  after `reshape long y, i(CountryCode IndicatorCode) j(year)` the carried
+  columns (IndicatorName, CountryName, …) simply vanished, and the do-file
+  died six lines later with a misleading `keep: variable not found`.
+  → **FIXED**: carried variables are replicated across the j-rows of each
+  wide observation, exactly as Stata does.  Formats and variable labels
+  survive on i() and carried columns.
+- Bug 13 — `reshape` had a fixed 512-level cap that **silently dropped**
+  level 513 onward (real WB pulls have ~1,900 indicator codes).
+  → **FIXED**: dynamic sorted level arrays, binary-search everywhere.
+- Bug 14 — `reshape wide` read j as numeric unconditionally, so
+  `j(code_safe) string` was impossible.  → **FIXED**: string j in both
+  directions.  New loud errors, never silent mangling: string j without
+  the `string` option (rc 109), generated names that aren't valid
+  identifiers (rc 198, with a strtoname() hint), missing/empty j values
+  (rc 498), carried variables not constant within i() (rc 9), duplicate
+  j within an i() group (rc 9 — previously last-write-wins, silently).
+- Bug 15 — `merge` dropped variable labels (formats were kept).
+  → **FIXED**: labels survive merge on master and using columns.
+- Bug 16 — `frame_set_nobs` **leaked every string cell on shrink**: any
+  row-deleting operation (`drop if`, `keep if`, `duplicates drop`) leaked
+  the dropped rows' strings, and a later regrow overwrote the stale
+  pointers, making it permanent.  Invisible until reshape began carrying
+  string columns into frames that then get row-pruned; caught by ASan.
+  → **FIXED** in dataset.c.
+- NEW — `preserve` / `restore` implemented (was on the roadmap): single
+  depth like Stata, snapshot on disk as a native .tea tempfile so large
+  frames don't double peak memory.  `restore, not` discards;
+  `restore, preserve` reloads but keeps the snapshot.  A preserve still
+  pending when a do-file concludes — normally or via abort — is restored
+  automatically, with a note.
+- NEW — `strtoname()` string function, Stata-exact: invalid characters
+  become `_`, a leading digit gets a `_` prefix, 32-char cap.
+
+## v1.6.3 — Stata-parity import naming + WASM refresh
+
+- `import excel` WITHOUT `firstrow` now matches Stata exactly: columns are
+  named by their Excel letters (`A`, `B`, ...) and row 1 is kept as a DATA
+  row.  (Previously tea always consumed row 1 as headers, silently losing
+  the first data row.)  Mixed columns (text header over numbers) become
+  string columns, as in Stata.
+- `import delimited` now applies Stata's naming rule: names are LOWERCASED
+  by default and invalid characters are REMOVED ("Country Code" ->
+  `countrycode`, not `Country_Code`); a header that is empty or starts
+  with a digit falls back to the position name `v#`; duplicate headers
+  also resolve to `v#`.  New option `case(preserve|lower|upper)` for the
+  Stata-compatible opt-out.  NOTE: this is a deliberate behavior change —
+  do-files that relied on tea's old underscored, case-preserving CSV names
+  need `case(preserve)` or updated names.  The bundled `sysuse` datasets
+  are unaffected (already lowercase-clean).
+- web/tea.wasm rebuilt — the browser engine is current again (it had been
+  frozen at the v1.6.0 feature set while native moved ahead).
+- Bug 17 — `tempfile` names were deterministic (`/tmp/tea_tmpN_name`), so
+  any do-file using the tempfile + `file open, write` idiom **failed on
+  its own second run** with rc=602 ("file already exists") — and leftover
+  files accumulated in /tmp.  → **FIXED**: paths now embed the pid
+  (unique per session, like Stata's), and every tempfile handed out is
+  deleted when tea exits.

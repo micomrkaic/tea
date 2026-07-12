@@ -303,7 +303,18 @@ extension is ambiguous, pass `delimiter(",")` or `delimiter(tab)`
 explicitly.
 
 The `firstrow` option (for Excel) tells `tea` to use the first row as
-variable names. Without it, columns are named `A`, `B`, etc.
+variable names; invalid characters are removed (`Country Code` →
+`CountryCode`) and a header that is empty, a duplicate, or starts with a
+digit (`1960`) falls back to the Excel column letter (`F`, `BQ`, ...) —
+exactly Stata's rule.  Without `firstrow`, columns are named `A`, `B`,
+... and row 1 is kept as a data row, again as in Stata; columns mixing a
+text header with numeric data become string columns.
+
+`import delimited` follows Stata's naming rule for CSV/TSV headers:
+names are lowercased and invalid characters removed (`Country Code` →
+`countrycode`); a header that is empty, a duplicate, or starts with a
+digit becomes the position name `v#`.  Use `case(preserve)` (or
+`case(upper)`) to override the case folding.
 
 CSV import handles RFC 4180–style quoted fields, including embedded
 commas and newlines.
@@ -440,7 +451,7 @@ After `count`, `r(N)` holds the count.
 ## `reshape`
 
 `reshape` is in-place — to keep the original you must `frame copy`
-first.
+(or `preserve`) first.
 
     * Wide to long: each yY variable becomes y at year Y
     reshape long y, i(country) j(year)
@@ -450,6 +461,46 @@ first.
 
     * Multiple stubs
     reshape long y z, i(country) j(year)
+
+    * String j: levels are name suffixes (long) or column-name parts (wide)
+    reshape wide y, i(country year) j(indicator_code) string
+    reshape long y, i(country year) j(indicator_code) string
+
+Variables that are not part of a stub and not in `i()` are **carried
+along**, exactly as in Stata: going long they are replicated across the
+j-rows of each wide observation; going wide they must be constant within
+each `i()` group (error r(9) otherwise — drop them or add them to `i()`).
+Formats and variable labels survive on `i()` and carried columns.
+
+Going wide, every generated column name (`stub` + j value) must be a
+valid identifier; if your j values contain characters like `.`, clean
+them first with `strtoname()`:
+
+    gen code_safe = strtoname(indicator_code)
+    reshape wide y, i(country year) j(code_safe) string
+
+`reshape wide` also insists that j is never missing/empty and never
+repeats within an `i()` group — both are data errors in Stata, and tea
+fails loudly rather than guessing.
+
+## `preserve` / `restore`
+
+`preserve` snapshots the data in memory; `restore` brings the snapshot
+back.  One level deep, as in Stata.  The snapshot lives on disk as a
+native `.tea` tempfile, so preserving a large dataset does not double
+peak memory.
+
+    preserve
+    keep indicator_code indicator_name
+    duplicates drop
+    save "lookup.dta", replace
+    restore
+
+Variants: `restore, not` discards the snapshot without reloading;
+`restore, preserve` reloads but keeps the snapshot for another
+`restore`.  A preserve still pending when a do-file concludes —
+normally or via an abort — is restored automatically, with a note
+(Stata behavior).
 
 ## `merge`
 
@@ -1376,6 +1427,7 @@ the "Random numbers and Monte Carlo" chapter.
 | `strlower(s)`, `lower(s)`   | lowercase                                      |
 | `strproper(s)`, `proper(s)` | title case (first letter of each word)         |
 | `strtrim(s)`, `trim(s)`     | strip leading and trailing whitespace          |
+| `strtoname(s)`              | make a valid variable name: invalid chars to `_`, leading digit gets `_` prefix (`"CC.EST"` -> `CC_EST`) |
 | `ltrim(s)`, `rtrim(s)`      | strip leading / trailing whitespace            |
 | `itrim(s)`                  | collapse internal whitespace runs to one space |
 | `strreverse(s)`             | reverse character order                        |

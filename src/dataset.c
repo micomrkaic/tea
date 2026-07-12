@@ -167,6 +167,12 @@ void frame_set_nobs(Frame *f, size_t n) {
         if (v->type == VT_NUM) {
             for (size_t r = f->nobs; r < n; r++) v->num[r] = SV_MISS;
         } else {
+            /* shrink: free the string cells being cut off.  Without this
+             * every row-deleting op (drop if, keep if, duplicates drop)
+             * leaked them — and a later regrow overwrote the stale
+             * pointers with fresh callocs, making the leak permanent.
+             * frame_move_row nulls vacated slots, so free(NULL) is fine. */
+            for (size_t r = n; r < f->nobs; r++){ free(v->str[r]); v->str[r] = NULL; }
             for (size_t r = f->nobs; r < n; r++) v->str[r] = calloc(1, 1);
         }
     }

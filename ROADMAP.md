@@ -107,7 +107,10 @@ must be opt-in via `--tea-extensions`.
 - **`merge … assert(...)` as hard error** (currently warns).
 - **`graph`** — shell out to gnuplot for `scatter`/`line`/`hist`.  Optional
   but cheap.
-- **`reshape` with string `j()`**.
+- **`reshape` with string `j()`**.  DONE in v1.6.2 — both directions,
+  with carried (non-stub) variables per Stata semantics.
+- **`preserve` / `restore`**.  DONE in v1.6.2 — single-depth disk
+  snapshot, `restore, not|preserve`, auto-restore at do-file conclusion.
 - **Survey weights** for `summarize`/`regress` beyond the basic form.
 
 ## Deliberately deferred
