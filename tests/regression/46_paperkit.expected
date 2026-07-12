@@ -1,0 +1,28 @@
+(grunfeld: 200 obs loaded — Grunfeld (1958) investment panel: 10 US firms x 1935-1954 (xtreg, hausman))
+panel variable: firm
+ time variable: year
+         delta: 1 unit
+(outreg2: column 1 written to /tmp/tea_test_table1.txt)
+(outreg2: column 2 written to /tmp/tea_test_table1.txt)
+(outreg2: column 3 written to /tmp/tea_test_table1.txt)
+tempfile ok
+Duplicates in terms of the varlist
+  total observations: 200
+  surplus (would drop): 0
+                invest     value   capital
+      invest    1.0000
+       value    0.8569    1.0000
+     capital    0.6626    0.4887    1.0000
+VARIABLES	(1) FE	(2) RE	(3) OLS
+Market value	0.110***	0.110***	0.141***
+	(0.012)	(0.011)	(0.006)
+capital	0.310***	0.308***	
+	(0.017)	(0.017)	
+Constant		-57.847**	-6.976
+		(29.103)	(10.273)
+Observations	200	200	200
+Within R^2	0.767	0.767	
+Groups	10.000	10.000	
+Country FE		YES	
+Year FE		NO	
+SEs in parentheses. Significance: *** p<0.01, ** p<0.05, * p<0.10.

@@ -25,6 +25,10 @@
 #include <fcntl.h>
 
 Interp *g_tea_interp = NULL;   /* bridge for commands needing the interp (history) */
+#include "estimates.h"
+Estimates *tea_last_estimates(void){
+    return g_tea_interp ? g_tea_interp->ws->last_est : NULL;
+}
 #include <ctype.h>
 #include <stdbool.h>
 #include <unistd.h>
@@ -502,10 +506,39 @@ static int exec_one(Interp *ip,Lines *L,int *i){
             *i=last; return brc;
         } else {
             int erc=0;
-            int truth = eval_if_cond(ip, cond, &erc); if(erc) return erc;
-            if(truth){ char *cmd=s+3; /* skip cond up to first space-separated cmd: take after ')' */
-                char *rp=strchr(s,')'); char *body=rp?rp+1:cmd; while(*body==' ')body++;
-                return run_line(ip,body); }
+            /* single-line form: `if EXPR COMMAND ...`.  Stata finds the
+             * boundary itself; we take the LONGEST token prefix that parses
+             * as an expression — `if x > 1 drop ...` splits after `1`,
+             * `if _rc ssc install ...` splits after `_rc`. */
+            char work[1024]; snprintf(work,sizeof work,"%s",cond);
+            char *tok[64]; int nt=0;
+            for(char *t=strtok(work," "); t && nt<64; t=strtok(NULL," ")) tok[nt++]=t;
+            int split = nt;               /* default: whole thing is the expr */
+            char trycond[1024];
+            for(int k=nt; k>=1; k--){
+                size_t w=0; trycond[0]=0;
+                for(int j=0;j<k;j++) w+=(size_t)snprintf(trycond+w,sizeof trycond-w,"%s%s",j?" ":"",tok[j]);
+                char *xc2 = macro_expand(ip,trycond);
+                Frame sc2; memset(&sc2,0,sizeof sc2); sc2.ts_panel=sc2.ts_time=-1;
+                const char *pe2; Node *a2 = expr_parse(xc2,&sc2,&pe2); free(xc2);
+                if(a2){ node_free(a2); split=k; break; }
+            }
+            if(split==nt && nt>0){
+                int truth = eval_if_cond(ip, cond, &erc); if(erc) return erc;
+                (void)truth;              /* condition with no command: no-op */
+                return 0;
+            }
+            { size_t w=0; trycond[0]=0;
+              for(int j=0;j<split;j++) w+=(size_t)snprintf(trycond+w,sizeof trycond-w,"%s%s",j?" ":"",tok[j]); }
+            int truth = eval_if_cond(ip, trycond, &erc); if(erc) return erc;
+            if(truth){
+                /* command = original text after the split tokens */
+                const char *body = cond;
+                for(int j=0;j<split;j++){ while(*body==' ')body++; while(*body&&*body!=' ')body++; }
+                while(*body==' ')body++;
+                char cmdline[1024]; snprintf(cmdline,sizeof cmdline,"%s",body);
+                return run_line(ip, cmdline);
+            }
             return 0;
         }
     }

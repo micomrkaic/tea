@@ -93,6 +93,18 @@ void frame_clear(Frame *f) {
     f->ts_panel = f->ts_time = -1; f->ts_delta = 1; f->ts_fmt[0] = 0;
 }
 
+/* move row src to slot dst (dst < src) — used for in-place compaction.
+ * String cells transfer pointer ownership; the vacated slot is nulled so
+ * a later frame_set_nobs shrink cannot double-free. */
+void frame_move_row(Frame *f, size_t src, size_t dst){
+    if(src == dst) return;
+    for(int j = 0; j < f->nvar; j++){
+        Variable *V = &f->vars[j];
+        if(V->type == VT_NUM) V->num[dst] = V->num[src];
+        else { free(V->str[dst]); V->str[dst] = V->str[src]; V->str[src] = NULL; }
+    }
+}
+
 int var_find(Frame *f, const char *name) {
     for (int i = 0; i < f->nvar; i++)
         if (!strcmp(f->vars[i].name, name)) return i;

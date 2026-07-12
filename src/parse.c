@@ -253,6 +253,8 @@ static const char *g_valerr_buf(void){
 }
 static int validate_vars(Node *n, Frame *f, const char **err){
     if(!n) return 1;
+    if(n->kind == N_CALL && !strcmp(n->text,"e"))
+        return validate_vars(n->next, f, err);   /* skip the result-name arg */
     if(n->kind == N_VAR || n->kind == N_TSOP){
         if(strcmp(n->text,"_n") && strcmp(n->text,"_N") &&
            strcmp(n->text,"_pi") && strcmp(n->text,"_rc")){

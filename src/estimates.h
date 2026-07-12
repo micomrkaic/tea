@@ -47,6 +47,7 @@ typedef struct Estimates {
 } Estimates;
 
 Estimates *est_new(void);
+Estimates *tea_last_estimates(void);   /* last estimation result via the interp bridge */
 Estimates *est_clone(const Estimates *src);
 void       est_free(Estimates *e);
 int        est_idx_of(const Estimates *e, const char *name);  /* coefficient index by name, -1 if none */

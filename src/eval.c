@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 #include "expr.h"
+#include "estimates.h"
 #include "value.h"
 #include "lex.h"
 #include <stdlib.h>
@@ -645,7 +646,38 @@ static EVal ev(Node*n,EvalCtx*c){
         eval_free(&L); eval_free(&R);
         return r;
     }
-    case N_CALL: return call_fn(n,c);
+    case N_CALL:
+        if(!strcmp(n->text,"e")){
+            /* e(scalar) reads the last estimation result; the argument is a
+             * result name, not a variable — read it from the AST directly */
+            Estimates *E = tea_last_estimates();
+            const char *k = n->a ? n->a->text : "";
+            if(!E) { c->err="no estimation results"; return vnum(SV_MISS); }
+            if(!strcmp(k,"sample")){
+                size_t r = (size_t)(c->n - 1);
+                return vnum((E->used && r < E->nobs_at_fit && E->used[r]) ? 1.0 : 0.0);
+            }
+            if(!strcmp(k,"N"))       return vnum((double)E->N);
+            if(!strcmp(k,"N_g"))     return vnum((double)E->n_groups);
+            if(!strcmp(k,"N_clust")) return vnum((double)E->n_clusters);
+            if(!strcmp(k,"df_r"))    return vnum((double)E->df_r);
+            if(!strcmp(k,"df_m"))    return vnum((double)E->df_m);
+            if(!strcmp(k,"r2"))      return vnum(E->r2);
+            if(!strcmp(k,"r2_a"))    return vnum(E->r2_a);
+            if(!strcmp(k,"r2_w"))    return vnum(E->r2_w);
+            if(!strcmp(k,"r2_b"))    return vnum(E->r2_b);
+            if(!strcmp(k,"r2_o"))    return vnum(E->r2_o);
+            if(!strcmp(k,"F"))       return vnum(E->F);
+            if(!strcmp(k,"p"))       return vnum(E->F_p);
+            if(!strcmp(k,"rmse"))    return vnum(E->rmse);
+            if(!strcmp(k,"rss"))     return vnum(E->rss);
+            if(!strcmp(k,"mss"))     return vnum(E->mss);
+            if(!strcmp(k,"sigma_u")) return vnum(E->sigma_u);
+            if(!strcmp(k,"sigma_e")) return vnum(E->sigma_e);
+            if(!strcmp(k,"rho"))     return vnum(E->rho);
+            c->err="unknown e() result"; return vnum(SV_MISS);
+        }
+        return call_fn(n,c);
     }
     return vnum(SV_MISS);
 }

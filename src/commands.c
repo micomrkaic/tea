@@ -3259,6 +3259,255 @@ static int do_save(Cmd *c){
  * ---------------------------------------------------------------------- */
 /* ---- history: list / save / clear the interactive command history ------ */
 /* ---- confirm: assert existence/type; the capture-confirm idiom --------- */
+/* ---- paper-kit commands: which, ssc, version, duplicates, isid,
+ *      tempfile/tempname, pwcorr, file --------------------------------- */
+int do_outreg2(Cmd *c);   /* src/outreg.c */
+
+/* file-scope comparators (nested functions are a GCC-only extension and
+ * crash under ASan's non-executable stack; clang rejects them outright) */
+static int strp_cmp(const void *a, const void *b){
+    return strcmp(*(char* const*)a, *(char* const*)b);
+}
+static char **g_dupkeys;
+static int dupidx_cmp(const void *a, const void *b){
+    size_t x = *(const size_t*)a, y = *(const size_t*)b;
+    int r = strcmp(g_dupkeys[x], g_dupkeys[y]);
+    if(r) return r;
+    return x < y ? -1 : (x > y ? 1 : 0);
+}
+
+static int tea_cmd_exists(const char *nm);   /* defined after TABLE */
+static int do_which(Cmd *c){
+    char nm[64]=""; sscanf(c->args,"%63s",nm);
+    if(tea_cmd_exists(nm)){ printf("built-in command: %s\n",nm); return 0; }
+    tea_err("command %s not found\n", nm);
+    return 111;
+}
+
+static int do_ssc(Cmd *c){
+    char sub[32]="", pkg[64]="";
+    sscanf(c->args,"%31s %63s",sub,pkg);
+    printf("(ssc %s %s skipped \u2014 tea has no package system; "
+           "outreg2-style tables are built in)\n", sub, pkg);
+    return 0;
+}
+
+static int do_isid(Cmd *c){
+    int *vs=NULL, nv, n_temps=0; const char *vlerr=NULL;
+    nv = tsop_expand_varlist(c->f, c->varlist, &vs, &n_temps, &vlerr);
+    if(nv <= 0){ tea_err("isid: %s\n", vlerr?vlerr:"varlist required"); free(vs); return 111; }
+    size_t n = c->f->nobs;
+    /* sort-free O(n^2/2) is too slow for big data; hash rows via strings */
+    char **keys = malloc(n * sizeof(char*));
+    for(size_t i=0;i<n;i++){
+        char buf[512]; size_t w=0;
+        for(int j=0;j<nv;j++){
+            Variable *V=&c->f->vars[vs[j]];
+            char cell[128];
+            if(V->type==VT_NUM) snprintf(cell,sizeof cell,"%.12g",V->num[i]);
+            else snprintf(cell,sizeof cell,"%s",V->str[i]?V->str[i]:"");
+            w += (size_t)snprintf(buf+w, sizeof buf-w, "%s\x1f", cell);
+            if(w >= sizeof buf) break;
+        }
+        keys[i]=strdup(buf);
+    }
+    int dup=0;
+    qsort(keys,n,sizeof(char*),strp_cmp);
+    for(size_t i=1;i<n && !dup;i++) if(!strcmp(keys[i],keys[i-1])) dup=1;
+    for(size_t i=0;i<n;i++) free(keys[i]);
+    free(keys); free(vs); tsop_drop_temps(c->f,n_temps);
+    if(dup){ tea_err("variables do not uniquely identify the observations\n"); return 459; }
+    return 0;
+}
+
+static int do_duplicates(Cmd *c){
+    char sub[32]=""; sscanf(c->args,"%31s",sub);
+    const char *vl = c->args + strlen(sub); while(*vl==' ')vl++;
+    int *vs=NULL, nv=0, n_temps=0; const char *vlerr=NULL;
+    if(*vl && *vl != ','){
+        char vbuf[512]; snprintf(vbuf,sizeof vbuf,"%s",vl);
+        vbuf[strcspn(vbuf,",")]=0;
+        nv = tsop_expand_varlist(c->f, vbuf, &vs, &n_temps, &vlerr);
+        if(nv<0){ tea_err("duplicates: %s\n",vlerr?vlerr:"bad varlist"); free(vs); return 111; }
+    }
+    if(nv==0){ nv=c->f->nvar; vs=malloc((size_t)nv*sizeof(int)); for(int i=0;i<nv;i++)vs[i]=i; }
+    size_t n=c->f->nobs;
+    char **keys=malloc(n*sizeof(char*));
+    for(size_t i=0;i<n;i++){
+        size_t cap=256, w=0; char *buf=malloc(cap);
+        for(int j=0;j<nv;j++){
+            Variable *V=&c->f->vars[vs[j]];
+            char cell[160];
+            if(V->type==VT_NUM) snprintf(cell,sizeof cell,"%.12g",V->num[i]);
+            else snprintf(cell,sizeof cell,"%s",V->str[i]?V->str[i]:"");
+            size_t need=w+strlen(cell)+2;
+            if(need>cap){ while(cap<need)cap*=2; buf=realloc(buf,cap); }
+            w+=(size_t)sprintf(buf+w,"%s\x1f",cell);
+        }
+        keys[i]=buf;
+    }
+    /* index-sort by key so drop can keep first occurrences */
+    size_t *idx=malloc(n*sizeof(size_t));
+    for(size_t i=0;i<n;i++)idx[i]=i;
+    g_dupkeys = keys;
+    qsort(idx,n,sizeof(size_t),dupidx_cmp);
+    size_t surplus=0;
+    char *dropmask=calloc(n,1);
+    for(size_t i=1;i<n;i++)
+        if(!strcmp(keys[idx[i]],keys[idx[i-1]])){ surplus++; dropmask[idx[i]]=1; }
+    if(!strcmp(sub,"report")){
+        printf("Duplicates in terms of %s\n", nv==c->f->nvar?"all variables":"the varlist");
+        printf("  total observations: %zu\n  surplus (would drop): %zu\n", n, surplus);
+    } else if(!strcmp(sub,"drop")){
+        if(surplus){
+            size_t w=0;
+            for(size_t i=0;i<n;i++)
+                if(!dropmask[i]){ if(w!=i) frame_move_row(c->f,i,w); w++; }
+            frame_set_nobs(c->f,w);
+        }
+        printf("(%zu observation%s deleted)\n", surplus, surplus==1?"":"s");
+    } else {
+        tea_err("duplicates: use `duplicates report [varlist]` or `duplicates drop [varlist]`\n");
+        surplus=0; /* fallthrough cleanup */
+        for(size_t i=0;i<n;i++)free(keys[i]);
+        free(keys);free(idx);free(dropmask);free(vs);tsop_drop_temps(c->f,n_temps);
+        return 198;
+    }
+    for(size_t i=0;i<n;i++)free(keys[i]);
+    free(keys);free(idx);free(dropmask);free(vs);tsop_drop_temps(c->f,n_temps);
+    return 0;
+}
+
+static int g_tmpseq = 0;
+static int do_tempfile(Cmd *c){
+    extern Interp *g_tea_interp;
+    char nm[64]; const char *p=c->args;
+    while(sscanf(p,"%63s",nm)==1){
+        char path[256];
+        snprintf(path,sizeof path,"/tmp/tea_tmp%d_%s", ++g_tmpseq, nm);
+        mac_set(&g_tea_interp->locals, nm, path);
+        p+=strlen(nm); while(*p==' ')p++;
+        if(!*p)break;
+        p=strstr(p,nm)?p:p;   /* advance past token */
+        break;
+    }
+    /* handle multiple names properly */
+    { const char *q=c->args; char t[64];
+      int consumed;
+      while(sscanf(q,"%63s%n",t,&consumed)==1){
+          char path[256];
+          snprintf(path,sizeof path,"/tmp/tea_tmp%d_%s", ++g_tmpseq, t);
+          mac_set(&g_tea_interp->locals, t, path);
+          q+=consumed; while(*q==' ')q++;
+          if(!*q)break;
+      }
+    }
+    return 0;
+}
+static int do_tempname(Cmd *c){
+    extern Interp *g_tea_interp;
+    const char *q=c->args; char t[64]; int consumed;
+    while(sscanf(q,"%63s%n",t,&consumed)==1){
+        char val[96];
+        snprintf(val,sizeof val,"__tmp%d_%s", ++g_tmpseq, t);
+        mac_set(&g_tea_interp->locals, t, val);
+        q+=consumed; while(*q==' ')q++;
+        if(!*q)break;
+    }
+    return 0;
+}
+
+static int do_pwcorr(Cmd *c){
+    int *vs=NULL, nv, n_temps=0; const char *vlerr=NULL;
+    nv = tsop_expand_varlist(c->f, c->varlist, &vs, &n_temps, &vlerr);
+    if(nv<=0){ tea_err("pwcorr: %s\n",vlerr?vlerr:"varlist required"); free(vs); return 111; }
+    printf("%12s","");
+    for(int j=0;j<nv;j++) printf(" %9.9s", c->f->vars[vs[j]].name);
+    printf("\n");
+    for(int i=0;i<nv;i++){
+        printf("%12.12s", c->f->vars[vs[i]].name);
+        for(int j=0;j<=i;j++){
+            double sx=0,sy=0,sxx=0,syy=0,sxy=0; long n=0;
+            for(size_t r=0;r<c->f->nobs;r++){
+                double x=c->f->vars[vs[i]].num[r], y=c->f->vars[vs[j]].num[r];
+                if(sv_is_miss(x)||sv_is_miss(y))continue;
+                n++; sx+=x; sy+=y; sxx+=x*x; syy+=y*y; sxy+=x*y;
+            }
+            double cov=sxy-sx*sy/n, vx=sxx-sx*sx/n, vy=syy-sy*sy/n;
+            double rho=(n>1&&vx>0&&vy>0)?cov/sqrt(vx*vy):SV_MISS;
+            if(sv_is_miss(rho)) printf(" %9s",".");
+            else printf(" %9.4f",rho);
+        }
+        printf("\n");
+    }
+    free(vs); tsop_drop_temps(c->f,n_temps);
+    return 0;
+}
+
+/* ---- file open/write/close (text mode; compound quotes supported) ----- */
+#define FH_MAX 8
+static struct { char name[33]; FILE *fp; } g_fh[FH_MAX];
+static int do_file(Cmd *c){
+    char sub[16]=""; sscanf(c->args,"%15s",sub);
+    const char *p = c->args + strlen(sub); while(*p==' ')p++;
+    if(!strcmp(sub,"open")){
+        char h[33]=""; sscanf(p,"%32s",h);
+        const char *u = strstr(p,"using");
+        if(!u){ tea_err("file open: using FILE required\n"); return 198; }
+        u+=5; while(*u==' ')u++;
+        char fn[512]; size_t w=0; int inq=(*u=='"'); if(inq)u++;
+        while(*u && w<sizeof fn-1 && (inq?*u!='"':(*u!=' '&&*u!=','))) fn[w++]=*u++;
+        fn[w]=0;
+        int repl = opt_present(c->options,"replace");
+        int app  = opt_present(c->options,"append");
+        if(!repl && !app && access(fn,F_OK)==0){
+            tea_err("file %s already exists (use ,replace)\n",fn); return 602; }
+        int slot=-1;
+        for(int i=0;i<FH_MAX;i++) if(!g_fh[i].fp){slot=i;break;}
+        if(slot<0){ tea_err("file open: too many open handles\n"); return 198; }
+        g_fh[slot].fp=fopen(fn, app?"a":"w");
+        if(!g_fh[slot].fp){ tea_err("file open: cannot write %s\n",fn); return 603; }
+        snprintf(g_fh[slot].name,33,"%s",h);
+        return 0;
+    }
+    if(!strcmp(sub,"close")){
+        char h[33]=""; sscanf(p,"%32s",h);
+        for(int i=0;i<FH_MAX;i++)
+            if(g_fh[i].fp && !strcmp(g_fh[i].name,h)){
+                fclose(g_fh[i].fp); g_fh[i].fp=NULL; g_fh[i].name[0]=0; return 0; }
+        tea_err("file close: handle %s not open\n",h); return 198;
+    }
+    if(!strcmp(sub,"write")){
+        char h[33]=""; int consumed=0; sscanf(p,"%32s%n",h,&consumed);
+        FILE *fp=NULL;
+        for(int i=0;i<FH_MAX;i++)
+            if(g_fh[i].fp && !strcmp(g_fh[i].name,h)) fp=g_fh[i].fp;
+        if(!fp){ tea_err("file write: handle %s not open\n",h); return 198; }
+        const char *q=p+consumed;
+        while(*q){
+            while(*q==' ')q++;
+            if(!*q)break;
+            if(q[0]=='_'&&q[1]=='n'&&(q[2]==0||q[2]==' ')){ fputc('\n',fp); q+=2; continue; }
+            if(q[0]=='`'&&q[1]=='"'){                     /* compound `"..."' */
+                q+=2; const char *e=strstr(q,"\"'");
+                if(!e){ tea_err("file write: unterminated compound quote\n"); return 198; }
+                fwrite(q,1,(size_t)(e-q),fp); q=e+2; continue;
+            }
+            if(q[0]=='"'){
+                q++; const char *e=strchr(q,'"');
+                if(!e){ tea_err("file write: unterminated quote\n"); return 198; }
+                fwrite(q,1,(size_t)(e-q),fp); q=e+1; continue;
+            }
+            /* bare token: write literally up to whitespace */
+            const char *e=q; while(*e&&*e!=' ')e++;
+            fwrite(q,1,(size_t)(e-q),fp); q=e;
+        }
+        return 0;
+    }
+    tea_err("file: use file open|write|close\n");
+    return 198;
+}
+
 static int do_confirm(Cmd *c){
     char t1[32]="", t2[32]="", rest[512]="";
     sscanf(c->args, "%31s %31s", t1, t2);
@@ -3576,7 +3825,10 @@ static int do_help(Cmd *c){
     tea_err("help: unknown command '%s'\n",what); return 111;
 }
 
-static int do_version(Cmd *c){ (void)c;
+static int do_version(Cmd *c){
+    /* Stata do-files start with `version 16` etc.: accept silently */
+    char a[32]=""; sscanf(c->args,"%31s",a);
+    if(a[0] && (isdigit((unsigned char)a[0]))) return 0;
     printf("tea %s — tiny econometric assistant\n",TEA_VERSION);
     printf("built %s %s\n",__DATE__,__TIME__);
     printf("Copyright (C) 2026 Mico Mrkaic.  License GPLv3+: GNU GPL v3 or later.\n");
@@ -3946,6 +4198,26 @@ Disp TABLE[]={
         "save FILE [, replace]                        write Stata .dta (default) or .tea\n"
         "      e.g.  save mydata.dta, replace        — emits Stata-compatible .dta\n"
         "      e.g.  save mydata.tea, replace        — native tea binary"},
+    {"outreg2",do_outreg2,1,
+        "outreg2 using FILE [, replace|append ctitle() dec() bdec() se label\n"
+        "      symbol() alpha() addstat(\"Name\", expr, ...) addtext() addnote()]\n"
+        "      regression-table exporter (tab-separated; opens in Excel)"},
+    {"which",do_which,0,
+        "which CMD  \u2014 report whether CMD is a built-in tea command"},
+    {"ssc",do_ssc,0,
+        "ssc install PKG  \u2014 accepted and skipped (no package system)"},
+    {"isid",do_isid,1,
+        "isid varlist  \u2014 error 459 unless varlist uniquely identifies obs"},
+    {"duplicates",do_duplicates,1,
+        "duplicates report|drop [varlist]"},
+    {"tempfile",do_tempfile,0,
+        "tempfile NAME...  \u2014 set local macros to fresh temp-file paths"},
+    {"tempname",do_tempname,0,
+        "tempname NAME...  \u2014 set local macros to fresh scratch names"},
+    {"pwcorr",do_pwcorr,1,
+        "pwcorr varlist  \u2014 pairwise correlation matrix"},
+    {"file",do_file,0,
+        "file open H using F, write [replace|append] | file write H \"...\" _n | file close H"},
     {"confirm",do_confirm,0,
         "confirm [new] file FILENAME | confirm [new|numeric|string] variable NAME\n"
         "      error (601/602/111/110/7) unless the condition holds; use with\n"
@@ -3996,6 +4268,13 @@ Disp TABLE[]={
     {"quit",do_exit,0,NULL},
     {NULL,NULL,0,NULL}
 };
+
+static int tea_cmd_exists(const char *nm){
+    for(int i = 0; TABLE[i].name; i++)
+        if(!strcmp(TABLE[i].name, nm)) return 1;
+    return 0;
+}
+
 
 int run_command(Cmd *c){
     g_ws=c->ws;
