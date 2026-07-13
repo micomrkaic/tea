@@ -2048,6 +2048,41 @@ static int do_collapse(Cmd *c){
 }
 
 /* ---- import / export delimited ---------------------------------------- */
+/* Run a shell command like system(), but with the progress activity
+ * indicator (spinner + elapsed) while the child works.  Big-workbook
+ * conversions run for a minute or more; a silent blocking system() made
+ * import excel look hung until the CSV-parse phase finally showed its
+ * percentage.  Returns 0 iff the child exited 0.  Degrades to plain
+ * system() when fork fails; EMSCRIPTEN keeps plain system(). */
+#ifndef __EMSCRIPTEN__
+#include <sys/wait.h>
+#endif
+static int run_with_activity(const char *cmd, const char *label){
+#ifdef __EMSCRIPTEN__
+    (void)label;
+    return system(cmd) == 0 ? 0 : 1;
+#else
+    pid_t pid = fork();
+    if(pid < 0) return system(cmd) == 0 ? 0 : 1;
+    if(pid == 0){
+        execl("/bin/sh", "sh", "-c", cmd, (char*)NULL);
+        _exit(127);
+    }
+    progress_begin_activity(label);
+    int st = 0, ok = 0;
+    for(;;){
+        int r = (int)waitpid(pid, &st, WNOHANG);
+        if(r == (int)pid){ ok = WIFEXITED(st) && WEXITSTATUS(st) == 0; break; }
+        if(r < 0){ ok = 0; break; }
+        struct timespec ts = {0, 100*1000*1000};   /* 100ms poll */
+        nanosleep(&ts, NULL);
+        progress_tick();
+    }
+    progress_end();
+    return ok ? 0 : 1;
+#endif
+}
+
 /* shell out to ssconvert (gnumeric) or libreoffice to turn xlsx/ods into csv.
  * Returns 0 on success and writes the temp .csv path into out_path. */
 static int convert_spreadsheet(const char *src, const char *sheet, char *out_path, size_t op_sz){
@@ -2094,7 +2129,10 @@ static int convert_spreadsheet(const char *src, const char *sheet, char *out_pat
         } else
             snprintf(cmd,sizeof cmd,"ssconvert %s '%s' '%s/out.csv' >/dev/null 2>&1",
                      "--export-type=Gnumeric_stf:stf_csv",src,tmpdir);
-        if(system(cmd)==0){
+        char label[300];
+        { const char *b = strrchr(src,'/'); b = b? b+1 : src;
+          snprintf(label,sizeof label,"converting %s", b); }
+        if(run_with_activity(cmd, label)==0){
             /* trust but verify: an unmatched sheet or a quiet failure can
              * exit 0 with no/empty output */
             char probe[600]; snprintf(probe,sizeof probe,"%s/out.csv",tmpdir);
@@ -2119,7 +2157,10 @@ static int convert_spreadsheet(const char *src, const char *sheet, char *out_pat
         snprintf(cmd,sizeof cmd,
             "'%s' --headless --convert-to csv --outdir '%s' '%s' >/dev/null 2>&1",
             lo_path, tmpdir, src);
-        if(system(cmd)==0){
+        char label[300];
+        { const char *b = strrchr(src,'/'); b = b? b+1 : src;
+          snprintf(label,sizeof label,"converting %s", b); }
+        if(run_with_activity(cmd, label)==0){
             const char *base = strrchr(src,'/'); base = base? base+1 : src;
             char tmp[512]; snprintf(tmp,sizeof tmp,"%s",base);
             char *dot=strrchr(tmp,'.'); if(dot)*dot=0;

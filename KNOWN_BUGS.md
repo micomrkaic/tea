@@ -993,3 +993,15 @@ used in `egen`.
 - Test 58 locks all five survival paths: reshape wide+long,
   preserve/restore, `.tea` round-trip, `.dta` round-trip, and merge —
   asserted via rendered `graph box` band labels.
+
+## v1.6.8 — quality of life: conversion-phase progress for import excel
+
+- `import excel` on a large workbook was silent for most of its wall
+  time: the ssconvert/libreoffice child ran under a blocking system()
+  with no feedback, and only the subsequent CSV-parse phase was
+  byte-instrumented — so the progress line appeared "around 70%".
+  The converter now runs under a polled fork/exec with a new progress
+  ACTIVITY mode: spinner + elapsed seconds ("converting WB_data.xlsx
+  / 34s"), same contract as the percentage line (stderr TTY only, 1s
+  activation gate, 250ms redraws, erased on completion, `set progress
+  off` disables, no-op on WASM).  Batch output is byte-identical.

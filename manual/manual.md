@@ -417,6 +417,12 @@ can otherwise look hung:
 
     reshape long: 42% (10,800,000/25,808,384)
 
+External conversion work of unknown length — the ssconvert/libreoffice
+phase of `import excel`, which dominates on big workbooks — shows an
+activity form instead, a spinner with elapsed time:
+
+    converting WB_data.xlsx / 34s
+
 It is deliberately invisible everywhere it could interfere: nothing is
 drawn until an operation has run for about a second (short operations
 produce zero output), it goes to stderr only when stderr is a terminal

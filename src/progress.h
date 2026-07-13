@@ -27,4 +27,10 @@ void progress_begin(const char *label, size_t total);
 void progress_step(size_t n);
 void progress_end(void);
 
+/* activity mode: external work of unknown length (a converter child).
+ * Same contract (TTY-only, 1s activation, erased on end); renders a
+ * spinner + elapsed seconds instead of a count. */
+void progress_begin_activity(const char *label);
+void progress_tick(void);
+
 #endif

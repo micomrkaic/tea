@@ -11,6 +11,8 @@ int g_progress_enabled = 1;
 #ifdef __EMSCRIPTEN__
 void progress_begin(const char *label, size_t total){ (void)label; (void)total; }
 void progress_step(size_t n){ (void)n; }
+void progress_begin_activity(const char *label){ (void)label; }
+void progress_tick(void){ }
 void progress_end(void){ }
 #else
 
@@ -22,6 +24,7 @@ static struct {
     int active;                /* between begin and end               */
     int drawn;                 /* something is on the line            */
     int last_len;              /* chars of the last draw (for erase)  */
+    int activity;              /* elapsed-time mode (external child)  */
     char label[64];
     size_t total, done, acc;   /* acc: units since last clock check   */
     long long t0, tlast;       /* monotonic ns                        */
@@ -45,6 +48,21 @@ static void commafmt(size_t v, char *buf){
 
 static void draw(void){
     char line[160], a[32], b[32];
+    if(P.activity){
+        /* external work of unknown length (e.g. an ssconvert child):
+         * spinner for "not hung" reassurance + elapsed wall time */
+        static const char spin[] = "|/-\\";
+        int secs = (int)((now_ns() - P.t0) / 1000000000LL);
+        snprintf(line, sizeof line, "%s %c %ds", P.label,
+                 spin[P.done % 4], secs);
+        P.done++;
+        int len0 = (int)strlen(line);
+        fprintf(stderr, "\r%s%*s", line, P.last_len > len0 ? P.last_len - len0 : 0, "");
+        fflush(stderr);
+        P.last_len = len0;
+        P.drawn = 1;
+        return;
+    }
     commafmt(P.done, a);
     if(P.total){
         int pct = (int)(100.0 * (double)P.done / (double)P.total);
@@ -70,6 +88,21 @@ void progress_begin(const char *label, size_t total){
     snprintf(P.label, sizeof P.label, "%s", label);
     P.total = total;
     P.t0 = P.tlast = now_ns();
+}
+
+void progress_begin_activity(const char *label){
+    progress_begin(label, 0);
+    if(P.active) P.activity = 1;
+}
+
+/* time-gated redraw for activity mode; call from the child-wait poll loop */
+void progress_tick(void){
+    if(!P.active) return;
+    long long t = now_ns();
+    if(!P.drawn){ if(t - P.t0    < ACTIVATE_NS) return; }
+    else        { if(t - P.tlast < REDRAW_NS)   return; }
+    P.tlast = t;
+    draw();
 }
 
 void progress_step(size_t n){
