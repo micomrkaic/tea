@@ -1026,3 +1026,18 @@ used in `egen`.
   variable exists; an error mid-loop aborts with rc=133 and rolls back
   completely — gen leaves no trace of the new variable, replace
   restores the column from a snapshot.  Partial writes never survive.
+
+## v1.6.10 — `set more on|off` does something now
+
+- `set more` had been accepted-and-ignored since v1.0 — a silent no-op:
+  `set more on` armed nothing, and a stray `list` on a 400k-row panel
+  flooded the terminal.  Now it is Stata's output pager for real:
+  with `set more on`, long `list` and `describe` output pauses at a
+  screenful with `--more--`; space/any key = next page, Enter = one
+  more line, q = stop with `--Break--`.  Terminal height is read live
+  (TIOCGWINSZ, fallback 24 rows).  It engages ONLY in the interactive
+  REPL with stdout a TTY — do-files, pipes, capture, logs, and the
+  test suite never see it, so batch output is byte-identical.  Default
+  is off, matching modern Stata.  `set more banana` errors (198), as
+  does any other malformed argument — same strictness as
+  `set progress`.

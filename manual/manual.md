@@ -423,6 +423,12 @@ activity form instead, a spinner with elapsed time:
 
     converting WB_data.xlsx / 34s
 
+Long interactive output can be paged, exactly Stata's `more`: after
+`set more on`, `list` and `describe` pause at each screenful with
+`--more--` (any key = next page, Enter = one line, q = stop).  Only the
+interactive REPL with a terminal ever pages; do-files, pipes, and logs
+always stream.  Default is off, as in modern Stata.
+
 It is deliberately invisible everywhere it could interfere: nothing is
 drawn until an operation has run for about a second (short operations
 produce zero output), it goes to stderr only when stderr is a terminal

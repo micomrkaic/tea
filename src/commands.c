@@ -258,6 +258,43 @@ static void fmt_cell(Variable *v,size_t i,char *out,size_t n){
     else snprintf(out,n,"%.4g",x);
 }
 
+/* ---- `more` pager -------------------------------------------------------
+ * Stata's output paging: with `set more on`, long interactive output
+ * pauses at a screenful with --more--; any key continues (Enter = one
+ * line, q = stop).  Engages ONLY in the interactive REPL with stdout a
+ * TTY — do-files, pipes, capture, and the test suite never see it, so
+ * golden output is untouched.  Default off, like modern Stata. */
+int g_more_enabled = 0;
+#ifndef __EMSCRIPTEN__
+#include <sys/ioctl.h>
+#include <termios.h>
+static int more_screen_rows(void){
+    struct winsize w;
+    if (ioctl(1, TIOCGWINSZ, &w) == 0 && w.ws_row > 4) return w.ws_row - 1;
+    return 23;
+}
+/* count a printed line; returns 1 if the user pressed q (caller stops) */
+static int more_gate(int *count){
+    extern int g_current_line;
+    if (!g_more_enabled || g_current_line || !isatty(1)) return 0;
+    if (++*count < more_screen_rows()) return 0;
+    fflush(stdout);
+    fprintf(stderr, "--more--"); fflush(stderr);
+    struct termios old_t, raw_t; int have_t = (tcgetattr(0, &old_t) == 0);
+    if (have_t){ raw_t = old_t; raw_t.c_lflag &= (tcflag_t)~(ICANON|ECHO);
+                 raw_t.c_cc[VMIN]=1; raw_t.c_cc[VTIME]=0; tcsetattr(0, TCSANOW, &raw_t); }
+    int ch = getchar();
+    if (have_t) tcsetattr(0, TCSANOW, &old_t);
+    fprintf(stderr, "\r        \r"); fflush(stderr);
+    if (ch == 'q' || ch == 'Q'){ printf("--Break--\n"); return 1; }
+    if (ch == '\n' || ch == '\r') *count = more_screen_rows() - 1;  /* one line */
+    else *count = 0;                                                  /* full page */
+    return 0;
+}
+#else
+static int more_gate(int *count){ (void)count; return 0; }
+#endif
+
 /* ---- selection predicate ----------------------------------------------- */
 typedef struct { Node *ifn; long lo,hi; } Sel;
 static bool sel_ok(Sel *s,EvalCtx *ec,size_t row,size_t pos1){
@@ -647,6 +684,7 @@ static int do_list(Cmd *c){
     printf("     +");for(int j=0;j<nv;j++)printf("%-*s+",w[j]+2,"");printf("\n     |");
     for(int j=0;j<nv;j++)printf(" %-*s |",u8pad(c->f->vars[vs[j]].name,w[j]),c->f->vars[vs[j]].name);printf("\n");
     EvalCtx ec={0}; ec.f=c->f;
+    int more_count = 2;   /* the header rows already on screen */
     for(size_t i=0;i<c->f->nobs;i++){
         if(c->in_lo>0&&(long)i+1<c->in_lo)continue;
         if(c->in_hi>0&&(long)i+1>c->in_hi)continue;
@@ -655,6 +693,7 @@ static int do_list(Cmd *c){
         for(int j=0;j<nv;j++){ char b[128]; fmt_cell(&c->f->vars[vs[j]],i,b,sizeof b);
             printf(" %-*s |",u8pad(b,w[j]),b); }
         printf("\n");
+        if(more_gate(&more_count)) break;
     }
     free(w); free(vs); node_free(ifn);
     tsop_drop_temps(c->f, n_temps);
@@ -883,12 +922,15 @@ static int do_describe(Cmd *c){
            c->f->nobs, ndisp, c->varlist[0] ? " (filtered)" : "");
     printf("-------------------------------------------------------------\n");
     printf("%-16s %-8s %-10s %s\n","variable","type","format","label");
+    int more_count = 6;   /* header block already on screen */
     if(c->varlist[0]){
         for(int k=0;k<nv;k++){ Variable*v=&c->f->vars[vs[k]];
-            printf("%-16s %-8s %-10s %s\n",v->name,v->type==VT_STR?"str":"double",v->format,v->vlabel); }
+            printf("%-16s %-8s %-10s %s\n",v->name,v->type==VT_STR?"str":"double",v->format,v->vlabel);
+            if(more_gate(&more_count)) break; }
     } else {
         for(int i=0;i<c->f->nvar;i++){ Variable*v=&c->f->vars[i];
-            printf("%-16s %-8s %-10s %s\n",v->name,v->type==VT_STR?"str":"double",v->format,v->vlabel); }
+            printf("%-16s %-8s %-10s %s\n",v->name,v->type==VT_STR?"str":"double",v->format,v->vlabel);
+            if(more_gate(&more_count)) break; }
     }
     printf("-------------------------------------------------------------\n");
     free(vs);
@@ -4945,6 +4987,13 @@ int run_command(Cmd *c){
             if(!strcmp(v,"on"))  { g_progress_enabled=1; return 0; }
             if(!strcmp(v,"off")) { g_progress_enabled=0; return 0; }
             tea_err("set progress: on or off\n"); return 198;
+        }
+        if(!strcmp(w,"more")){
+            char v[16]=""; sscanf(c->args+5," %15s",v);
+            extern int g_more_enabled;
+            if(!strcmp(v,"on"))  { g_more_enabled=1; return 0; }
+            if(!strcmp(v,"off")) { g_more_enabled=0; return 0; }
+            tea_err("set more: on or off\n"); return 198;
         }
         if(!strcmp(w,"seed")){
             const char *p = c->args + 4; while(*p == ' ') p++;
