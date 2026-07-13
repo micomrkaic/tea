@@ -1,0 +1,47 @@
+number of observations set to 12
+(12 real changes made)
+(12 real changes made)
+(12 real changes made)
+(12 real changes made)
+
+    Variable |        Obs        Mean    Std. dev.         Min         Max
+-------------+--------------------------------------------------------------
+totalpopul~r |         12        9.75        5.408         1.5          18
+femalepopu~y |         12       16.25        9.014         2.5          30
+         TFR |         12        3.35       0.3606         2.8         3.9
+         grp |         12         1.5       0.5222           1           2
+
+Contains data
+  obs: 12
+ vars: 4
+-------------------------------------------------------------
+variable                   type     format     label
+totalpopulationasof1januar double   %9.0g      
+femalepopulationasof1july  double   %9.0g      
+TFR                        double   %9.0g      
+grp                        double   %9.0g      
+-------------------------------------------------------------
+
+    Variable |        Obs        Mean    Std. dev.         Min         Max
+-------------+--------------------------------------------------------------
+         TFR |         12        3.35       0.3606         2.8         3.9
+
+Summary statistics: mean
+  for variables: totalpopulationasof1januar TFR
+  by categories of: grp
+
+         grp | totalpop~r        TFR
+-------------+----------------------
+Advanced e~s |      10.50       3.30
+        Rest |       9.00       3.40
+       Total |       9.75       3.35
+
+Summary statistics: mean, sd
+  for variables: totalpopulationasof1januar
+  by categories of: grp
+
+         grp |       mean         sd
+-------------+----------------------
+Advanced e~s |       10.5   5.612486
+        Rest |          9   5.612486
+       Total |       9.75   5.408327

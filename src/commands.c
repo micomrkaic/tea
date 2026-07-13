@@ -190,6 +190,16 @@ extern int do_lincom(Cmd *c);
 
 /* error helper: prefixes 'line N: ' in do-file mode, plain in REPL. */
 static void unquote_str(char *s);   /* strip surrounding double quotes */
+
+/* Stata's abbrev(): names longer than n display as the first n-2
+ * characters + '~' + the last character (abbrev("displacement",8) ->
+ * "displa~t").  Keeps sum/tabstat columns aligned for the UN WPP-style
+ * 26-character names. */
+static void stata_abbrev(const char *in, int n, char *out, size_t outsz){
+    int L = (int)strlen(in);
+    if(L <= n || n < 4){ snprintf(out, outsz, "%s", in); return; }
+    snprintf(out, outsz, "%.*s~%c", n-2, in, in[L-1]);
+}
 extern int g_current_line;
 #include <stdarg.h>
 __attribute__((format(__printf__,1,2)))
@@ -865,8 +875,9 @@ static int do_summarize(Cmd *c){
                 }
                 #undef PCTL
             } else {
-                if(!c->quiet) printf("%12s |%11.0f %11.4g %12.4g %11.4g %11.4g\n",
-                    v->name,dispObs,n?mean:0.0,(!sv_is_miss(sd))?sd:0.0,n?mn:0.0,n?mx:0.0);
+                if(!c->quiet){ char an[16]; stata_abbrev(v->name,12,an,sizeof an);
+                    printf("%12s |%11.0f %11.4g %12.4g %11.4g %11.4g\n",
+                    an,dispObs,n?mean:0.0,(!sv_is_miss(sd))?sd:0.0,n?mn:0.0,n?mx:0.0); }
             }
             /* set r() only for non-by, single-var summarize (Stata-style) */
             if(!by && nv==1){ char b[32];
@@ -922,15 +933,21 @@ static int do_describe(Cmd *c){
     printf("  obs: %zu\n vars: %d%s\n",
            c->f->nobs, ndisp, c->varlist[0] ? " (filtered)" : "");
     printf("-------------------------------------------------------------\n");
-    printf("%-16s %-8s %-10s %s\n","variable","type","format","label");
+    /* name column: pad to the longest name in view (16..32) so 26-char
+     * WPP names don't shove the type/format columns out of line */
+    int namew = 16;
+    if(c->varlist[0]){ for(int k=0;k<nv;k++){ int L=(int)strlen(c->f->vars[vs[k]].name); if(L>namew)namew=L; } }
+    else { for(int i=0;i<c->f->nvar;i++){ int L=(int)strlen(c->f->vars[i].name); if(L>namew)namew=L; } }
+    if(namew>32)namew=32;
+    printf("%-*s %-8s %-10s %s\n",namew,"variable","type","format","label");
     int more_count = 6;   /* header block already on screen */
     if(c->varlist[0]){
         for(int k=0;k<nv;k++){ Variable*v=&c->f->vars[vs[k]];
-            printf("%-16s %-8s %-10s %s\n",v->name,v->type==VT_STR?"str":"double",v->format,v->vlabel);
+            printf("%-*s %-8s %-10s %s\n",namew,v->name,v->type==VT_STR?"str":"double",v->format,v->vlabel);
             if(more_gate(&more_count)) break; }
     } else {
         for(int i=0;i<c->f->nvar;i++){ Variable*v=&c->f->vars[i];
-            printf("%-16s %-8s %-10s %s\n",v->name,v->type==VT_STR?"str":"double",v->format,v->vlabel);
+            printf("%-*s %-8s %-10s %s\n",namew,v->name,v->type==VT_STR?"str":"double",v->format,v->vlabel);
             if(more_gate(&more_count)) break; }
     }
     printf("-------------------------------------------------------------\n");
@@ -1627,7 +1644,7 @@ static int do_tabstat(Cmd *c){
                 for(int s=0;s<nstats;s++) printf("-----------");
                 printf("\n");
                 for(int j=0;j<nv;j++){
-                    printf("%12s |", c->f->vars[vs[j]].name);
+                    { char an[16]; stata_abbrev(c->f->vars[vs[j]].name,12,an,sizeof an); printf("%12s |", an); }
                     for(int s=0;s<nstats;s++){
                         char b[32]; FMT_NUM(b, table[j*nstats+s]);
                         printf(" %s", b);
@@ -1637,7 +1654,7 @@ static int do_tabstat(Cmd *c){
             } else {
                 /* rows = stats, cols = vars */
                 printf("\n       stats |");
-                for(int j=0;j<nv;j++) printf(" %*s", CELLW, c->f->vars[vs[j]].name);
+                for(int j=0;j<nv;j++) { char an[16]; stata_abbrev(c->f->vars[vs[j]].name,CELLW,an,sizeof an); printf(" %*s", CELLW, an); }
                 printf("\n-------------+");
                 for(int j=0;j<nv;j++) printf("-----------");
                 printf("\n");
@@ -1683,7 +1700,7 @@ static int do_tabstat(Cmd *c){
                 /* ---- columns(statistics) ---- */
                 if(!header_printed){
                     /* Header: group-name column then stat names */
-                    printf("\n%12s |", bv->name);
+                    { char an[16]; stata_abbrev(bv->name,12,an,sizeof an); printf("\n%12s |", an); }
                     for(int s=0;s<nstats;s++){
                         const char *hdr = statnames[s];
                         for(int i=0; g_tabstat_stats[i].name; i++)
@@ -1697,7 +1714,7 @@ static int do_tabstat(Cmd *c){
                 }
                 if(nv == 1){
                     /* Single var: one row per group, stat-columns. */
-                    printf("%12s |", by_lbl);
+                    { char an[16]; stata_abbrev(by_lbl,12,an,sizeof an); printf("%12s |", an); }
                     for(int s=0;s<nstats;s++){
                         char b[32]; FMT_NUM(b, table[0*nstats+s]);
                         printf(" %s", b);
@@ -1706,9 +1723,9 @@ static int do_tabstat(Cmd *c){
                 } else {
                     /* Multi-var: group label on its own row, then variable
                      * rows underneath.  Mirrors estpost tabstat output. */
-                    printf("%12s |\n", by_lbl);
+                    { char an[16]; stata_abbrev(by_lbl,12,an,sizeof an); printf("%12s |\n", an); }
                     for(int j=0;j<nv;j++){
-                        printf("%12s |", c->f->vars[vs[j]].name);
+                        { char an[16]; stata_abbrev(c->f->vars[vs[j]].name,12,an,sizeof an); printf("%12s |", an); }
                         for(int s=0;s<nstats;s++){
                             char b[32]; FMT_NUM(b, table[j*nstats+s]);
                             printf(" %s", b);
@@ -1724,8 +1741,8 @@ static int do_tabstat(Cmd *c){
                 /* ---- columns(variables) ---- */
                 if(!header_printed){
                     /* Header: group-name column then variable names */
-                    printf("\n%12s |", bv->name);
-                    for(int j=0;j<nv;j++) printf(" %*s", CELLW, c->f->vars[vs[j]].name);
+                    { char an[16]; stata_abbrev(bv->name,12,an,sizeof an); printf("\n%12s |", an); }
+                    for(int j=0;j<nv;j++) { char an[16]; stata_abbrev(c->f->vars[vs[j]].name,CELLW,an,sizeof an); printf(" %*s", CELLW, an); }
                     printf("\n-------------+");
                     for(int j=0;j<nv;j++) printf("-----------");
                     printf("\n");
@@ -1733,7 +1750,7 @@ static int do_tabstat(Cmd *c){
                 }
                 /* Single-stat: one row per group, var-columns. */
                 if(nstats == 1){
-                    printf("%12s |", by_lbl);
+                    { char an[16]; stata_abbrev(by_lbl,12,an,sizeof an); printf("%12s |", an); }
                     for(int j=0;j<nv;j++){
                         char b[32]; FMT_NUM(b, table[j*nstats+0]);
                         printf(" %s", b);
@@ -1748,7 +1765,7 @@ static int do_tabstat(Cmd *c){
                         const char *hdr = statnames[s];
                         for(int i=0; g_tabstat_stats[i].name; i++)
                             if(!strcmp(g_tabstat_stats[i].name, statnames[s])){ hdr = g_tabstat_stats[i].header; break; }
-                        if(s == 0) printf("%12s |", by_lbl);
+                        if(s == 0) { char an[16]; stata_abbrev(by_lbl,12,an,sizeof an); printf("%12s |", an); }
                         else       printf("%12s |", "");
                         for(int j=0;j<nv;j++){
                             char b[32]; FMT_NUM(b, table[j*nstats+s]);
@@ -1836,7 +1853,7 @@ static int do_tabstat(Cmd *c){
                 for(int s=0;s<nstats;s++) printf("-----------");
             } else {
                 printf("\n%12s |", c->f->vars[byvar].name);
-                for(int j=0;j<nv;j++) printf(" %*s", CELLW, c->f->vars[vs[j]].name);
+                for(int j=0;j<nv;j++) { char an[16]; stata_abbrev(c->f->vars[vs[j]].name,CELLW,an,sizeof an); printf(" %*s", CELLW, an); }
                 printf("\n-------------+");
                 for(int j=0;j<nv;j++) printf("-----------");
             }
@@ -1851,7 +1868,7 @@ static int do_tabstat(Cmd *c){
             } else {
                 printf("%12s |\n", "Total");
                 for(int j=0;j<nv;j++){
-                    printf("%12s |", c->f->vars[vs[j]].name);
+                    { char an[16]; stata_abbrev(c->f->vars[vs[j]].name,12,an,sizeof an); printf("%12s |", an); }
                     for(int s=0;s<nstats;s++){ char b[32]; FMT_NUM(b, table[j*nstats+s]); printf(" %s", b); }
                     printf("\n");
                 }

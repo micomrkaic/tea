@@ -1089,3 +1089,19 @@ used in `egen`.
   format is undefined behavior.
 - Test 61 locks labeled groups, formatted group and Total rows in both
   table orientations, the quoted form, and both rejection paths.
+
+## v1.6.13 — long variable names no longer wreck sum/describe/tabstat
+
+- Bug 29 — the WPP panel's 26-character names
+  (totalpopulationasof1januar, ...) overflowed the fixed 12-char name
+  column in `summarize` and the name columns/headers in `tabstat`, and
+  shoved `describe`'s type/format columns out of alignment.  Fixes:
+  `summarize` and `tabstat` use Stata's abbrev() display rule (first
+  n-2 characters + '~' + the last character: totalpopul~r), applied to
+  variable names, column headers, and by-group labels alike; `describe`
+  pads its name column dynamically to the longest name in view (16..32),
+  header row included.  Frames with short names render byte-identically
+  to before — the whole existing suite passes against unchanged goldens.
+- Test 62 locks the abbreviation rule in sum, tabstat headers and
+  by-labels (including long VALUE labels), and describe's dynamic
+  alignment.
