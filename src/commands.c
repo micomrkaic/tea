@@ -189,6 +189,7 @@ extern int do_test(Cmd *c);
 extern int do_lincom(Cmd *c);
 
 /* error helper: prefixes 'line N: ' in do-file mode, plain in REPL. */
+static void unquote_str(char *s);   /* strip surrounding double quotes */
 extern int g_current_line;
 #include <stdarg.h>
 __attribute__((format(__printf__,1,2)))
@@ -1483,6 +1484,22 @@ static int do_tabstat(Cmd *c){
         snprintf(statnames[nstats++],32,"%s",t);
       }
     }
+    /* format(%5.2f): Stata's cell format override.  Validate it is a
+     * printf-safe numeric format — an arbitrary string reaching snprintf
+     * as a format is undefined behavior. */
+    char cellfmt[16]="";
+    { char fb[24]=""; if(opt_value(c->options,"format",fb,sizeof fb)){
+        unquote_str(fb);
+        size_t L=strlen(fb); char last = L? fb[L-1] : 0;
+        int body_ok = (fb[0]=='%');
+        for(size_t q=1; body_ok && q+1<L; q++)
+            if(!isdigit((unsigned char)fb[q]) && fb[q]!='.') body_ok=0;
+        if(!body_ok || !strchr("fgeFGE", last) || L>=sizeof cellfmt){
+            tea_err("tabstat: format() must be a numeric display format like %%9.2f or %%10.4g\n");
+            free(vs); tsop_drop_temps(c->f, n_temps); return 198;
+        }
+        snprintf(cellfmt,sizeof cellfmt,"%s",fb);
+    } }
     /* parse by() option */
     char byopt[64]=""; opt_value(c->options,"by",byopt,sizeof byopt);
     int byvar = -1;
@@ -1565,10 +1582,13 @@ static int do_tabstat(Cmd *c){
         /* Stata's number format inside tabstat: roughly %9.0g, which gives
          * full significant digits without trailing zeros and falls back to
          * scientific only when the number doesn't fit.  We keep right-
-         * justification in a fixed-width column. */
+         * justification in a fixed-width column.  format(%5.2f) overrides
+         * per Stata; only printf-safe numeric formats are accepted. */
         #define CELLW 10
         #define FMT_NUM(buf, x) do { \
             if(sv_is_miss(x)) snprintf((buf), sizeof(buf), "%*s", CELLW, "."); \
+            else if(cellfmt[0]){ char _t[32]; snprintf(_t, sizeof _t, cellfmt, (x)); \
+                snprintf((buf), sizeof(buf), "%*s", CELLW, _t); } \
             else snprintf((buf), sizeof(buf), "%*.*g", CELLW, 7, (x)); \
         } while(0)
 
@@ -1650,7 +1670,14 @@ static int do_tabstat(Cmd *c){
             Variable *bv = &c->f->vars[byvar];
             if(bv->type==VT_STR) snprintf(by_lbl, sizeof by_lbl, "%s", bv->str[r_a] ? bv->str[r_a] : "");
             else if(sv_is_miss(bv->num[r_a])) snprintf(by_lbl, sizeof by_lbl, ".");
-            else snprintf(by_lbl, sizeof by_lbl, "%g", bv->num[r_a]);
+            else {
+                /* value labels name the groups, exactly as in the list/
+                 * graph box renderers (encoded ctr_group -> "Advanced") */
+                const char *t = (bv->vallab[0] && g_ws)
+                              ? vlabel_lookup(g_ws, bv->vallab, bv->num[r_a]) : NULL;
+                if(t) snprintf(by_lbl, sizeof by_lbl, "%s", t);
+                else  snprintf(by_lbl, sizeof by_lbl, "%g", bv->num[r_a]);
+            }
 
             if(cols_are_stats){
                 /* ---- columns(statistics) ---- */
@@ -1783,6 +1810,8 @@ static int do_tabstat(Cmd *c){
         #define CELLW 10
         #define FMT_NUM(buf, x) do { \
             if(sv_is_miss(x)) snprintf((buf), sizeof(buf), "%*s", CELLW, "."); \
+            else if(cellfmt[0]){ char _t[32]; snprintf(_t, sizeof _t, cellfmt, (x)); \
+                snprintf((buf), sizeof(buf), "%*s", CELLW, _t); } \
             else snprintf((buf), sizeof(buf), "%*.*g", CELLW, 7, (x)); \
         } while(0)
         /* If no group ever rendered (every group was filtered out), the

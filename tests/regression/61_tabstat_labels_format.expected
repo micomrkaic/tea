@@ -1,0 +1,57 @@
+number of observations set to 90
+(90 real changes made)
+(90 real changes made)
+(90 real changes made)
+
+Summary statistics: mean
+  for variables: y
+  by categories of: g
+
+           g |       mean
+-------------+-----------
+    Advanced |   2.932709
+    Emerging |   3.993058
+         LIC |   4.912018
+       Total |   3.945928
+
+Summary statistics: mean
+  for variables: y
+  by categories of: g
+
+           g |       mean
+-------------+-----------
+    Advanced |       2.93
+    Emerging |       3.99
+         LIC |       4.91
+       Total |       3.95
+
+Summary statistics: mean, sd
+  for variables: y z
+  by categories of: g
+
+           g |          y          z
+-------------+----------------------
+    Advanced |       2.93      99.36    (mean)
+             |       0.31       5.20    (sd)
+-------------+----------------------
+    Emerging |       3.99     201.13    (mean)
+             |       0.24       4.93    (sd)
+-------------+----------------------
+         LIC |       4.91     299.17    (mean)
+             |       0.28       4.38    (sd)
+-------------+----------------------
+       Total |       3.95     199.89    (mean)
+             |       0.86      82.17    (sd)
+
+Summary statistics: mean
+  for variables: y
+  by categories of: g
+
+           g |       mean
+-------------+-----------
+    Advanced |      2.933
+    Emerging |      3.993
+         LIC |      4.912
+       Total |      3.946
+198
+198

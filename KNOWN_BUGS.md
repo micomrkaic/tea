@@ -1069,3 +1069,23 @@ used in `egen`.
   directory can fail on stale cache state.  The slicer therefore never
   renames; it writes a `.rng` sibling that callers load and unlink.
   Slice temp names are per-call unique (pid ^ nanotime), not per-pid.
+
+## v1.6.12 — tabstat: value-labeled groups + format() (test_01_b round)
+
+- Bug 27 — `tabstat ..., by(ctr_group)` named groups by raw numeric
+  value (1/2/3) instead of the attached value labels
+  (Advanced/Emerging/LIC).  Same lookup rule as list and graph box now:
+  labels when attached, `%g` fallback otherwise; string by-variables
+  unchanged.
+- Bug 28 — `format(%5.2f)` was ignored entirely — tabstat had no
+  format() parsing and every cell went through a hardcoded %.7g.  Now:
+  the option applies to every cell INCLUDING the Total rows (the Total
+  block carries a second copy of the cell-format macro, which the first
+  fix pass missed — caught because the verification run showed a
+  formatted table with an unformatted Total).  Quoted format("%5.2f")
+  accepted.  Only printf-safe numeric formats pass validation (%w.d
+  followed by f/g/e/F/G/E); anything else — format(%s), format(banana)
+  — is a loud 198, since an arbitrary string reaching snprintf as a
+  format is undefined behavior.
+- Test 61 locks labeled groups, formatted group and Total rows in both
+  table orientations, the quoted form, and both rejection paths.
