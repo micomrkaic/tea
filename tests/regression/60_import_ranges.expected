@@ -1,0 +1,35 @@
+/tmp
+(4 vars, 3 obs)
+
+Contains data
+  obs: 3
+ vars: 4
+-------------------------------------------------------------
+variable         type     format     label
+INDEXCOL         double   %9.0g      
+REGIONNAME       str      %9.0g      
+VALA             double   %9.0g      
+VALB             double   %9.0g      
+-------------------------------------------------------------
+     +          +              +          +          +
+     | INDEXCOL | REGIONNAME   | VALA     | VALB     |
+   1.| 1        | Country, One | 10       | 20       |
+   2.| 2        | CountryTwo   | 30       | 40       |
+   3.| 3        | CountryThree | 50       | 60       |
+(4 vars, 4 obs)
+
+Contains data
+  obs: 4
+ vars: 4
+-------------------------------------------------------------
+variable         type     format     label
+IndexCol         double   %9.0g      
+RegionName       str      %9.0g      
+ValA             double   %9.0g      
+ValB             double   %9.0g      
+-------------------------------------------------------------
+     +          +          +
+     | IndexCol | ValA     |
+   4.| 4        | 70       |
+198
+198

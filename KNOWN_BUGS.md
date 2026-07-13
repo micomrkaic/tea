@@ -1041,3 +1041,31 @@ used in `egen`.
   is off, matching modern Stata.  `set more banana` errors (198), as
   does any other malformed argument — same strictness as
   `set progress`.
+
+## v1.6.11 — cellrange() + case() for import excel (WPP fertility round)
+
+- NEW — `import excel ..., cellrange(A17:AF22000)`: restricts the import
+  to a sheet rectangle.  Real workbooks (the UN WPP file) carry title
+  junk above the table; without cellrange, junk row 1 became the header.
+  With `firstrow`, the range's first row is the header row.  The end
+  corner is optional (`cellrange(A17)` = from A17 to the sheet's end).
+  The slice happens on the converted CSV with a fully CSV-aware state
+  machine — quoted fields containing commas, doubled quotes, or embedded
+  newlines slice correctly.
+- NEW — `import delimited ..., rowrange(r1[:r2]) colrange(c1[:c2])`:
+  Stata's rectangle restriction for text files, sharing the same slicer
+  (and giving the regression suite a WASM-testable path — the xlsx
+  conversion needs ssconvert, absent on that rig).
+- Bug 26 — `case("lower")` with quotes, legal Stata syntax, ERRORED on
+  import delimited and was **silently ignored** on import excel, which
+  had no case() handling at all (names hardcoded to preserve).  Both
+  branches now accept quoted or bare arguments; the excel naming rule
+  (invalid chars removed, column-letter fallback) folds case AFTER
+  cleaning, and the excel default remains preserve, matching Stata.
+- Test 60 locks range slicing (bounded + start-only), quoted-field
+  survival, quoted case() args, and loud errors on malformed ranges.
+- WASM-rig lesson #3 (joins Bug 17 and the test-57 note): emscripten
+  NODEFS misbehaves after rename() — subsequent opens in the same
+  directory can fail on stale cache state.  The slicer therefore never
+  renames; it writes a `.rng` sibling that callers load and unlink.
+  Slice temp names are per-call unique (pid ^ nanotime), not per-pid.

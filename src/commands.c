@@ -2136,6 +2136,15 @@ static int do_collapse(Cmd *c){
 }
 
 /* ---- import / export delimited ---------------------------------------- */
+/* strip surrounding double quotes in place (option args like case("lower")) */
+static void unquote_str(char *s){
+    size_t L=strlen(s);
+    if(L>=2 && s[0]=='"' && s[L-1]=='"'){ memmove(s,s+1,L-2); s[L-2]=0; }
+}
+static void csv_quote_write(FILE *fp, const char *s, char delim);
+static int  parse_a1(const char *s, long *col, long *row);
+static int  csv_slice_range(const char *path, long r1, long c1, long r2, long c2);
+
 /* Run a shell command like system(), but with the progress activity
  * indicator (spinner + elapsed) while the child works.  Big-workbook
  * conversions run for a minute or more; a silent blocking system() made
@@ -2301,14 +2310,45 @@ static int do_import(Cmd *c){
         char sheet[128]=""; opt_value(c->options,"sheet",sheet,sizeof sheet);
         /* strip surrounding quotes from sheet */
         if(sheet[0]=='"'){ char *e=strrchr(sheet,'"'); if(e>sheet)*e=0; memmove(sheet,sheet+1,strlen(sheet+1)+1); }
+        /* cellrange(A17:AF22000) — restrict to a sheet rectangle.  With
+         * firstrow, the range's FIRST row is the header row (that is the
+         * whole point: real workbooks carry title junk above the table). */
+        long cr_r1=0, cr_c1=0, cr_r2=0, cr_c2=0; int have_range=0;
+        { char rb[64]="";
+          if(opt_value(c->options,"cellrange",rb,sizeof rb)){
+            unquote_str(rb);
+            char *colon = strchr(rb, ':');
+            if(colon) *colon = 0;
+            if(!parse_a1(rb, &cr_c1, &cr_r1) ||
+               (colon && !parse_a1(colon+1, &cr_c2, &cr_r2)) ||
+               (colon && (cr_c2 < cr_c1 || cr_r2 < cr_r1))){
+                tea_err("import excel: cannot parse cellrange(%s%s%s) — want e.g. cellrange(A17:AF22000)\n",
+                        rb, colon?":":"", colon?colon+1:"");
+                return 198;
+            }
+            have_range=1;
+        } }
+        int csvcase = CSVCASE_PRESERVE;         /* import excel default: names as-is */
+        { char cb[24]=""; if(opt_value(c->options,"case",cb,sizeof cb)){
+            unquote_str(cb);                    /* Stata allows case("lower") */
+            if(!strcmp(cb,"lower")) csvcase=CSVCASE_LOWER;
+            else if(!strcmp(cb,"upper")) csvcase=CSVCASE_UPPER;
+            else if(strcmp(cb,"preserve")){ tea_err("import excel: case() must be preserve, lower, or upper\n"); return 198; } } }
         char tmpcsv[512];
         int rc=convert_spreadsheet(fn,sheet,tmpcsv,sizeof tmpcsv);
         if(rc) return rc;
+        char rngcsv[600]; rngcsv[0]=0;
+        if(have_range){
+            rc = csv_slice_range(tmpcsv, cr_r1, cr_c1, cr_r2, cr_c2);
+            if(rc){ unlink(tmpcsv); tea_err("import excel: cellrange slicing failed\n"); return rc; }
+            snprintf(rngcsv,sizeof rngcsv,"%s.rng",tmpcsv);
+        }
         /* now load the temp CSV using the same code path as 'import delimited' */
         frame_clear(c->f);
-        rc = load_csv_into(c->f, tmpcsv, ',',
+        rc = load_csv_into(c->f, rngcsv[0] ? rngcsv : tmpcsv, ',',
                            opt_present(c->options,"firstrow") ? CSV_XL_FIRSTROW : CSV_XL_NOHEADER,
-                           CSVCASE_PRESERVE);  /* excel/ods: Stata naming rules */
+                           csvcase);
+        if(rngcsv[0]) unlink(rngcsv);
         unlink(tmpcsv);
         /* try to remove the temp dir; ignore failure */
         char *slash=strrchr(tmpcsv,'/'); if(slash){ *slash=0; rmdir(tmpcsv); }
@@ -2324,16 +2364,145 @@ static int do_import(Cmd *c){
     if(strstr(fn,".tsv"))delim='\t';
     frame_clear(c->f);
     int csvcase = CSVCASE_LOWER;                 /* Stata default: lowercase */
-    { char cb[16]=""; if(opt_value(c->options,"case",cb,sizeof cb)){
+    { char cb[24]=""; if(opt_value(c->options,"case",cb,sizeof cb)){
+        unquote_str(cb);                        /* Stata allows case("lower") */
         if(!strcmp(cb,"preserve")) csvcase=CSVCASE_PRESERVE;
         else if(!strcmp(cb,"upper")) csvcase=CSVCASE_UPPER;
         else if(strcmp(cb,"lower")){ tea_err("import delimited: case() must be preserve, lower, or upper\n"); return 198; } } }
-    int rc2 = load_csv_into(c->f, fn, delim, CSV_DELIM, csvcase);
+    /* rowrange(r1[:r2]) / colrange(c1[:c2]) — Stata's import delimited
+     * rectangle restriction; same slicer as import excel's cellrange().
+     * The user's file is never modified: slice into a temp copy. */
+    long dr1=0,dr2=0,dc1=0,dc2=0; int have_rr=0;
+    { char rb[48]="";
+      if(opt_value(c->options,"rowrange",rb,sizeof rb)){
+        unquote_str(rb); char *co=strchr(rb,':'); if(co)*co=0;
+        char *e; dr1=strtol(rb,&e,10);
+        if(e==rb||*e||dr1<1||(co&&((dr2=strtol(co+1,&e,10))<dr1||*e))){
+            tea_err("import delimited: cannot parse rowrange() — want rowrange(17) or rowrange(17:22000)\n"); return 198; }
+        have_rr=1; }
+      rb[0]=0;
+      if(opt_value(c->options,"colrange",rb,sizeof rb)){
+        unquote_str(rb); char *co=strchr(rb,':'); if(co)*co=0;
+        char *e; dc1=strtol(rb,&e,10);
+        if(e==rb||*e||dc1<1||(co&&((dc2=strtol(co+1,&e,10))<dc1||*e))){
+            tea_err("import delimited: cannot parse colrange() — want colrange(2) or colrange(2:32)\n"); return 198; }
+        have_rr=1; } }
+    char sliced[600]; sliced[0]=0;
+    if(have_rr){
+        if(delim!=','){ tea_err("import delimited: rowrange()/colrange() currently require comma-delimited files\n"); return 198; }
+        /* per-CALL unique temp name (pid alone is constant on WASM, and
+         * recreating a just-unlinked NODEFS path trips a stale-node cache
+         * — the Bug 17 lesson, again) */
+        { struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
+          unsigned long tok=(unsigned long)getpid() ^ (unsigned long)ts.tv_nsec ^ ((unsigned long)ts.tv_sec<<20);
+          snprintf(sliced,sizeof sliced,"/tmp/tea-slice-%lx.csv",tok); }
+        FILE *in=fopen(fn,"rb");
+        if(!in){ tea_err("import: cannot read %s\n",fn); return 601; }
+        FILE *out=fopen(sliced,"wb");
+        if(!out){ fclose(in); tea_err("import: cannot create temp slice file %s\n",sliced); return 603; }
+        char cbuf[1<<16]; size_t nrd;
+        while((nrd=fread(cbuf,1,sizeof cbuf,in))>0) fwrite(cbuf,1,nrd,out);
+        fclose(in); fclose(out);
+        int src_rc = csv_slice_range(sliced, dr1?dr1:1, dc1?dc1:1, dr2, dc2);
+        if(src_rc){ unlink(sliced); tea_err("import delimited: range slicing failed\n"); return src_rc; }
+    }
+    char slicedrng[608]; slicedrng[0]=0;
+    if(sliced[0]) snprintf(slicedrng,sizeof slicedrng,"%s.rng",sliced);
+    const char *load_fn = sliced[0] ? slicedrng : fn;
+    int rc2 = load_csv_into(c->f, load_fn, delim, CSV_DELIM, csvcase);
+    if(sliced[0]){ unlink(slicedrng); unlink(sliced); }
     if(rc2){ tea_err("import: cannot read %s (rc=%d)\n", fn, rc2); return rc2; }
     snprintf(c->f->source,sizeof c->f->source,"%s",fn);
     if(!c->quiet) printf("(%d vars, %zu obs)\n",c->f->nvar,c->f->nobs);
     return 0;
 }
+/* parse an A1-style cell reference ("A17", "af22000") into 1-based
+ * column/row.  Returns 0 on malformed input. */
+static int parse_a1(const char *s, long *col, long *row){
+    long cc=0, rr=0; int nl=0;
+    while(*s && isalpha((unsigned char)*s)){ cc = cc*26 + (toupper((unsigned char)*s)-'A'+1); s++; nl++; }
+    if(!nl || !isdigit((unsigned char)*s)) return 0;
+    while(isdigit((unsigned char)*s)) rr = rr*10 + (*s++ - '0');
+    if(*s || cc<1 || rr<1) return 0;
+    *col=cc; *row=rr; return 1;
+}
+
+/* Slice a converted CSV to a cellrange() rectangle, CSV-aware: quoted
+ * fields may contain the delimiter, doubled quotes, and embedded
+ * newlines, so a plain line/field count would mis-slice.  Rows/cols are
+ * 1-based; r2/c2 == 0 means unbounded.  Rewrites src in place (via a
+ * sibling temp file). */
+static int csv_slice_range(const char *path, long r1, long c1, long r2, long c2){
+    FILE *in = fopen(path, "r");
+    if(!in) return 601;
+    char tmp[600]; snprintf(tmp,sizeof tmp,"%s.rng",path);
+    FILE *out = fopen(tmp, "w");
+    if(!out){ fclose(in); return 603; }
+    long row = 1, col = 1;
+    int inq = 0, out_started = 0, row_kept_any = 0;
+    int keep_row = (r1 <= 1) && (r2 == 0 || 1 <= r2);
+    int keep_col = (c1 <= 1) && (c2 == 0 || 1 <= c2);
+    int ch;
+    /* field buffer: cells can be long (WPP notes columns) */
+    size_t fcap = 4096, flen = 0;
+    char *fbuf = malloc(fcap);
+    #define FPUT(C) do{ if(flen+1>=fcap){ fcap*=2; fbuf=realloc(fbuf,fcap);} fbuf[flen++]=(char)(C); }while(0)
+    #define FLUSH_FIELD() do{ \
+        if(keep_row && keep_col){ \
+            if(out_started) fputc(',', out); \
+            fbuf[flen]=0; csv_quote_write(out, fbuf, ','); \
+            out_started = 1; row_kept_any = 1; \
+        } \
+        flen = 0; \
+    }while(0)
+    while((ch = fgetc(in)) != EOF){
+        if(inq){
+            if(ch=='"'){
+                int nx = fgetc(in);
+                if(nx=='"'){ FPUT('"'); continue; }
+                inq = 0;
+                if(nx==EOF) break;
+                ungetc(nx, in);
+                continue;
+            }
+            FPUT(ch);
+            continue;
+        }
+        if(ch=='"'){ inq = 1; continue; }
+        if(ch==','){
+            FLUSH_FIELD();
+            col++;
+            keep_col = (col >= c1) && (c2 == 0 || col <= c2);
+            continue;
+        }
+        if(ch=='\r') continue;
+        if(ch=='\n'){
+            FLUSH_FIELD();
+            if(keep_row && row_kept_any) fputc('\n', out);
+            row++; col = 1;
+            out_started = 0; row_kept_any = 0;
+            keep_row = (row >= r1) && (r2 == 0 || row <= r2);
+            keep_col = (col >= c1) && (c2 == 0 || col <= c2);
+            if(r2 && row > r2) break;              /* nothing more to keep */
+            continue;
+        }
+        FPUT(ch);
+    }
+    if(flen || out_started){                       /* file without final newline */
+        FLUSH_FIELD();
+        if(keep_row && row_kept_any) fputc('\n', out);
+    }
+    #undef FPUT
+    #undef FLUSH_FIELD
+    free(fbuf);
+    fclose(in); fclose(out);
+    /* NO rename(): emscripten NODEFS invalidates directory cache state on
+     * rename and subsequent opens in the same dir can fail (observed on
+     * the WASM rig).  The sliced content stays at path.rng; callers load
+     * from there and unlink it. */
+    return 0;
+}
+
 /* Write a single cell to CSV output, quoting only when needed (RFC 4180):
  * if the cell contains the delimiter, a double-quote, a newline, or
  * carriage return, wrap in double quotes and double any embedded quotes. */
@@ -2520,16 +2689,19 @@ static void excel_colletter(int idx, char *out, size_t outsz){
  *   - if the result is still not a valid name (empty, or starts with a
  *     digit — e.g. a year header "1960"), the Excel COLUMN LETTER is used
  *     instead (F, G, ..., BQ), matching Stata exactly
- *   - case preserved; truncated to 32 chars like Stata identifiers
+ *   - case preserved by default; case(lower|upper) folds it, as in Stata;
+ *     truncated to 32 chars like Stata identifiers
  * Do-files written against Stata (`duplicates report CountryCode ...`,
  * `foreach v of varlist F-BQ`) depend on this rule. */
-static void sanitize_colname_excel(const char *in, int col, char *out, size_t outsz){
+static void sanitize_colname_excel(const char *in, int col, int casemode, char *out, size_t outsz){
     const char *p = in;
     /* skip BOM */
     if((unsigned char)p[0]==0xEF && (unsigned char)p[1]==0xBB && (unsigned char)p[2]==0xBF) p+=3;
     char buf[33]; size_t w=0;
     for(; *p && w<32; p++){
         char ch = *p;
+        if(casemode==CSVCASE_LOWER)      ch=(char)tolower((unsigned char)ch);
+        else if(casemode==CSVCASE_UPPER) ch=(char)toupper((unsigned char)ch);
         if(isalnum((unsigned char)ch) || ch=='_') buf[w++]=ch;
     }
     buf[w]=0;
@@ -2596,7 +2768,7 @@ static int load_csv_into(Frame *f,const char *fn,char delim,int mode,int casemod
                 for(int j=0;j<nf;j++){
                     csv_unquote(flds[j]);
                     char nm[64];
-                    if(mode==CSV_XL_FIRSTROW) sanitize_colname_excel(flds[j], j, nm, sizeof nm);
+                    if(mode==CSV_XL_FIRSTROW) sanitize_colname_excel(flds[j], j, casemode, nm, sizeof nm);
                     else sanitize_colname_delim(flds[j], j, casemode, nm, sizeof nm);
                     char unique[64]; snprintf(unique, sizeof unique, "%s", nm);
                     /* duplicate header: excel mode falls back to the column
