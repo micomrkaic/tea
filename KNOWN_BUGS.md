@@ -1005,3 +1005,24 @@ used in `egen`.
   / 34s"), same contract as the percentage line (stderr TTY only, 1s
   activation gate, 250ms redraws, erased on completion, `set progress
   off` disables, no-op on WASM).  Batch output is byte-identical.
+
+## v1.6.9 — period-date constructors + eval errors abort (OECD HPI round)
+
+- NEW — string period-date constructors: `quarterly(s,"YQ")`,
+  `monthly(s,"YM")`, `halfyearly(s,"YH")`, `weekly(s,"YW")`,
+  `yearly(s,"Y")`, and `daily(s,mask)` as the Stata alias of `date()`.
+  Integer tokens are extracted left-to-right and assigned by the mask;
+  two-digit years get +2000 (matching `date()`); an out-of-range period
+  ("2020-Q7") yields missing, never a wrong date.  The rest of the date
+  family (mdy/dofq/yofd/qofd/... and %tq/%td/%tm display formats)
+  already existed.
+- Bug 25 — **a runtime evaluation error in gen/replace did not abort**:
+  the error printed once per row, missing was stored anyway, each store
+  counted as a "real change", and the command returned 0.  A do-file
+  with `gen qdate = quarterly(...)` under a build lacking the function
+  marched on: collapse grouped on an all-missing year, merge matched
+  ZERO rows, and the garbage panel was saved without a nonzero rc
+  anywhere.  Now: an eval error at the type probe fails before the
+  variable exists; an error mid-loop aborts with rc=133 and rolls back
+  completely — gen leaves no trace of the new variable, replace
+  restores the column from a snapshot.  Partial writes never survive.

@@ -305,11 +305,34 @@ static int do_genrep(Cmd *c,int is_replace){
     if(typ[0]&&!strncmp(typ,"str",3)) vt=VT_STR;
     else if(!typ[0]||!is_replace){
         if(c->f->nobs){ ec.i=0; ec.n=1; ec.N=(long)c->f->nobs;
-            EVal pv=expr_eval(ast,&ec); if(pv.is_str)vt=VT_STR; eval_free(&pv); }
+            EVal pv=expr_eval(ast,&ec); if(pv.is_str)vt=VT_STR; eval_free(&pv);
+            if(ec.err){
+                /* e.g. an unknown function: fail LOUDLY here, before the
+                 * variable exists — the do-file aborts instead of marching
+                 * into collapse/merge with an all-missing column */
+                tea_err("%s: %s\n",c->cmd,ec.err);
+                node_free(ast); node_free(ifn);
+                return 133;
+            } }
     }
     Variable *v;
     if(is_replace) v=&c->f->vars[vi];
     else { v=var_add(c->f,nm,vt); }
+
+    /* replace: snapshot the column so a mid-loop eval error can roll back
+     * completely — an aborted replace must leave the data untouched, not
+     * half-rewritten (silent partial writes are the data-destruction class) */
+    double *snap_num=NULL; char **snap_str=NULL;
+    if(is_replace && c->f->nobs){
+        if(v->type==VT_NUM){
+            snap_num=malloc(c->f->nobs*sizeof *snap_num);
+            if(snap_num) memcpy(snap_num,v->num,c->f->nobs*sizeof *snap_num);
+        } else {
+            snap_str=calloc(c->f->nobs,sizeof *snap_str);
+            if(snap_str) for(size_t r2=0;r2<c->f->nobs;r2++)
+                snap_str[r2]=strdup(v->str[r2]?v->str[r2]:"");
+        }
+    }
 
     Sel sel={ifn,c->in_lo,c->in_hi};
     size_t nch=0;
@@ -326,13 +349,36 @@ static int do_genrep(Cmd *c,int is_replace){
             if(!sel_ok(&sel,&ec,row, (size_t)(row+1))){ continue; }
             ec.i=row; ec.n=pos1; ec.N=gN;
             EVal val=expr_eval(ast,&ec);
-            if(ec.err){ tea_err("%s: %s\n",c->cmd,ec.err); }
+            if(ec.err){
+                /* runtime eval error: ABORT and roll back.  The old code
+                 * printed the error once per row, stored missing anyway,
+                 * counted it as a "real change", and returned 0. */
+                tea_err("%s: %s\n",c->cmd,ec.err);
+                eval_free(&val);
+                if(is_replace){
+                    if(v->type==VT_NUM && snap_num)
+                        memcpy(v->num,snap_num,c->f->nobs*sizeof *snap_num);
+                    else if(v->type==VT_STR && snap_str)
+                        for(size_t r2=0;r2<c->f->nobs;r2++){
+                            free(v->str[r2]); v->str[r2]=snap_str[r2]; snap_str[r2]=NULL; }
+                } else {
+                    tsop_drop_temps(c->f,1);   /* var_add appended it last */
+                }
+                free(snap_num);
+                if(snap_str){ for(size_t r2=0;r2<c->f->nobs;r2++) free(snap_str[r2]); free(snap_str); }
+                free(lo);free(hi);
+                tsidx_free(ec.tsidx); accs_free(&ec.accs);
+                node_free(ast); node_free(ifn);
+                return 133;
+            }
             if(v->type==VT_STR){ str_set(v,row,val.is_str?val.str:""); }
             else v->num[row]= val.is_str? SV_MISS : val.num;
             eval_free(&val); nch++;
         }
         if(c->f->nobs==0) break;
     }
+    free(snap_num);
+    if(snap_str){ for(size_t r2=0;r2<c->f->nobs;r2++) free(snap_str[r2]); free(snap_str); }
     free(lo);free(hi);
     tsidx_free(ec.tsidx); accs_free(&ec.accs);
     node_free(ast); node_free(ifn);

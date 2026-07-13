@@ -534,7 +534,34 @@ static EVal call_fn(Node*n,EvalCtx*c){
     else if(!strcmp(fn,"dofq")){NEED(1) long qq=(long)A(0);long y=1960+qq/4;long q=qq%4; if(q<0){q+=4;y--;} r=vnum((double)sdate_from_ymd(y,(unsigned)(q*3+1),1));}
     else if(!strcmp(fn,"dofh")){NEED(1) long hh=(long)A(0);long y=1960+hh/2;long h=hh%2; if(h<0){h+=2;y--;} r=vnum((double)sdate_from_ymd(y,(unsigned)(h*6+1),1));}
     else if(!strcmp(fn,"dofy")){NEED(1) r=vnum((double)sdate_from_ymd((long)A(0),1,1));}
-    else if(!strcmp(fn,"date")){NEED(2) /* date(s,"DMY"|"MDY"|"YMD") */
+    /* period-date string constructors: quarterly("2020-Q3","YQ") etc.
+     * Integer tokens are extracted left-to-right; the mask assigns them
+     * (Y = year, and Q/M/H/W = the sub-year period).  Two-digit years
+     * get +2000, matching date().  An out-of-range period (Q not 1-4,
+     * M not 1-12, ...) yields missing, never a wrong date. */
+    else if(!strcmp(fn,"quarterly")||!strcmp(fn,"monthly")||
+            !strcmp(fn,"halfyearly")||!strcmp(fn,"weekly")||!strcmp(fn,"yearly")){
+        NEED(2)
+        if(a[0].is_str&&a[1].is_str){
+            long nums[2]; int ni=0; const char*s=a[0].str;
+            while(*s&&ni<2){ if(isdigit((unsigned char)*s)) nums[ni++]=strtol(s,(char**)&s,10); else s++; }
+            long y=-1,p=-1; int oi=0;
+            for(const char*mc=a[1].str; *mc && oi<ni; mc++){
+                char ch=(char)toupper((unsigned char)*mc);
+                if(ch=='Y') y=nums[oi++];
+                else if(ch=='Q'||ch=='M'||ch=='H'||ch=='W') p=nums[oi++];
+            }
+            if(y>=0){
+                if(y<100)y+=2000;
+                if(!strcmp(fn,"yearly")) r=vnum((double)y);
+                else if(!strcmp(fn,"quarterly") && p>=1&&p<=4)  r=vnum((double)((y-1960)*4 +(p-1)));
+                else if(!strcmp(fn,"monthly")   && p>=1&&p<=12) r=vnum((double)((y-1960)*12+(p-1)));
+                else if(!strcmp(fn,"halfyearly")&& p>=1&&p<=2)  r=vnum((double)((y-1960)*2 +(p-1)));
+                else if(!strcmp(fn,"weekly")    && p>=1&&p<=52) r=vnum((double)((y-1960)*52+(p-1)));
+            }
+        }
+    }
+    else if(!strcmp(fn,"date")||!strcmp(fn,"daily")){NEED(2) /* date(s,"DMY"|"MDY"|"YMD"); daily is Stata's alias */
         if(a[0].is_str&&a[1].is_str){ int nums[3],ni=0; const char*s=a[0].str; while(*s&&ni<3){ if(isdigit((unsigned char)*s)){ nums[ni++]=(int)strtol(s,(char**)&s,10);} else s++; }
             if(ni>=3){ const char*o=a[1].str; int y=0,m=0,d=0; for(int i=0;i<3;i++){ char ch=toupper((unsigned char)o[i]); if(ch=='Y')y=nums[i]; else if(ch=='M')m=nums[i]; else d=nums[i]; } if(y<100)y+=2000; r=vnum((double)sdate_from_ymd(y,(unsigned)m,(unsigned)d)); } }
     }
