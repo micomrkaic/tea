@@ -4985,7 +4985,8 @@ Disp TABLE[]={
         "      e.g.  summarize gdp_growth, detail"},
     {"sum",do_summarize,1,NULL},{"su",do_summarize,1,NULL},
     {"tabstat",do_tabstat,1,
-        "tabstat varlist [if] [in], statistics(stat ...) [by(var)] [columns(stat|var)]\n"
+        "tabstat varlist [if] [in], statistics(stat ...) [by(var)] [columns(stat|var)] [format(%9.2f)]\n"
+        "      by() groups show value labels when attached; format() styles every cell incl. Total\n"
         "      stats: mean sd var cv min max range sum count median p1-p99 iqr\n"
         "      e.g.  tabstat gdp pop, stats(mean sd p25 p50 p75) by(region)"},
     {"count",do_count,1,"count [if] [in] [fw=]                        count matching observations"},
@@ -5100,8 +5101,10 @@ Disp TABLE[]={
         "tostring varlist, {replace|generate(stub)} [force] [format(%fmt)]      num -> str"},
     {"codebook",do_codebook,1,"codebook [varlist]                           type, uniques, missing, range"},
     {"import",do_import,0,
-        "import delimited|excel|ods using FILE [, sheet(name) clear]   read CSV/TSV/XLSX/ODS\n"
-        "      e.g.  import delimited \"data/WEO.csv\", clear"},
+        "import excel FILE [, sheet(name) cellrange(A17[:AF22000]) firstrow case(preserve|lower|upper) clear]\n"
+        "      cellrange restricts to a sheet rectangle; with firstrow its first row is the header row\n"
+        "import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) case(lower|preserve|upper) clear]\n"
+        "      e.g.  import excel \"WPP2024.xlsx\", sheet(\"Estimates\") cellrange(A17:AF22000) firstrow case(lower) clear"},
     {"export",do_export,1,
         "export delimited using FILE                  write CSV/TSV\n"
         "      e.g.  export delimited using out.csv"},

@@ -301,6 +301,19 @@ missing extension to `.dta`.
     import delimited "data.tsv", clear      // TSV (auto-detected)
     import excel "data.xlsx", firstrow clear
     import excel "data.xlsx", sheet("Sheet2") firstrow clear
+    import excel "WPP2024.xlsx", sheet("Estimates") ///
+        cellrange(A17:AF22000) firstrow case(lower) clear
+
+`cellrange(A17[:AF22000])` restricts an Excel import to a sheet
+rectangle — real workbooks (the UN WPP file) carry title junk above the
+table, and with `firstrow` the range's FIRST row is the header row.
+The end corner is optional.  `case(preserve|lower|upper)` folds the
+resulting names (default preserve for Excel, lower for delimited, as in
+Stata); the quoted form `case("lower")` is accepted.  For text files
+the same rectangle restriction is `rowrange(r1[:r2])` and
+`colrange(c1[:c2])` on `import delimited`.  Slicing is CSV-aware:
+quoted cells containing commas, doubled quotes, or embedded newlines
+count as single fields.
 
     use "data.dta", clear                   // Stata format
     use "data.tea", clear                   // native tea format
@@ -1583,7 +1596,8 @@ the "Random numbers and Monte Carlo" chapter.
 | `yq(year, quarter)`     | quarterly date (%tq)                                         |
 | `yh(year, half)`        | half-yearly date (%th)                                       |
 | `yw(year, week)`        | weekly date (%tw)                                            |
-| `date(s, fmt)`          | parse string `s` per `fmt` (`"YMD"`, `"DMY"`, `"MDY"`, etc.) |
+| `date(s, fmt)`          | parse string `s` per `fmt` (`"YMD"`, `"DMY"`, `"MDY"`, etc.); `daily()` is the Stata alias |
+| `quarterly(s, "YQ")`    | parse "2020-Q3" to a quarterly date; likewise `monthly(s,"YM")`, `halfyearly(s,"YH")`, `weekly(s,"YW")`, `yearly(s,"Y")`.  Out-of-range periods give missing |
 
 </div>
 

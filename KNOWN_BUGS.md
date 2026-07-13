@@ -1105,3 +1105,15 @@ used in `egen`.
 - Test 62 locks the abbreviation rule in sum, tabstat headers and
   by-labels (including long VALUE labels), and describe's dynamic
   alignment.
+
+## v1.6.14 — documentation catch-up
+
+- The manual and the generated command reference had lagged three
+  releases of features: the import chapter now documents cellrange()
+  (with the header-at-row-17 semantics), rowrange()/colrange(),
+  quoted-and-bare case(); the date-function table gains the period
+  constructors (quarterly/monthly/halfyearly/weekly/yearly and the
+  daily alias); import's and tabstat's dispatch help strings (the
+  source of the generated reference) now describe their full current
+  option surface, including tabstat's format() and value-labeled
+  by() groups.  No behavior changes.

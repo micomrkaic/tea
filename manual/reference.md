@@ -82,7 +82,8 @@ any change keeps the manual and the implementation in agreement.*
 ## `tabstat`
 
 ```
-  tabstat varlist [if] [in], statistics(stat ...) [by(var)] [columns(stat|var)]
+  tabstat varlist [if] [in], statistics(stat ...) [by(var)] [columns(stat|var)] [format(%9.2f)]
+      by() groups show value labels when attached; format() styles every cell incl. Total
       stats: mean sd var cv min max range sum count median p1-p99 iqr
       e.g.  tabstat gdp pop, stats(mean sd p25 p50 p75) by(region)
 ```
@@ -341,8 +342,10 @@ any change keeps the manual and the implementation in agreement.*
 ## `import`
 
 ```
-  import delimited|excel|ods using FILE [, sheet(name) clear]   read CSV/TSV/XLSX/ODS
-      e.g.  import delimited "data/WEO.csv", clear
+  import excel FILE [, sheet(name) cellrange(A17[:AF22000]) firstrow case(preserve|lower|upper) clear]
+      cellrange restricts to a sheet rectangle; with firstrow its first row is the header row
+import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) case(lower|preserve|upper) clear]
+      e.g.  import excel "WPP2024.xlsx", sheet("Estimates") cellrange(A17:AF22000) firstrow case(lower) clear
 ```
 
 ## `export`
