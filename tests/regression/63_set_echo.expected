@@ -1,0 +1,14 @@
+/tmp
+. do /tmp/t63_inner.do
+. clear
+. set obs 2
+number of observations set to 2
+. gen x = _n
+(2 real changes made)
+. display x[1] + x[2]
+3
+. set echo off
+number of observations set to 2
+(2 real changes made)
+3
+198

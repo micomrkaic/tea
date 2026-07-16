@@ -436,6 +436,12 @@ activity form instead, a spinner with elapsed time:
 
     converting WB_data.xlsx / 34s
 
+Do-file execution is quiet by default; `set echo on` prints each line
+Stata-style (`. <line>`) before its output — real Stata echoes `do` by
+default, a documented tea deviation in favor of stable batch output.
+The browser editor's Run button uses it, so the web terminal shows
+commands with their results.
+
 Long interactive output can be paged, exactly Stata's `more`: after
 `set more on`, `list` and `describe` pause at each screenful with
 `--more--` (any key = next page, Enter = one line, q = stop).  Only the

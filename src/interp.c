@@ -42,6 +42,13 @@ Interp *interp_new(Workspace *ws){
     return ip;
 }
 
+/* `set echo on`: echo each do-file line Stata-style (". <line>") before
+ * execution.  Default OFF — Stata echoes `do` by default, but tea's
+ * batch-output contract (and every golden test) predates the feature;
+ * documented deviation.  Applies only to non-interactive streams: typed
+ * input is already visible on the terminal. */
+int g_tea_echo = 0;
+
 /* set by 'exit' command, polled by run_stream and main */
 int g_exit_requested = 0;
 int g_exit_code      = 0;
@@ -1130,6 +1137,11 @@ int run_stream(Interp *ip,FILE *in,bool interactive){
         char *raw = read_one_line(in, interactive, need_more?"> ":". ");
         if(!raw) break;
         if(!interactive) g_current_line++;
+        if(g_tea_echo && !interactive){
+            /* raw keeps its newline; print Stata's ". " prefix */
+            size_t rl2 = strlen(raw);
+            printf(". %.*s\n", (int)(rl2 && raw[rl2-1]=='\n' ? rl2-1 : rl2), raw);
+        }
         int rc = tea_session_feed(s, raw, &need_more);
         free(raw);
         if(rc>0 && rc!=5 && !interactive){

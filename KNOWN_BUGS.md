@@ -1117,3 +1117,24 @@ used in `egen`.
   source of the generated reference) now describe their full current
   option surface, including tabstat's format() and value-labeled
   by() groups.  No behavior changes.
+
+## v1.6.15 — command echo for the browser editor (colleague feedback round)
+
+- NEW — `set echo on|off`: echoes each do-file line Stata-style
+  (". <line>") before its output.  Default OFF — real Stata echoes `do`
+  by default (`run` is the silent variant), but tea's batch-output
+  contract and every golden test predate the feature; documented
+  deviation.  Interactive input never echoes (already visible).  The
+  browser editor's Run wraps the script in echo on/off, so the terminal
+  now shows each command with its results beneath it.
+- Browser editor hardening, from a colleague's "select-all + run
+  deleted my script, leaving one stray character" report.  The run
+  shortcut itself was safe (preventDefault present); the real mechanism
+  is a mistimed chord — Ctrl+A, then `d` landing after Ctrl is
+  released, which replaces the whole selection with the letter d, and
+  the 400ms autosave then persists the wreckage.  Mitigations: the run
+  shortcut now matches D case-insensitively (Shift/CapsLock used to
+  defeat it and leak the key to the browser); every Run first snapshots
+  the buffer to a backup slot; and a "restore last run" link swaps the
+  backup in (reversibly).  Native textarea undo (Ctrl+Z) also survives
+  throughout.

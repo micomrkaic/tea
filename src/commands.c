@@ -5209,6 +5209,13 @@ int run_command(Cmd *c){
             if(!strcmp(v,"off")) { g_progress_enabled=0; return 0; }
             tea_err("set progress: on or off\n"); return 198;
         }
+        if(!strcmp(w,"echo")){
+            char v[16]=""; sscanf(c->args+5," %15s",v);
+            extern int g_tea_echo;
+            if(!strcmp(v,"on"))  { g_tea_echo=1; return 0; }
+            if(!strcmp(v,"off")) { g_tea_echo=0; return 0; }
+            tea_err("set echo: on or off\n"); return 198;
+        }
         if(!strcmp(w,"more")){
             char v[16]=""; sscanf(c->args+5," %15s",v);
             extern int g_more_enabled;

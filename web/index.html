@@ -67,7 +67,7 @@
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
   <div class="tagline">tiny econometric assistant</div>
-  <div class="ver">v<!--TEAVER-->1.6.14<!--/TEAVER--> &middot; runs entirely in your browser</div>
+  <div class="ver">v<!--TEAVER-->1.6.15<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
   <div class="foot">free software (GPLv3) &middot; no data leaves your machine</div>
@@ -103,7 +103,7 @@
         <button id="ed-run">&#9654; Run</button>
         <label class="btn">Open .do<input type="file" id="ed-open" accept=".do,.txt,.ado"></label>
         <button id="ed-save">Save .do</button>
-        <span class="hint">Ctrl+D / Ctrl+Enter: run selection (or all) &middot; autosaves locally</span>
+        <span class="hint">Ctrl+D / Ctrl+Enter: run selection (or all) &middot; autosaves locally &middot; <a href="#" id="ed-restore">restore last run</a></span>
       </div>
       <textarea id="edtext" spellcheck="false" placeholder="* write or drop a .do file here
 sysuse weo
@@ -267,9 +267,16 @@ edtext.addEventListener('input', () => {
 
 function runScript(text){
   if (!M || !text.trim().length) return;
+  /* pre-run backup: one mistimed Ctrl+A/d chord can replace the whole
+     buffer with a single character, and autosave then persists the
+     wreckage — keep the last-run version one click away */
+  try { localStorage.setItem(EDKEY + '_bak', edtext.value); } catch(e) {}
   M.FS.writeFile('/_editor.do', text.endsWith('\n') ? text : text + '\n');
   term.writeln('');
+  /* echo commands Stata-style (". <cmd>" then its output) for the run */
+  M.ccall('tea_web_exec','number',['string'],['set echo on']);
   needMore = M.ccall('tea_web_exec','number',['string'],['do /_editor.do']) === 1;
+  M.ccall('tea_web_exec','number',['string'],['set echo off']);
   ed.freshPrompt();
 }
 document.getElementById('ed-run').addEventListener('click', () => runScript(edtext.value));
@@ -277,7 +284,7 @@ document.getElementById('ed-run').addEventListener('click', () => runScript(edte
 /* Ctrl+D (Stata muscle memory) / Ctrl+Enter: run selection, else whole
    buffer.  Selections expand to whole lines, like Stata's do-file editor. */
 edtext.addEventListener('keydown', ev => {
-  if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'd' || ev.key === 'Enter')) {
+  if ((ev.ctrlKey || ev.metaKey) && (ev.key.toLowerCase() === 'd' || ev.key === 'Enter')) {
     ev.preventDefault();
     let a = edtext.selectionStart, b = edtext.selectionEnd;
     const v = edtext.value;
@@ -297,6 +304,16 @@ document.getElementById('ed-open').addEventListener('change', async ev => {
   try { localStorage.setItem(EDKEY, edtext.value); } catch(e) {}
   showTab(true);
   ev.target.value = '';
+});
+document.getElementById('ed-restore').addEventListener('click', ev => {
+  ev.preventDefault();
+  try {
+    const b = localStorage.getItem(EDKEY + '_bak');
+    if (b == null) { term.writeln('\r\n(no backup yet — a backup is taken each time you run)'); return; }
+    localStorage.setItem(EDKEY + '_bak', edtext.value);   /* swap, so restore is reversible */
+    edtext.value = b;
+    localStorage.setItem(EDKEY, b);
+  } catch(e) {}
 });
 document.getElementById('ed-save').addEventListener('click', () => {
   const a = document.createElement('a');
