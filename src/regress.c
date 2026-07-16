@@ -400,18 +400,19 @@ static void print_regress_table(const Estimates *e){
     /* header summary */
     printf("\n");
     if(e->se_kind==SE_CLUSTER) printf("Linear regression                                       Number of obs = %8ld\n", e->N);
-    else printf("      Source |       SS           df       MS      Number of obs   =    %6ld\n",e->N);
+    else printf("      Source |       SS           df       MS      %-15s =  %9ld\n","Number of obs",e->N);
     if(e->se_kind==SE_CLASSICAL){
-        double Fdf2 = e->df_r;
-        printf("-------------+----------------------------------   F(%d, %d)        =   %8.2f\n",e->df_m,(int)Fdf2,e->F);
-        printf("       Model | %11.6g %10d %11.6g    Prob > F        =   %8.4f\n",e->mss,e->df_m,e->df_m?e->mss/e->df_m:0.0,e->F_p);
-        printf("    Residual | %11.6g %10d %11.6g    R-squared       =   %8.4f\n",e->rss,e->df_r,e->sigma2,e->r2);
-        printf("-------------+----------------------------------   Adj R-squared   =   %8.4f\n",e->r2_a);
-        printf("       Total | %11.6g %10ld %11.6g    Root MSE        =   %8.4g\n\n",e->tss,e->N-1,e->tss/(e->N-1>0?e->N-1:1),e->rmse);
+        char flbl[24]; snprintf(flbl,sizeof flbl,"F(%d, %d)",e->df_m,e->df_r);
+        printf("-------------+----------------------------------   %-15s =  %9.2f\n",flbl,e->F);
+        printf("       Model | %11s %10d %11s  %-15s =  %9.4f\n", gfit(e->mss,10), e->df_m, gfit(e->df_m?e->mss/e->df_m:0.0,10), "Prob > F", e->F_p);
+        printf("    Residual | %11s %10d %11s  %-15s =  %9.4f\n", gfit(e->rss,10), e->df_r, gfit(e->sigma2,10), "R-squared", e->r2);
+        printf("-------------+----------------------------------   %-15s =  %9.4f\n","Adj R-squared",e->r2_a);
+        printf("       Total | %11s %10ld %11s  %-15s =  %9.4g\n\n", gfit(e->tss,10), e->N-1, gfit(e->tss/(e->N-1>0?e->N-1:1),10), "Root MSE", e->rmse);
     } else {
-        printf("                                                    F(%d, %d)        =   %8.2f\n",e->df_m,e->df_r,e->F);
-        printf("                                                    Prob > F        =   %8.4f\n",e->F_p);
-        printf("                                                    R-squared       =   %8.4f\n",e->r2);
+        { char flbl[24]; snprintf(flbl,sizeof flbl,"F(%d, %d)",e->df_m,e->df_r);
+          printf("                                                    %-15s =  %9.2f\n",flbl,e->F); }
+        printf("                                                    %-15s =  %9.4f\n","Prob > F",e->F_p);
+        printf("                                                    %-15s =  %9.4f\n","R-squared",e->r2);
         printf("                                                    Root MSE        =   %8.4g\n",e->rmse);
         if(e->se_kind==SE_CLUSTER) printf("                                          (Std. err. adjusted for %ld clusters in %s)\n",e->n_clusters,e->cluster_var);
         printf("\n");
@@ -432,8 +433,7 @@ static void print_regress_table(const Estimates *e){
         double p  = se>0 ? tea_pval_t(t, (double)e->df_r) : 1.0;
         double lo = e->b[i] - tcrit*se;
         double hi = e->b[i] + tcrit*se;
-        printf("%12s | %10.6g  %10.6g %7.2f %5.3f   %10.6g  %10.6g\n",
-               e->xnames[i], e->b[i], se, t, p, lo, hi);
+        printf("%12s | %10s  %10s %7.2f %5.3f   %10s  %10s\n", e->xnames[i], gfit(e->b[i],9), gfit(se,9), t, p, gfit(lo,9), gfit(hi,9));
     }
     printf("------------------------------------------------------------------------------\n");
 }
@@ -1259,8 +1259,7 @@ int do_lincom(Cmd *c){
     printf("------------------------------------------------------------------------------\n");
     printf("%12s | Coefficient  Std. err.    t    P>|t|     [95%% conf. interval]\n",e->depvar);
     printf("-------------+----------------------------------------------------------------\n");
-    printf("       (1)   | %10.6g  %10.6g %7.2f %5.3f   %10.6g  %10.6g\n",
-           est, se, t, pv, est-tcrit*se, est+tcrit*se);
+    printf("       (1)   | %10s  %10s %7.2f %5.3f   %10s  %10s\n", gfit(est,9), gfit(se,9), t, pv, gfit(est-tcrit*se,9), gfit(est+tcrit*se,9));
     printf("------------------------------------------------------------------------------\n");
     free(L); free(VL);
     return 0;
@@ -1588,8 +1587,7 @@ int do_xtreg(Cmd *c)
                 double pv_be = se > 0 ? tea_pval_t(t, df_be) : 1.0;
                 double lo = bvec[k] - tcrit*se;
                 double hi = bvec[k] + tcrit*se;
-                printf("%12s | %10.6g  %10.6g %7.2f %5.3f   %10.6g  %10.6g\n",
-                       e->xnames[k], bvec[k], se, t, pv_be, lo, hi);
+                printf("%12s | %10s  %10s %7.2f %5.3f   %10s  %10s\n", e->xnames[k], gfit(bvec[k],9), gfit(se,9), t, pv_be, gfit(lo,9), gfit(hi,9));
             }
             printf("------------------------------------------------------------------------------\n");
         }
@@ -2118,38 +2116,39 @@ int do_xtreg(Cmd *c)
         const char *header = mode_re ? "Random-effects GLS regression"
                                      : "Fixed-effects (within) regression";
         printf("\n");
-        printf("%-48sNumber of obs   = %8ld\n", header, D.N);
-        printf("Group variable: %-15s                 Number of groups = %8ld\n",
-               pv->name, G);
+        /* Stata layout: every right-column '=' sits at the same column;
+         * left column is padded to 48. */
+        printf("%-48s%-17s = %10ld\n", header, "Number of obs", D.N);
+        { char gv[64]; snprintf(gv,sizeof gv,"Group variable: %s", pv->name);
+          printf("%-48s%-17s = %10ld\n", gv, "Number of groups", G); }
         printf("\n");
-        printf("R-sq:                                           Obs per group:\n");
-        printf("     within  = %.4f                                  min = %8ld\n", r2_w_out, T_min);
-        printf("     between = %.4f                                  avg = %8.1f\n", r2_b_out, T_avg);
-        printf("     overall = %.4f                                  max = %8ld\n", r2_o_out, T_max);
+        printf("%-48sObs per group:\n", "R-squared:");
+        printf("     Within  = %.4f%*s%-17s = %10ld\n",   r2_w_out, 27, "", "min", T_min);
+        printf("     Between = %.4f%*s%-17s = %10.1f\n",  r2_b_out, 27, "", "avg", T_avg);
+        printf("     Overall = %.4f%*s%-17s = %10ld\n",   r2_o_out, 27, "", "max", T_max);
         printf("\n");
         if(mode_re){
             /* For RE, Stata reports a Wald χ² rather than F; we report
              * F (asymptotically equivalent) for consistency. */
             double wald = F_out * df_m_out;
             if(!isfinite(wald) || wald > 1e15){
-                printf("                                                Wald chi2(%d)  = %10s\n",
-                       df_m_out, "inf");
+                char lbl[32]; snprintf(lbl,sizeof lbl,"Wald chi2(%d)",df_m_out);
+                printf("%-48s%-17s = %10s\n","",lbl,"inf");
             } else {
-                printf("                                                Wald chi2(%d)  = %10.2f\n",
-                       df_m_out, wald);
+                char lbl[32]; snprintf(lbl,sizeof lbl,"Wald chi2(%d)",df_m_out);
+                printf("%-48s%-17s = %10.2f\n","",lbl,wald);
             }
-            printf("corr(u_i, X)   = 0 (assumed)                    Prob > chi2   = %10.4f\n",
-                   F_p_out);
+            printf("%-48s%-17s = %10.4f\n","corr(u_i, X)   = 0 (assumed)","Prob > chi2",F_p_out);
         } else {
             if(!isfinite(F_out) || F_out > 1e15){
-                printf("                                                F(%d, %d) = %10s\n",
-                       df_m_out, df_r_out, "inf");
+                char lbl[32]; snprintf(lbl,sizeof lbl,"F(%d, %d)",df_m_out,df_r_out);
+                printf("%-48s%-17s = %10s\n","",lbl,"inf");
             } else {
-                printf("                                                F(%d, %d) = %10.2f\n",
-                       df_m_out, df_r_out, F_out);
+                char lbl[32]; snprintf(lbl,sizeof lbl,"F(%d, %d)",df_m_out,df_r_out);
+                printf("%-48s%-17s = %10.2f\n","",lbl,F_out);
             }
-            printf("corr(u_i, Xb)  = %-8.4f                       Prob > F      = %10.4f\n",
-                   corr_uXb, F_p_out);
+            { char cl[48]; snprintf(cl,sizeof cl,"corr(u_i, Xb) = %.4f",corr_uXb);
+              printf("%-48s%-17s = %10.4f\n",cl,"Prob > F",F_p_out); }
         }
         printf("\n");
         const char *selab = se_kind==SE_ROBUST?"Robust":
@@ -2169,16 +2168,15 @@ int do_xtreg(Cmd *c)
             double p = se>0 ? tea_pval_t(t, (double)df_r_out) : 1.0;
             double lo = b_out[i] - tcrit*se;
             double hi = b_out[i] + tcrit*se;
-            printf("%12s | %10.6g  %10.6g %7.2f %5.3f   %10.6g  %10.6g\n",
-                   xnames_out[i], b_out[i], se, t, p, lo, hi);
+            printf("%12s | %10s  %10s %7.2f %5.3f   %10s  %10s\n", xnames_out[i], gfit(b_out[i],9), gfit(se,9), t, p, gfit(lo,9), gfit(hi,9));
         }
         printf("-------------+----------------------------------------------------------------\n");
-        printf("%12s | %10.6g   %s\n", "sigma_u", sigma_u, "");
-        printf("%12s | %10.6g   %s\n", "sigma_e", sigma_e, "");
-        printf("%12s | %10.6g   (fraction of variance due to u_i)\n", "rho", rho);
+        printf("%12s | %10s   %s\n", "sigma_u", gfit(sigma_u,9), "");
+        printf("%12s | %10s   %s\n", "sigma_e", gfit(sigma_e,9), "");
+        printf("%12s | %10s   (fraction of variance due to u_i)\n", "rho", gfit(rho,9));
         if(mode_re){
             if(T_min == T_max){
-                printf("%12s | %10.6g   (quasi-demeaning factor)\n", "theta", theta_avg);
+                printf("%12s | %10s   (quasi-demeaning factor)\n", "theta", gfit(theta_avg,9));
             } else {
                 printf("%12s | min=%.4f  avg=%.4f  max=%.4f\n",
                        "theta", theta_min, theta_avg, theta_max);
@@ -2373,9 +2371,7 @@ int do_hausman(Cmd *c)
     for(int i=0; i<nc; i++){
         double vd = dV[(size_t)i*nc + i];
         double sd = vd > 0 ? sqrt(vd) : 0;
-        printf("%12s | %10.6g    %10.6g    %12.6g    %10.6g%s\n",
-               fe->xnames[fe_map[i]], fe->b[fe_map[i]], re->b[re_map[i]],
-               db[i], sd, vd < 0 ? "  (V_b-V_B not PSD)" : "");
+        printf("%12s | %10s    %10s    %12s    %10s%s\n", fe->xnames[fe_map[i]], gfit(fe->b[fe_map[i]],9), gfit(re->b[re_map[i]],9), gfit(db[i],11), gfit(sd,9), vd < 0 ? "  (V_b-V_B not PSD)" : "");
     }
     printf("------------------------------------------------------------------------------\n");
     printf("                  b = consistent under H0 and Ha;     obtained from xtreg, fe\n");
@@ -2662,8 +2658,7 @@ static int do_glm_binary(Cmd *c, const MleFamily *fam)
             double p = se>0 ? 2.0 * (1.0 - tea_normal_cdf(fabs(z))) : 1.0;
             double lo = fit.beta[j] - zcrit*se;
             double hi = fit.beta[j] + zcrit*se;
-            printf("%12s | %10.6g  %10.6g %7.2f %5.3f   %10.6g  %10.6g\n",
-                   D.xnames[j], fit.beta[j], se, z, p, lo, hi);
+            printf("%12s | %10s  %10s %7.2f %5.3f   %10s  %10s\n", D.xnames[j], gfit(fit.beta[j],9), gfit(se,9), z, p, gfit(lo,9), gfit(hi,9));
         }
         printf("------------------------------------------------------------------------------\n");
         if(se_kind == SE_CLUSTER){
@@ -2953,8 +2948,7 @@ int do_margins(Cmd *c)
             double p  = se[k]>0 ? 2.0*(1.0 - tea_normal_cdf(fabs(z))) : 1.0;
             double lo = mvec[k] - zcrit*se[k];
             double hi = mvec[k] + zcrit*se[k];
-            printf("%12s | %10.6g  %10.6g %7.2f %5.3f   %10.6g  %10.6g\n",
-                   e->xnames[k], mvec[k], se[k], z, p, lo, hi);
+            printf("%12s | %10s  %10s %7.2f %5.3f   %10s  %10s\n", e->xnames[k], gfit(mvec[k],9), gfit(se[k],9), z, p, gfit(lo,9), gfit(hi,9));
         }
         printf("------------------------------------------------------------------------------\n");
     }
@@ -3445,8 +3439,7 @@ int do_ivregress(Cmd *c)
             double pv = se > 0 ? 2.0*(1.0 - tea_normal_cdf(fabs(z))) : 1.0;
             double lo = b[k] - zcrit*se;
             double hi = b[k] + zcrit*se;
-            printf("%12s | %10.6g  %10.6g %7.2f %5.3f   %10.6g  %10.6g\n",
-                   D.xnames[k], b[k], se, z, pv, lo, hi);
+            printf("%12s | %10s  %10s %7.2f %5.3f   %10s  %10s\n", D.xnames[k], gfit(b[k],9), gfit(se,9), z, pv, gfit(lo,9), gfit(hi,9));
         }
         printf("------------------------------------------------------------------------------\n");
         printf("Instrumented: ");

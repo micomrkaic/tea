@@ -12,46 +12,46 @@ panel variable: firm
  time variable: year
          delta: 1 unit
 
-Fixed-effects (within) regression               Number of obs   =      200
-Group variable: firm                            Number of groups =       10
+Fixed-effects (within) regression               Number of obs     =        200
+Group variable: firm                            Number of groups  =         10
 
-R-sq:                                           Obs per group:
-     within  = 0.7668                                  min =       20
-     between = 0.8578                                  avg =     20.0
-     overall = 0.8060                                  max =       20
+R-squared:                                      Obs per group:
+     Within  = 0.7668                           min               =         20
+     Between = 0.8578                           avg               =       20.0
+     Overall = 0.8060                           max               =         20
 
-                                                F(2, 188) =     309.01
-corr(u_i, Xb)  = -0.1698                        Prob > F      =     0.0000
+                                                F(2, 188)         =     309.01
+corr(u_i, Xb) = -0.1698                         Prob > F          =     0.0000
 
 ------------------------------------------------------------------------------
       invest | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
 -------------+----------------------------------------------------------------
-       value |   0.110124   0.0118567    9.29 0.000    0.0867345    0.133513
-     capital |   0.310065   0.0173545   17.87 0.000     0.275831      0.3443
+       value |    .110124    .0118567    9.29 0.000     .0867345     .133513
+     capital |    .310065    .0173545   17.87 0.000      .275831       .3443
 -------------+----------------------------------------------------------------
      sigma_u |    84.9167   
      sigma_e |     52.768   
-         rho |   0.721423   (fraction of variance due to u_i)
+         rho |    .721423   (fraction of variance due to u_i)
 ------------------------------------------------------------------------------
 F test that all u_i=0:  F(9, 188) =      49.18      Prob > F = 0.0000
 (longley: 16 obs loaded — Longley (1967) US macro, 16 obs: famously ill-conditioned (regress))
 
-      Source |       SS           df       MS      Number of obs   =        16
--------------+----------------------------------   F(6, 9)        =     330.29
-       Model |     184.172          6     30.6954    Prob > F        =     0.0000
-    Residual |    0.836424          9    0.092936    R-squared       =     0.9955
+      Source |       SS           df       MS      Number of obs   =         16
+-------------+----------------------------------   F(6, 9)         =     330.29
+       Model |     184.172          6     30.6954  Prob > F        =     0.0000
+    Residual |     .836424          9     .092936  R-squared       =     0.9955
 -------------+----------------------------------   Adj R-squared   =     0.9925
-       Total |     185.009         15     12.3339    Root MSE        =     0.3049
+       Total |     185.009         15     12.3339  Root MSE        =     0.3049
 
 ------------------------------------------------------------------------------
     employed | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
 -------------+----------------------------------------------------------------
- gnpdeflator |  0.0150619   0.0849149    0.18 0.863    -0.177029    0.207153
-         gnp | -0.0358192    0.033491   -1.07 0.313    -0.111581   0.0399427
-  unemployed | -0.0202023    0.004884   -4.14 0.003   -0.0312507  -0.00915393
- armedforces | -0.0103323  0.00214274   -4.82 0.001   -0.0151795  -0.00548505
-  population | -0.0511041    0.226073   -0.23 0.826    -0.562517    0.460309
-        year |    1.82915    0.455479    4.02 0.003     0.798788     2.85952
+ gnpdeflator |   .0150619    .0849149    0.18 0.863     -.177029     .207153
+         gnp |  -.0358192     .033491   -1.07 0.313     -.111581    .0399427
+  unemployed |  -.0202023     .004884   -4.14 0.003    -.0312507   -.0091539
+ armedforces |  -.0103323   .00214274   -4.82 0.001    -.0151795   -.0054851
+  population |  -.0511041     .226073   -0.23 0.826     -.562517     .460309
+        year |    1.82915     .455479    4.02 0.003      .798788     2.85952
        _cons |   -3482.26      890.42   -3.91 0.004     -5496.53    -1467.99
 ------------------------------------------------------------------------------
 (airline: 144 obs loaded — Box-Jenkins airline passengers, monthly 1949-1960 (tsset, arima))
@@ -72,10 +72,10 @@ Log likelihood = -18645.976763                   Pseudo R2       =     0.0611
 ------------------------------------------------------------------------------
       visits | Coefficient  Std. err.     z    P>|z|     [95% conf. interval]
 -------------+----------------------------------------------------------------
-     chronic |   0.203003  0.00408937   49.64 0.000     0.194988    0.211018
-      school |  0.0278789  0.00178127   15.65 0.000    0.0243877   0.0313701
-      income | -0.00606297  0.00225509   -2.69 0.007   -0.0104829  -0.00164308
-       _cons |     1.1246   0.0214572   52.41 0.000      1.08254     1.16665
+     chronic |    .203003   .00408937   49.64 0.000      .194988     .211018
+      school |   .0278789   .00178127   15.65 0.000     .0243877    .0313701
+      income |   -.006063   .00225509   -2.69 0.007    -.0104829   -.0016431
+       _cons |     1.1246    .0214572   52.41 0.000      1.08254     1.16665
 ------------------------------------------------------------------------------
 (pwt: 1540 obs loaded — Penn World Table 10.0 sample: 22 countries x 1950-2019, CC BY 4.0 (growth))
 (1540 real changes made)
@@ -92,25 +92,25 @@ panel variable: iso
  time variable: year
          delta: 1 unit
 
-Fixed-effects (within) regression               Number of obs   =     5854
-Group variable: iso                             Number of groups =      193
+Fixed-effects (within) regression               Number of obs     =       5854
+Group variable: iso                             Number of groups  =        193
 
-R-sq:                                           Obs per group:
-     within  = 0.0132                                  min =       14
-     between = 0.0111                                  avg =     30.3
-     overall = 0.0115                                  max =       46
+R-squared:                                      Obs per group:
+     Within  = 0.0132                           min               =         14
+     Between = 0.0111                           avg               =       30.3
+     Overall = 0.0115                           max               =         46
 
-                                                F(1, 5660) =      75.87
-corr(u_i, Xb)  = -0.2180                        Prob > F      =     0.0000
+                                                F(1, 5660)        =      75.87
+corr(u_i, Xb) = -0.2180                         Prob > F          =     0.0000
 
 ------------------------------------------------------------------------------
    ngdp_rpch | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
 -------------+----------------------------------------------------------------
- ggxwdg_ngdp | -0.0201611  0.00231467   -8.71 0.000   -0.0246987  -0.0156234
+ ggxwdg_ngdp |  -.0201611   .00231467   -8.71 0.000    -.0246987   -.0156234
 -------------+----------------------------------------------------------------
      sigma_u |    1.74613   
      sigma_e |    5.44188   
-         rho |  0.0933459   (fraction of variance due to u_i)
+         rho |   .0933459   (fraction of variance due to u_i)
 ------------------------------------------------------------------------------
 F test that all u_i=0:  F(192, 5660) =       4.07      Prob > F = 0.0000
 

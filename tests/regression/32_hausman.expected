@@ -43,7 +43,7 @@ panel variable: pid
              |      (b)          (B)            (b-B)     sqrt(diag(V_b-V_B))
              |      fe           re          Difference     S.E.
 -------------+----------------------------------------------------------------
-           x |    2.17505       2.17718     -0.00213327    0.00074316
+           x |    2.17505       2.17718      -.00213327     .00074316
 ------------------------------------------------------------------------------
                   b = consistent under H0 and Ha;     obtained from xtreg, fe
                   B = inconsistent under Ha, efficient under H0; obtained from xtreg, re

@@ -1138,3 +1138,28 @@ used in `egen`.
   the buffer to a backup slot; and a "restore last run" link swaps the
   backup in (reversibly).  Native textarea undo (Ctrl+Z) also survives
   throughout.
+
+## v1.6.16 — estimation tables line up (the xtreg output round)
+
+- Bug 30 — coefficient tables misaligned whenever a value needed more
+  than its column: the cell format was %10.6g — six significant digits,
+  MINIMUM width 10, no maximum — so -0.000367782 rendered 12 wide and
+  sheared the row.  All estimation tables (regress, xtreg fe/re/be,
+  logit/probit, margins, hausman, arima — 19 sites) now format cells
+  with gfit(), an emulation of Stata's %#.0g: the most significant
+  digits that FIT the column, with the leading zero of |x|<1 dropped
+  (-.0003678, .0000669) — exactly how Stata keeps coefficient columns
+  rigid at any magnitude.
+- The header stat blocks (xtreg's Number of obs / groups / R-squared /
+  Obs per group / F / corr rows, and classic regress's ANOVA right
+  column) now put every '=' in one fixed column with right-aligned
+  values, Stata's layout.
+- 22 goldens re-blessed; every changed line inspected — coefficient
+  rows, header stats, and ANOVA cells only; no numeric drift (gfit
+  reformats the same doubles).
+- Table display precision is capped at SIX significant digits: the WASM
+  rig immediately caught the 7th digit of longley's ill-conditioned CI
+  bound differing between OpenBLAS and the reference BLAS (-5496.530 vs
+  -5496.529) — the old 6-sig format had been hiding it.  Displayed
+  precision now equals the cross-rig reproducible bound; stored doubles
+  keep full precision (e(b)/e(V) and exports are unaffected).

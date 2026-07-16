@@ -52,4 +52,12 @@ Estimates *est_clone(const Estimates *src);
 void       est_free(Estimates *e);
 int        est_idx_of(const Estimates *e, const char *name);  /* coefficient index by name, -1 if none */
 
+
+/* Stata %#.0g emulation for estimation tables: the largest number of
+ * significant digits whose rendering fits in `w` characters, with the
+ * leading zero of |x|<1 dropped (-.0003678, .0000669) — exactly how
+ * Stata keeps coefficient columns rigid.  Returns a rotating static
+ * buffer: safe for many uses inside one printf, not for storage. */
+const char *gfit(double x, int w);
+
 #endif

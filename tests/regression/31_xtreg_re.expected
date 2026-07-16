@@ -14,16 +14,16 @@ panel variable: panel
 === RE on perfect-fit case: should collapse to FE (theta=1) ===
 Expected: beta_x = 1.0, _cons (omitted), sigma_e=0, theta=1
 
-Random-effects GLS regression                   Number of obs   =       12
-Group variable: panel                           Number of groups =        3
+Random-effects GLS regression                   Number of obs     =         12
+Group variable: panel                           Number of groups  =          3
 
-R-sq:                                           Obs per group:
-     within  = 1.0000                                  min =        4
-     between = 1.0000                                  avg =      4.0
-     overall = 0.9470                                  max =        4
+R-squared:                                      Obs per group:
+     Within  = 1.0000                           min               =          4
+     Between = 1.0000                           avg               =        4.0
+     Overall = 0.9470                           max               =          4
 
-                                                Wald chi2(1)  =        inf
-corr(u_i, X)   = 0 (assumed)                    Prob > chi2   =     0.0000
+                                                Wald chi2(1)      =        inf
+corr(u_i, X)   = 0 (assumed)                    Prob > chi2       =     0.0000
 
 ------------------------------------------------------------------------------
            y | Coefficient  Std. err.     t    P>|t|     [95% conf. interval]
@@ -61,25 +61,25 @@ RE classical: see e(N), e(N_g), e(sigma_u), e(sigma_e), e(rho), e(theta)
 
 === RE with vce(cluster) ===
 
-Random-effects GLS regression                   Number of obs   =       30
-Group variable: cid                             Number of groups =        3
+Random-effects GLS regression                   Number of obs     =         30
+Group variable: cid                             Number of groups  =          3
 
-R-sq:                                           Obs per group:
-     within  = 0.9341                                  min =        8
-     between = 1.0000                                  avg =     10.0
-     overall = 0.9914                                  max =       12
+R-squared:                                      Obs per group:
+     Within  = 0.9341                           min               =          8
+     Between = 1.0000                           avg               =       10.0
+     Overall = 0.9914                           max               =         12
 
-                                                Wald chi2(1)  =  161674.04
-corr(u_i, X)   = 0 (assumed)                    Prob > chi2   =     0.0000
+                                                Wald chi2(1)      =  161674.04
+corr(u_i, X)   = 0 (assumed)                    Prob > chi2       =     0.0000
 
 ------------------------------------------------------------------------------
            y | Coefficient  Cluster       t    P>|t|     [95% conf. interval]
 -------------+----------------------------------------------------------------
-           x |    2.04378  0.00508293  402.09 0.000      2.03337     2.05419
-       _cons |    5.93203   0.0177154  334.85 0.000      5.89574     5.96832
+           x |    2.04378   .00508293  402.09 0.000      2.03337     2.05419
+       _cons |    5.93203    .0177154  334.85 0.000      5.89574     5.96832
 -------------+----------------------------------------------------------------
      sigma_u |          0   
-     sigma_e |   0.884723   
+     sigma_e |    .884723   
          rho |          0   (fraction of variance due to u_i)
        theta | min=0.0000  avg=0.0000  max=0.0000
 ------------------------------------------------------------------------------

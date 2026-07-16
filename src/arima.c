@@ -498,8 +498,7 @@ int do_arima(Cmd *c)
                 double pv = se > 0 ? 2.0*(1.0 - tea_normal_cdf(fabs(z))) : 1.0;
                 double lo = theta[ki] - zcrit*se;
                 double hi = theta[ki] + zcrit*se;
-                printf("%12s | %10.6g  %10.6g %7.2f %5.3f   %10.6g  %10.6g\n",
-                       xnames[ki], theta[ki], se, z, pv, lo, hi);
+                printf("%12s | %10s  %10s %7.2f %5.3f   %10s  %10s\n", xnames[ki], gfit(theta[ki],9), gfit(se,9), z, pv, gfit(lo,9), gfit(hi,9));
             }
         }
         if(p > 0){
@@ -513,8 +512,7 @@ int do_arima(Cmd *c)
                 double pv = se > 0 ? 2.0*(1.0 - tea_normal_cdf(fabs(z))) : 1.0;
                 double lo = theta[ki] - zcrit*se;
                 double hi = theta[ki] + zcrit*se;
-                printf("%12s | %10.6g  %10.6g %7.2f %5.3f   %10.6g  %10.6g\n",
-                       xnames[ki], theta[ki], se, z, pv, lo, hi);
+                printf("%12s | %10s  %10s %7.2f %5.3f   %10s  %10s\n", xnames[ki], gfit(theta[ki],9), gfit(se,9), z, pv, gfit(lo,9), gfit(hi,9));
             }
         }
         if(q > 0){
@@ -528,12 +526,11 @@ int do_arima(Cmd *c)
                 double pv = se > 0 ? 2.0*(1.0 - tea_normal_cdf(fabs(z))) : 1.0;
                 double lo = theta[ki] - zcrit*se;
                 double hi = theta[ki] + zcrit*se;
-                printf("%12s | %10.6g  %10.6g %7.2f %5.3f   %10.6g  %10.6g\n",
-                       xnames[ki], theta[ki], se, z, pv, lo, hi);
+                printf("%12s | %10s  %10s %7.2f %5.3f   %10s  %10s\n", xnames[ki], gfit(theta[ki],9), gfit(se,9), z, pv, gfit(lo,9), gfit(hi,9));
             }
         }
         printf("%-12s |\n", "/sigma");
-        printf("%12s | %10.6g\n", "sigma", rmse);
+        printf("%12s | %10s\n", "sigma", gfit(rmse,9));
         printf("------------------------------------------------------------------------------\n");
         printf("Iterations: %d.  Conditional likelihood (no Kalman filter in v1.0).\n", iter);
     }
