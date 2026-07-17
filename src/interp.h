@@ -19,6 +19,7 @@
 #define PSTATA_INTERP_H
 
 #include "dataset.h"
+#include "tea_system.h"
 #include <stdbool.h>
 #include <stdio.h>
 
