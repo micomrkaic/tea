@@ -192,7 +192,7 @@ apt install libreadline-dev libopenblas-dev liblapacke-dev libgsl-dev libreadsta
 On **macOS** (Homebrew):
 
 ```sh
-brew install readline openblas lapack gsl readstat
+brew install readline openblas lapack gsl && make deps-readstat
 ```
 
 Run `make check-deps` after installing to verify every required header is
@@ -435,7 +435,7 @@ Stata's `e()` macro family, generalized — and it's exactly the hook
   and CIs.
 
 Install on Debian/Ubuntu: `apt install libopenblas-dev liblapacke-dev libgsl-dev`.
-On macOS: `brew install openblas lapack gsl`.
+On macOS: `brew install readline openblas lapack gsl && make deps-readstat`.
 
 ## Implemented in v0.5.3 (reshape crash hotfix)
 

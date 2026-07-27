@@ -151,3 +151,27 @@ whole build works from distro packages + GitHub sources instead:
 4. Node harness note: emscripten 3.1.6's loader predates node's global
    fetch; the test harness is unaffected (it passes wasmBinary directly),
    but ad-hoc `node tea.js` runs need `delete globalThis.fetch` first.
+
+## Bootstrap refinements (cold-container rebuild, v1.6.17)
+- Install ORDER matters: binaryen/clang-15/llvm-15 BEFORE the forced
+  emscripten deb; once emscripten is force-installed, apt is wedged
+  (and `apt --fix-broken` REMOVES emscripten).  Anything else needed
+  afterward goes in via `apt-get download PKG && dpkg -i --force-depends`
+  (cmake + its four libs, lld-15, autotools for ReadStat).
+- emcc wants `/usr/bin/wasm-ld-15`; the lld-15 deb provides it (or
+  symlink /usr/lib/llvm-15/bin/wasm-ld).
+- Pre-seeding arith.h is NOT enough: clapack's cmake build REGENERATES
+  it by running the arithchk wasm binary under node with
+  --experimental-wasm-threads (rejected by modern node) and deletes the
+  seed on failure.  Working method: after configure, patch
+  F2CLIBS/libf2c/CMakeFiles/f2c.dir/build.make to `cp` the seeded
+  arith.h instead of running arithchk.
+- The s_copy/s_cat patch has TWO shapes: `extern int s_copy(` and the
+  `/* Subroutine */ int s_copy(` comment form (46 files); sed both.
+
+## container-recycle note (v1.6.17)
+The assembled gsl include tree (`wasm-build/gsl/build-wasm/gsl/*.h`) can
+vanish across container recycles while the sources persist.  Recreate:
+    cd wasm-build/gsl && mkdir -p build-wasm/gsl && \
+      find . -maxdepth 2 -name 'gsl_*.h' -not -path './build-wasm/*' \
+        -exec cp {} build-wasm/gsl/ \;

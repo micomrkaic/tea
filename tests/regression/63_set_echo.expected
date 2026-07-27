@@ -1,4 +1,3 @@
-/tmp
 . do /tmp/t63_inner.do
 . clear
 . set obs 2

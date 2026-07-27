@@ -5,7 +5,7 @@
 * to raw numerics in graph box band labels.  The .tea format is now
 * TEA2 (carries vallab); legacy TEA1 files still read.
 clear
-cd /tmp
+quietly cd /tmp
 set obs 8
 gen id = ceil(_n/2)
 gen j = 1 + mod(_n-1,2)

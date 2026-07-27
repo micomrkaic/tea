@@ -1163,3 +1163,151 @@ used in `egen`.
   -5496.529) — the old 6-sig format had been hiding it.  Displayed
   precision now equals the cross-rig reproducible bound; stored doubles
   keep full precision (e(b)/e(V) and exports are unaffected).
+
+## v1.6.17 — macOS build fails with words, not a garbage include path
+
+- On macOS, a missing Homebrew dependency made `brew --prefix` return
+  empty, the Makefile emitted `-I/include`, and the first thing the
+  user saw was a mystifying "readstat.h file not found" deep into the
+  compile.  The Darwin block now checks every resolved prefix at parse
+  time and fails immediately with the exact `brew install` command.
+  Also: README's short macOS line was missing readline and readstat
+  (the full line elsewhere was correct) — the likely root cause of the
+  report.  Linux/WASM builds untouched.
+
+## v1.6.17 — macOS build: honest errors for missing dependencies
+
+- Bug 31 — on macOS with readstat not installed, `make` produced the
+  mystifying `readstat.h file not found` behind a garbage `-I/include`
+  flag.  The Makefile's guard checked that `brew --prefix readstat`
+  returned a non-empty string — but `brew --prefix` prints the would-be
+  opt path even for a KNOWN-BUT-UNINSTALLED formula (exit 0), and comes
+  back empty under other PATH/environment variants, so a non-empty
+  prefix proved nothing.  The guards now test for the actual header
+  files (readstat.h, cblas.h, lapacke.h, gsl_cdf.h, readline.h) under
+  each resolved prefix and fail with the exact brew command to run —
+  including a from-source ReadStat recipe in case brew lacks the
+  formula — plus a `make READSTAT_PREFIX=/path` override.  Housekeeping
+  targets (clean, distclean, showpaths) are exempt from the checks.
+
+## v1.6.18 — macOS: vendored ReadStat (there is no brew formula)
+
+- Correction to v1.6.17's error message and README: **Homebrew has no
+  readstat formula** (verified against homebrew-core) — `brew install
+  readstat` was advice that cannot work, which is why the header guard
+  fired with an empty prefix on a machine with everything else
+  installed.  New `make deps-readstat` target: clones WizardMac/ReadStat
+  (--depth 1), builds it static into vendor/readstat, one command, ~a
+  minute; the Makefile auto-detects the vendored copy afterwards on
+  every platform and links libreadstat.a statically (one less runtime
+  dependency).  vendor/ is excluded from dist tarballs.  macOS setup is
+  now: brew install readline openblas lapack gsl && make deps-readstat
+  && make.  All 63 tests pass against ReadStat HEAD via the vendored
+  path on the Linux rig.
+
+## v1.6.19 — make deps-readstat can actually run
+
+- Bug 32 (chicken-and-egg, one release old): the v1.6.17 header guards
+  fire at Makefile PARSE time, so on a machine without readstat,
+  `make deps-readstat` — the cure the error message prescribes — died
+  of the same error before its recipe could run.  The exemption list
+  (clean/distclean/showpaths) now also covers deps-readstat and
+  check-deps: the cure and the diagnosis must both work precisely when
+  the dependency is missing.  Verified from a pristine extracted
+  tarball: deps-readstat → make → full test suite, no system readstat
+  involved.
+
+## v1.6.20 — macOS: iconv is not free (the last mile of deps-readstat)
+
+- Bug 33 — on macOS, `make deps-readstat` built libreadstat.a
+  successfully and then died linking ReadStat's bundled
+  extract_metadata tool: undefined _iconv/_iconv_open/_iconv_close for
+  arm64.  Root cause: iconv lives inside glibc on Linux but is a
+  SEPARATE libiconv on macOS, and ReadStat's configure does not add it.
+  Two-part fix: the deps-readstat recipe passes LIBS=-liconv to
+  ReadStat's configure on Darwin, and — the failure one step further
+  that this preempts — tea's own final link now appends -liconv (and
+  -lz for readstat's compression paths) on Darwin, since the static
+  libreadstat.a defers those symbols to the final link.  -lz joined the
+  common link line on all platforms (harmless where redundant); -liconv
+  stays Darwin-only, as Linux glibc provides iconv natively and has no
+  libiconv.so to link.  Linux revalidated from scratch: vendor rebuild,
+  clean build, 63/63.
+
+## v1.6.21 — clang-clean (Apple clang round, swept in one pass)
+
+- Bug 34 — Apple clang's -Wunused-but-set-variable (an error under
+  -Werror; Linux gcc does not flag these) stopped the macOS build at
+  estcmd.c.  Rather than fix one file per report, the whole tree was
+  swept with clang-15 locally; three distinct issues, all fixed
+  properly rather than suppressed: two genuinely dead counters in
+  estimates dir/drop (deleted — Stata is silent there anyway), and the
+  printf/fprintf log-tee macros redefining glibc's _FORTIFY_SOURCE
+  macros without #undef (clang's -Wmacro-redefined).
+- The Makefile is now compiler-aware: -Wno-format-truncation is
+  GCC-only and upstream clang under -Werror rejects unknown warning
+  options (Apple clang merely tolerates them) — the flag is applied
+  only when CC is gcc.
+- The full golden suite passes byte-identically on the clang-built
+  binary — a fifth verification axis alongside gcc-native, ASan,
+  WASM, and (pending Mico's machine) Apple silicon.
+
+## v1.6.22 — deep-clean under clang -Weverything
+
+- Proactive sweep with clang-15 at -Weverything (minus deliberately
+  pedantic families) to over-approximate any Apple clang generation.
+  The tree came back almost clean; three findings, all fixed on merit:
+  the `version` command embedded __DATE__/__TIME__ — a compile
+  timestamp that made builds non-reproducible byte-for-byte, gone (the
+  version string carries release identity); one genuinely confusing
+  dense one-liner in keep/drop reformatted (correct code, but
+  -Wmisleading-indentation and any human reader agreed it looked
+  wrong); the remaining family (-Wgnu-statement-expression in a macro)
+  is a deliberate GNU-ism outside every compiler's default set.
+- The golden suite passes byte-identically under the clang-built
+  binary at the strictest flag set.  If the macOS build still shows
+  errors beyond v1.6.21's fixes, send `make 2>&1 | grep error: |
+  sort -u` — the last paste arrived empty.
+
+## v1.6.23 — Bug 35: (long)missing is undefined behavior, and ARM proved it
+
+- Mico's Apple-silicon run — the fourth rig — failed test 11:
+  subinstr("aaa bbb aaa","aaa","X",.) returned the ORIGINAL string on
+  macOS while replacing all on Linux.  Root cause: the function
+  evaluator cast raw argument doubles to long, and casting a MISSING
+  (NaN-class) double is undefined behavior that diverges by ISA — x86's
+  cvttsd2si yields LONG_MIN (negative, accidentally meaning "all"),
+  arm64's fcvtzs yields 0 (limit zero: replace nothing).  Same source,
+  opposite results, no diagnostic anywhere.  Notably the WASM rig never
+  caught this: LLVM's wasm lowering happened to match x86.
+- Every numeric argument coercion in the evaluator (30 sites) now
+  checks missing FIRST and implements Stata's documented semantics:
+  subinstr/subinword n=. means all occurrences; substr n1=. gives "",
+  substr(s,n,.) gives the remainder; word(s,.)/char(.) give ""; the
+  entire date family propagates missing.  The outputs are now
+  ISA-independent by construction.
+- Test 64 locks the defined semantics for all of it — when it passes on
+  Apple silicon it is the ARM proof, since x86 accidentally produced
+  most of these answers already.
+
+## v1.6.24 — Apple-silicon test-suite portability (58/64 -> 64/64 expected)
+
+- Mico's first full suite run on Apple silicon: 58/64, test 64 GREEN —
+  the ARM proof of Bug 35's fix.  The six failures reduce to two causes,
+  both suite-side, no engine changes:
+- Five tests (56/57/58/60/63) printed `cd /tmp`'s output; macOS's /tmp
+  is a symlink to /private/tmp and cd prints the resolved getcwd().
+  Those tests never meant to assert the path — `quietly cd /tmp` now,
+  goldens re-blessed without the platform-dependent line.
+- Test 41: longley's _se[year] differs in the SIXTH significant digit
+  between x86 OpenBLAS and Apple-silicon OpenBLAS (.455479 vs .455478)
+  — the near-singular matrix reproduces across BLAS implementations
+  only to ~5-6 digits, one digit under the general display bound set in
+  v1.6.16.  Ruling: the general 6-digit table bound stays (it is right
+  for well-conditioned problems); the TEST now smoke-checks longley
+  with quietly regress + round()ed _b/_se/e() assertions at the
+  precision this matrix actually reproduces on every rig.  Longley
+  keeps doing its job — probing near-singularity — without holding the
+  byte-identity promise hostage to its own pathology.
+- With these, all 64 goldens are expected green on all five platforms:
+  x86 gcc, x86 clang, ASan/UBSan, WASM, and Apple silicon.

@@ -360,17 +360,25 @@ static EVal call_fn(Node*n,EvalCtx*c){
             }
         }
     }
-    else if(!strcmp(fn,"substr")){NEED(3) const char*s=a[0].is_str?a[0].str:""; long L=(long)strlen(s); long st=(long)A(1),ln=(long)A(2); if(st<0)st=L+st+1; long b=st-1; if(b<0)b=0; if(b>L)b=L; if(ln<0||b+ln>L)ln=L-b; char*o=strndup(s+b,ln);r=vstr(o);free(o);}
+    else if(!strcmp(fn,"substr")){NEED(3) const char*s=a[0].is_str?a[0].str:""; long L=(long)strlen(s);
+        if(sv_is_miss(A(1))){ r=vstr(""); }
+        else { long st=(long)A(1); long ln = sv_is_miss(A(2)) ? -1 : (long)A(2);   /* n2=. -> remainder (Stata) */
+        if(st<0)st=L+st+1; long b=st-1; if(b<0)b=0; if(b>L)b=L; if(ln<0||b+ln>L)ln=L-b; char*o=strndup(s+b,ln);r=vstr(o);free(o); } }
     else if(!strcmp(fn,"subinstr")){NEED(3) /* subinstr(s,from,to[,n]) */
         const char*s=a[0].is_str?a[0].str:"",*from=a[1].is_str?a[1].str:"",*to=a[2].is_str?a[2].str:"";
-        long lim=na>3? (long)A(3) : -1; size_t fl=strlen(from);
+        /* n = . means ALL (Stata-documented); a raw (long) of a missing
+         * double is UB and DIVERGES by ISA (x86 LONG_MIN, arm64 0) —
+         * subinstr silently no-opped on Apple silicon */
+        long lim=-1; if(na>3 && !sv_is_miss(A(3))) lim=(long)A(3);
+        size_t fl=strlen(from);
         char*out=calloc(1,1); size_t ol=0; const char*p=s; long cnt=0;
         while(*p){ if(fl&&!strncmp(p,from,fl)&&(lim<0||cnt<lim)){ size_t tl=strlen(to); out=realloc(out,ol+tl+1); memcpy(out+ol,to,tl); ol+=tl; out[ol]=0; p+=fl; cnt++; } else { out=realloc(out,ol+2); out[ol++]=*p++; out[ol]=0; } }
         r=vstr(out); free(out);
     }
     else if(!strcmp(fn,"subinword")){NEED(3) /* like subinstr but only on word boundaries */
         const char*s=a[0].is_str?a[0].str:"",*from=a[1].is_str?a[1].str:"",*to=a[2].is_str?a[2].str:"";
-        long lim=na>3? (long)A(3) : -1; size_t fl=strlen(from);
+        long lim=-1; if(na>3 && !sv_is_miss(A(3))) lim=(long)A(3);   /* . = all, see subinstr */
+        size_t fl=strlen(from);
         char*out=calloc(1,1); size_t ol=0; const char*p=s; long cnt=0;
         while(*p){
             /* careful: only safe to read p[fl] AFTER we know strncmp matched
@@ -388,7 +396,7 @@ static EVal call_fn(Node*n,EvalCtx*c){
         r=vstr(out); free(out);
     }
     else if(!strcmp(fn,"word")){NEED(2) /* nth word (1-indexed), -1 = last */
-        const char*s=a[0].is_str?a[0].str:""; long cnt=(long)A(1);
+        const char*s=a[0].is_str?a[0].str:""; long cnt = sv_is_miss(A(1)) ? 0 : (long)A(1);
         if(cnt==0){ r=vstr(""); }
         else {
             /* tokenize on whitespace, count words, return the n-th */
@@ -411,16 +419,16 @@ static EVal call_fn(Node*n,EvalCtx*c){
         r=vnum((double)nw);
     }
     else if(!strcmp(fn,"abbrev")){NEED(2) /* truncate to n chars, mark with ~ if shortened */
-        const char*s=a[0].is_str?a[0].str:""; long cnt=(long)A(1); long L=(long)strlen(s);
+        const char*s=a[0].is_str?a[0].str:""; long cnt = sv_is_miss(A(1)) ? 0 : (long)A(1); long L=(long)strlen(s);
         if(cnt<=0||L<=cnt){r=vstr(s);} else { char*o=malloc(cnt+1); memcpy(o,s,cnt-1); o[cnt-1]='~'; o[cnt]=0; r=vstr(o); free(o); }
     }
     else if(!strcmp(fn,"strdup")){NEED(2) /* concat n copies */
-        const char*s=a[0].is_str?a[0].str:""; long cnt=(long)A(1); if(cnt<0)cnt=0;
+        const char*s=a[0].is_str?a[0].str:""; long cnt = sv_is_miss(A(1)) ? 0 : (long)A(1); if(cnt<0)cnt=0;
         size_t L=strlen(s); char*o=malloc(L*(size_t)cnt+1);
         for(long i=0;i<cnt;i++) memcpy(o+i*L,s,L); o[L*cnt]=0; r=vstr(o); free(o);
     }
     else if(!strcmp(fn,"char")){NEED(1) /* codepoint -> single-char string (ASCII only here) */
-        long code=(long)A(0); char buf[2]; if(code>=0&&code<=255){buf[0]=(char)code;buf[1]=0;r=vstr(buf);} else r=vstr("");
+        long code = sv_is_miss(A(0)) ? -1 : (long)A(0); char buf[2]; if(code>=0&&code<=255){buf[0]=(char)code;buf[1]=0;r=vstr(buf);} else r=vstr("");
     }
     else if(!strcmp(fn,"string")||!strcmp(fn,"strofreal")){NEED(1)
         char buf[128]; double x=A(0);
@@ -472,7 +480,7 @@ static EVal call_fn(Node*n,EvalCtx*c){
     }
     else if(!strcmp(fn,"regexs")){NEED(1) /* extract n-th submatch from last regexm */
         extern char *tea_regex_submatch[20];
-        long nidx = (long)A(0);
+        long nidx = sv_is_miss(A(0)) ? -1 : (long)A(0);
         if(nidx < 0 || nidx >= 20 || !tea_regex_submatch[nidx]) r = vstr("");
         else r = vstr(tea_regex_submatch[nidx]);
     }
@@ -498,7 +506,9 @@ static EVal call_fn(Node*n,EvalCtx*c){
         } else r = vstr(s);
     }
     /* ---- date constructors ---- */
-    else if(!strcmp(fn,"mdy")){NEED(3) r=vnum((double)sdate_from_ymd((long)A(2),(unsigned)A(0),(unsigned)A(1)));}
+    else if(!strcmp(fn,"mdy")){NEED(3)
+        if(sv_is_miss(A(0))||sv_is_miss(A(1))||sv_is_miss(A(2))) r=vnum(SV_MISS);
+        else r=vnum((double)sdate_from_ymd((long)A(2),(unsigned)A(0),(unsigned)A(1)));}
     else if(!strcmp(fn,"td")){NEED(1) /* td(01jan2020) | td(2020-01-15) */
         const char *s=a[0].is_str?a[0].str:""; int dd=0,yy=0; unsigned mm=0;
         static const char *M="janfebmaraprmayjunjulaugsepoctnovdec";
@@ -512,28 +522,28 @@ static EVal call_fn(Node*n,EvalCtx*c){
     else if(!strcmp(fn,"tw")){NEED(1) int y=0,w=1; sscanf(a[0].is_str?a[0].str:"","%dw%d",&y,&w); r=vnum((double)((y-1960)*52+(w-1)));}
     else if(!strcmp(fn,"th")){NEED(1) int y=0,h=1; sscanf(a[0].is_str?a[0].str:"","%dh%d",&y,&h); r=vnum((double)((y-1960)*2+(h-1)));}
     else if(!strcmp(fn,"ty")){NEED(1) int y=0; sscanf(a[0].is_str?a[0].str:"","%d",&y); r=vnum((double)y);}
-    else if(!strcmp(fn,"ym")){NEED(2) r=vnum(((long)A(0)-1960)*12 + ((long)A(1)-1));}
-    else if(!strcmp(fn,"yq")){NEED(2) r=vnum(((long)A(0)-1960)*4 + ((long)A(1)-1));}
-    else if(!strcmp(fn,"yh")){NEED(2) r=vnum(((long)A(0)-1960)*2 + ((long)A(1)-1));}
-    else if(!strcmp(fn,"yw")){NEED(2) r=vnum(((long)A(0)-1960)*52 + ((long)A(1)-1));}
-    else if(!strcmp(fn,"yofd")){NEED(1) long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)y);}
-    else if(!strcmp(fn,"year")){NEED(1) long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)y);}
-    else if(!strcmp(fn,"month")){NEED(1) long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)m);}
-    else if(!strcmp(fn,"day")){NEED(1) long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)d);}
-    else if(!strcmp(fn,"dow")){NEED(1) long sd=(long)A(0); long wd=((sd%7)+5)%7; if(wd<0)wd+=7; r=vnum((double)wd);}
-    else if(!strcmp(fn,"quarter")){NEED(1) long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)((m-1)/3+1));}
-    else if(!strcmp(fn,"halfyear")){NEED(1) long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)((m-1)/6+1));}
-    else if(!strcmp(fn,"doy")){NEED(1) long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)((long)A(0)-sdate_from_ymd(y,1,1)+1));}
-    else if(!strcmp(fn,"week")){NEED(1) long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);long doy=(long)A(0)-sdate_from_ymd(y,1,1);r=vnum((double)(doy/7+1));}
+    else if(!strcmp(fn,"ym")){NEED(2) if(sv_is_miss(A(0))||sv_is_miss(A(1))) r=vnum(SV_MISS); else r=vnum(((long)A(0)-1960)*12 + ((long)A(1)-1));}
+    else if(!strcmp(fn,"yq")){NEED(2) if(sv_is_miss(A(0))||sv_is_miss(A(1))) r=vnum(SV_MISS); else r=vnum(((long)A(0)-1960)*4 + ((long)A(1)-1));}
+    else if(!strcmp(fn,"yh")){NEED(2) if(sv_is_miss(A(0))||sv_is_miss(A(1))) r=vnum(SV_MISS); else r=vnum(((long)A(0)-1960)*2 + ((long)A(1)-1));}
+    else if(!strcmp(fn,"yw")){NEED(2) if(sv_is_miss(A(0))||sv_is_miss(A(1))) r=vnum(SV_MISS); else r=vnum(((long)A(0)-1960)*52 + ((long)A(1)-1));}
+    else if(!strcmp(fn,"yofd")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)y); }}
+    else if(!strcmp(fn,"year")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)y); }}
+    else if(!strcmp(fn,"month")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)m); }}
+    else if(!strcmp(fn,"day")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)d); }}
+    else if(!strcmp(fn,"dow")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long sd=(long)A(0); long wd=((sd%7)+5)%7; if(wd<0)wd+=7; r=vnum((double)wd);} }
+    else if(!strcmp(fn,"quarter")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)((m-1)/3+1)); }}
+    else if(!strcmp(fn,"halfyear")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)((m-1)/6+1)); }}
+    else if(!strcmp(fn,"doy")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)((long)A(0)-sdate_from_ymd(y,1,1)+1)); }}
+    else if(!strcmp(fn,"week")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);long doy=(long)A(0)-sdate_from_ymd(y,1,1);r=vnum((double)(doy/7+1)); }}
     /* converters: serial-of-X */
-    else if(!strcmp(fn,"mofd")){NEED(1) long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)((y-1960)*12+(m-1)));}
-    else if(!strcmp(fn,"qofd")){NEED(1) long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)((y-1960)*4+((m-1)/3)));}
-    else if(!strcmp(fn,"hofd")){NEED(1) long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)((y-1960)*2+((m-1)/6)));}
-    else if(!strcmp(fn,"wofd")){NEED(1) long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);long doy=(long)A(0)-sdate_from_ymd(y,1,1);r=vnum((double)((y-1960)*52+doy/7));}
-    else if(!strcmp(fn,"dofm")){NEED(1) long mm=(long)A(0);long y=1960+mm/12;long m=mm%12; if(m<0){m+=12;y--;} r=vnum((double)sdate_from_ymd(y,(unsigned)(m+1),1));}
-    else if(!strcmp(fn,"dofq")){NEED(1) long qq=(long)A(0);long y=1960+qq/4;long q=qq%4; if(q<0){q+=4;y--;} r=vnum((double)sdate_from_ymd(y,(unsigned)(q*3+1),1));}
-    else if(!strcmp(fn,"dofh")){NEED(1) long hh=(long)A(0);long y=1960+hh/2;long h=hh%2; if(h<0){h+=2;y--;} r=vnum((double)sdate_from_ymd(y,(unsigned)(h*6+1),1));}
-    else if(!strcmp(fn,"dofy")){NEED(1) r=vnum((double)sdate_from_ymd((long)A(0),1,1));}
+    else if(!strcmp(fn,"mofd")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)((y-1960)*12+(m-1))); }}
+    else if(!strcmp(fn,"qofd")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)((y-1960)*4+((m-1)/3))); }}
+    else if(!strcmp(fn,"hofd")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);r=vnum((double)((y-1960)*2+((m-1)/6))); }}
+    else if(!strcmp(fn,"wofd")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long y;unsigned m,d;civil_from_sdate((long)A(0),&y,&m,&d);long doy=(long)A(0)-sdate_from_ymd(y,1,1);r=vnum((double)((y-1960)*52+doy/7)); }}
+    else if(!strcmp(fn,"dofm")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long mm=(long)A(0);long y=1960+mm/12;long m=mm%12; if(m<0){m+=12;y--;} r=vnum((double)sdate_from_ymd(y,(unsigned)(m+1),1)); }}
+    else if(!strcmp(fn,"dofq")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long qq=(long)A(0);long y=1960+qq/4;long q=qq%4; if(q<0){q+=4;y--;} r=vnum((double)sdate_from_ymd(y,(unsigned)(q*3+1),1)); }}
+    else if(!strcmp(fn,"dofh")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { long hh=(long)A(0);long y=1960+hh/2;long h=hh%2; if(h<0){h+=2;y--;} r=vnum((double)sdate_from_ymd(y,(unsigned)(h*6+1),1)); }}
+    else if(!strcmp(fn,"dofy")){NEED(1) if(sv_is_miss(A(0))){r=vnum(SV_MISS);} else { r=vnum((double)sdate_from_ymd((long)A(0),1,1)); }}
     /* period-date string constructors: quarterly("2020-Q3","YQ") etc.
      * Integer tokens are extracted left-to-right; the mask assigns them
      * (Y = year, and Q/M/H/W = the sub-year period).  Two-digit years

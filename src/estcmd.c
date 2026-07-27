@@ -121,9 +121,6 @@ static int do_estimates_dir(Cmd *c)
         printf("(no stored estimates)\n");
         return 0;
     }
-    /* Count first so we can format the header sensibly. */
-    int n = 0;
-    for(StoredEst *s = c->ws->stored_est; s; s = s->next) n++;
     printf("\n");
     printf("    %-20s %-12s %10s   %s\n", "name", "command", "N", "depvar");
     printf("    %-20s %-12s %10s   %s\n", "----", "-------", "-", "------");
@@ -141,7 +138,6 @@ static int do_estimates_drop(Cmd *c, const char *arg)
 {
     char tok[33];
     const char *p = arg;
-    int n_dropped = 0;
     while(*p){
         while(*p == ' ') p++;
         if(!*p) break;
@@ -150,11 +146,11 @@ static int do_estimates_drop(Cmd *c, const char *arg)
         tok[j] = 0;
         if(!strcmp(tok, "_all")){
             StoredEst *s = c->ws->stored_est;
-            while(s){ StoredEst *n2 = s->next; est_free(s->est); free(s); s = n2; n_dropped++; }
+            while(s){ StoredEst *n2 = s->next; est_free(s->est); free(s); s = n2; }
             c->ws->stored_est = NULL;
             break;
         }
-        if(stored_find(c->ws, tok)){ stored_remove(c->ws, tok); n_dropped++; }
+        if(stored_find(c->ws, tok)){ stored_remove(c->ws, tok); }
         else fprintf(stderr,"estimates drop: %s not found (skipped)\n", tok);
     }
     return 0;

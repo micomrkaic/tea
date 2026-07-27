@@ -4,7 +4,7 @@
 * golden tests predate the feature).  Interactive input never echoes
 * (it is already visible); the web editor's Run turns echo on so the
 * terminal shows commands with their results.
-cd /tmp
+quietly cd /tmp
 tempname t
 file open fh using /tmp/t63_inner.do, write replace
 file write fh "clear" _n

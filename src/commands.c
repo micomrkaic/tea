@@ -122,7 +122,13 @@ static int tea_fprintf(FILE *fp, const char *fmt, ...){
 }
 
 /* Route every printf/fprintf(stdout,...) in this TU through the tee.
- * Defined AFTER stdio.h so the system prototypes are intact. */
+ * Defined AFTER stdio.h so the system prototypes are intact.  The
+ * #undef matters: under -D_FORTIFY_SOURCE with optimization, glibc
+ * itself defines printf/fprintf as macros, and clang's
+ * -Wmacro-redefined (an error under -Werror on Apple clang) rejects a
+ * silent redefinition. */
+#undef  printf
+#undef  fprintf
 #define printf  tea_printf
 #define fprintf tea_fprintf
 
@@ -970,8 +976,11 @@ static int do_dropkeep(Cmd *c,int keep){
             if(c->in_hi>0&&(long)i+1>c->in_hi)sel=0;
             if(sel&&ifn){ec.i=i;ec.n=(long)i+1;ec.N=(long)c->f->nobs;sel=expr_eval_bool(ifn,&ec);}
             int survive = keep? sel : !sel;
-            if(survive){ if(w!=i) for(int v=0;v<c->f->nvar;v++){ Variable*V=&c->f->vars[v];
-                if(V->type==VT_NUM)V->num[w]=V->num[i]; else {free(V->str[w]);V->str[w]=V->str[i];V->str[i]=NULL;} } w++; }
+            if(survive){
+                if(w!=i) for(int v=0;v<c->f->nvar;v++){ Variable*V=&c->f->vars[v];
+                    if(V->type==VT_NUM)V->num[w]=V->num[i]; else {free(V->str[w]);V->str[w]=V->str[i];V->str[i]=NULL;} }
+                w++;
+            }
             else { for(int v=0;v<c->f->nvar;v++){ Variable*V=&c->f->vars[v]; if(V->type==VT_STR){free(V->str[i]);V->str[i]=NULL;} } }
         }
         /* compact survivors. Sort order and panel/time bookkeeping survive
@@ -4666,7 +4675,9 @@ static int do_version(Cmd *c){
     char a[32]=""; sscanf(c->args,"%31s",a);
     if(a[0] && (isdigit((unsigned char)a[0]))) return 0;
     printf("tea %s — tiny econometric assistant\n",TEA_VERSION);
-    printf("built %s %s\n",__DATE__,__TIME__);
+    /* no __DATE__/__TIME__: a compile timestamp makes builds
+     * non-reproducible byte-for-byte — the version string carries the
+     * release identity */
     printf("Copyright (C) 2026 Mico Mrkaic.  License GPLv3+: GNU GPL v3 or later.\n");
     printf("This is free software: you are free to change and redistribute it.\n");
     printf("There is NO WARRANTY, to the extent permitted by law.\n");

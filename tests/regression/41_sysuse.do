@@ -10,7 +10,17 @@ xtreg invest value capital, fe
 * clear guard: loading over data must fail without ,clear (capture: no abort)
 capture sysuse longley
 sysuse longley, clear
-regress employed gnpdeflator gnp unemployed armedforces population year
+* longley is deliberately near-singular: OpenBLAS on x86, OpenBLAS on
+* Apple silicon, and the WASM reference BLAS agree on this matrix only
+* to ~5-6 significant digits, so the full coefficient table is not
+* byte-reproducible across rigs.  Smoke-test the regression at the
+* precision this matrix actually reproduces everywhere.
+quietly regress employed gnpdeflator gnp unemployed armedforces population year
+display e(N)
+display round(e(r2), .0001)
+display round(_b[year], .0001)
+display round(_se[year], .0001)
+display round(_b[_cons], .01)
 
 sysuse airline, clear
 summarize passengers

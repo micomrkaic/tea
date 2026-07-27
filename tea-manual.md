@@ -96,7 +96,7 @@ apt install libreadline-dev libopenblas-dev liblapacke-dev \
 On macOS (Homebrew):
 
 ``` bash
-brew install readline openblas lapack gsl readstat
+brew install readline openblas lapack gsl && make deps-readstat
 ```
 
 Run `make check-deps` after installing to verify every required header

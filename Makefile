@@ -15,6 +15,15 @@ VER := $(strip $(shell cat VERSION))
 CC       ?= cc
 UNAME_S  := $(shell uname -s)
 
+# ---- vendored ReadStat (no Homebrew formula exists for it) ----------------
+# `make deps-readstat` clones and builds WizardMac/ReadStat into vendor/;
+# when present it wins over any system/brew resolution on every platform.
+ifneq ($(wildcard vendor/readstat/include/readstat.h),)
+  READSTAT_PREFIX := $(abspath vendor/readstat)
+  VENDOR_RS_CFLAGS := -I$(READSTAT_PREFIX)/include
+  VENDOR_RS_LD     := -L$(READSTAT_PREFIX)/lib
+endif
+
 # ---- warnings ------------------------------------------------------------
 # Strict-but-practical. Every warning is a build failure; suppressions are
 # documented individually.
@@ -34,6 +43,12 @@ UNAME_S  := $(shell uname -s)
 # Not enabled by default (would surface real issues but produce a lot of
 # noise on the existing codebase; consider for a future cleanup pass):
 #   -Wconversion -Wsign-conversion -Wpedantic -Wcast-align
+# -Wno-format-truncation is GCC-only; upstream clang under -Werror
+# rejects unknown warning options (Apple clang merely tolerates them).
+CC_IS_CLANG := $(findstring clang,$(shell $(CC) --version 2>/dev/null))
+ifeq ($(CC_IS_CLANG),)
+  WNO_FMT_TRUNC := -Wno-format-truncation
+endif
 WARNINGS = -Wall -Wextra -Werror \
            -Wshadow \
            -Wmissing-prototypes \
@@ -43,7 +58,7 @@ WARNINGS = -Wall -Wextra -Werror \
            -Wpointer-arith \
            -Wwrite-strings \
            -Wno-misleading-indentation \
-           -Wno-format-truncation \
+           $(WNO_FMT_TRUNC) \
            -Wno-unused-parameter \
            -Wno-unused-result
 
@@ -78,6 +93,34 @@ ifeq ($(UNAME_S),Darwin)
     GSL_PREFIX      ?= /opt/homebrew/opt/gsl
     READSTAT_PREFIX ?= /opt/homebrew/opt/readstat
   endif
+  # Verify the HEADERS exist, not just that a prefix string came back:
+  # `brew --prefix FORMULA` prints the would-be opt path even for a
+  # formula that is not installed (exit 0), and comes back empty in
+  # other environments — either way the user's first error was a
+  # mystifying "readstat.h not found" behind a garbage -I path.
+  # Skipped for clean/dist-clean so housekeeping never needs the deps.
+  # exempt goals that must work precisely WHEN deps are missing:
+  # deps-readstat is the cure and check-deps is the diagnosis — neither
+  # can be allowed to die of the disease at parse time
+  ifeq ($(filter clean distclean showpaths deps-readstat check-deps,$(MAKECMDGOALS)),)
+    ifeq ($(wildcard $(READLINE_PREFIX)/include/readline/readline.h),)
+      $(error readline headers not found under '$(READLINE_PREFIX)' — brew install readline (or: make READLINE_PREFIX=/path))
+    endif
+    ifeq ($(wildcard $(OPENBLAS_PREFIX)/include/cblas.h),)
+      $(error openblas headers not found under '$(OPENBLAS_PREFIX)' — brew install openblas (or: make OPENBLAS_PREFIX=/path))
+    endif
+    ifeq ($(wildcard $(LAPACK_PREFIX)/include/lapacke.h),)
+      $(error lapack headers not found under '$(LAPACK_PREFIX)' — brew install lapack (or: make LAPACK_PREFIX=/path))
+    endif
+    ifeq ($(wildcard $(GSL_PREFIX)/include/gsl/gsl_cdf.h),)
+      $(error gsl headers not found under '$(GSL_PREFIX)' — brew install gsl (or: make GSL_PREFIX=/path))
+    endif
+    ifeq ($(wildcard $(READSTAT_PREFIX)/include/readstat.h),)
+      $(error readstat headers not found under '$(READSTAT_PREFIX)'. Homebrew has no readstat formula — run `make deps-readstat` once (clones and builds it into vendor/, auto-detected afterwards), or point at an existing build with `make READSTAT_PREFIX=/path`)
+    endif
+  endif
+  READSTAT_CONF_EXTRA := LIBS=-liconv
+  PLATFORM_EXTRA_LIBS := -liconv -lz
   PLATFORM_CFLAGS  = -I$(READLINE_PREFIX)/include \
                      -I$(OPENBLAS_PREFIX)/include \
                      -I$(LAPACK_PREFIX)/include \
@@ -93,8 +136,8 @@ else
   PLATFORM_LDFLAGS =
 endif
 
-CFLAGS  = $(BASE_CFLAGS) $(PLATFORM_CFLAGS)
-LDFLAGS = $(PLATFORM_LDFLAGS) -llapacke -lopenblas -lgsl -lreadline -lreadstat -lm
+CFLAGS  = $(BASE_CFLAGS) $(PLATFORM_CFLAGS) $(VENDOR_RS_CFLAGS)
+LDFLAGS = $(VENDOR_RS_LD) $(PLATFORM_LDFLAGS) -llapacke -lopenblas -lgsl -lreadline -lreadstat -lz $(PLATFORM_EXTRA_LIBS) -lm
 
 SRC     = $(wildcard src/*.c)
 OBJ     = $(SRC:.c=.o)
@@ -156,7 +199,7 @@ check-deps:
 	    echo "Some headers were not found.  Install the dev packages:"; \
 	    echo "  Debian/Ubuntu: apt install libreadline-dev libopenblas-dev \\"; \
 	    echo "                            liblapacke-dev libgsl-dev libreadstat-dev"; \
-	    echo "  macOS (brew):  brew install readline openblas lapack gsl readstat"; \
+	    echo "  macOS (brew):  brew install readline openblas lapack gsl && make deps-readstat"; \
 	    exit 1; \
 	fi
 
@@ -196,6 +239,19 @@ web/tea.js: $(WASM_SRC)
 	  -sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 -lnodefs.js \
 	  -o web/tea.js
 
+# build ReadStat into vendor/readstat (one-time; ~a minute).  Needs
+# autotools: brew install autoconf automake libtool  (macOS) or
+# apt install autoconf automake libtool (Linux).
+deps-readstat: vendor/readstat/include/readstat.h
+vendor/readstat/include/readstat.h:
+	@command -v autoreconf >/dev/null || { echo "autotools required: brew install autoconf automake libtool"; exit 1; }
+	rm -rf vendor/ReadStat-src
+	git clone --depth 1 https://github.com/WizardMac/ReadStat vendor/ReadStat-src
+	cd vendor/ReadStat-src && ./autogen.sh && \
+	  ./configure --prefix=$(abspath vendor/readstat) --enable-shared=no $(READSTAT_CONF_EXTRA) && \
+	  $(MAKE) && $(MAKE) install
+	@echo "== ReadStat vendored under vendor/readstat — plain 'make' will now find it"
+
 wasm-clean:
 	rm -rf web/tea.js web/tea.wasm
 
@@ -220,7 +276,7 @@ sync-web-version:
 # release tarball: test-gated, named from VERSION, invariant tea/ top level
 dist: test
 	rm -f src/*.o src/*.d tea tea-debug
-	tar czf /tmp/tea-v$(VER).tar.gz --exclude='.git' --exclude='*.o' \
+	tar czf /tmp/tea-v$(VER).tar.gz --exclude='.git' --exclude='tea/vendor' --exclude='*.o' \
 	  --exclude='*.d' --exclude='tea/*.tar.gz' -C .. tea
 	mv /tmp/tea-v$(VER).tar.gz .
 	@echo "dist: tea-v$(VER).tar.gz"

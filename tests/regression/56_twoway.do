@@ -3,7 +3,7 @@
 * yline, ylabel rule vs range semantics, legend, series-level axis
 * titles, and the name() registry writing NAME.svg.  Golden SVG diffs.
 clear
-cd /tmp
+quietly cd /tmp
 set obs 30
 set seed 777
 gen t = _n

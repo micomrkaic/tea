@@ -2,7 +2,7 @@
 * labels + relabel(), label(angle() labsize()), noout, outliers drawn by
 * default, and graph combine from the name() registry.  Golden SVG diffs.
 clear
-cd /tmp
+quietly cd /tmp
 set obs 120
 set seed 991
 gen g1 = 1 + mod(_n-1, 3)

@@ -9,7 +9,7 @@
 *     delimited branch and was silently ignored (hardcoded preserve) on
 *     the excel branch.
 clear
-cd /tmp
+quietly cd /tmp
 tempname junk
 file open fh using /tmp/t60.csv, write replace
 file write fh "United Nations junk title" _n
