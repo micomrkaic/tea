@@ -3,3 +3,4 @@ tea-debug
 *.o
 *.d
 *.tar.gz
+vendor/
