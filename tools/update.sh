@@ -33,7 +33,7 @@ cd "$ROOT"
 if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 && \
    git -C "$ROOT" remote get-url origin >/dev/null 2>&1; then
   echo "== syncing with origin (pull --rebase) before applying the tarball"
-  git -C "$ROOT" pull --rebase origin master || {
+  git -C "$ROOT" pull --rebase --autostash origin master || {
     echo "!! pull --rebase failed — resolve conflicts first, then re-run update.sh" >&2; exit 1; }
 fi
 
@@ -56,7 +56,10 @@ echo
 echo "== git status (review before shipping)"
 git status --short | head -30
 echo
-printf 'commit, tag v%s, and push? [y/N] ' "$VER"; read -r a
+printf 'commit, tag v%s, and push? [y/N] ' "$VER"
+# read from the TERMINAL: stdin may have been consumed upstream, which
+# silently turned every 'y' into a decline
+read -r a < /dev/tty || a=n
 [ "$a" = y ] || { echo "stopped: extracted+verified, nothing committed"; exit 0; }
 
 git add -A

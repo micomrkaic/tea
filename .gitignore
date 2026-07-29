@@ -4,3 +4,4 @@ tea-debug
 *.d
 *.tar.gz
 vendor/
+/*.svg
