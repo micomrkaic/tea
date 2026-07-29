@@ -28,6 +28,15 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
   echo "refusing: $ROOT does not look like the tea repo" >&2; exit 1; }
 cd "$ROOT"
 
+# two-machine guard: refuse to layer a tarball onto a stale master —
+# integrating remote work AFTER committing means conflicts at push time
+if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 && \
+   git -C "$ROOT" remote get-url origin >/dev/null 2>&1; then
+  echo "== syncing with origin (pull --rebase) before applying the tarball"
+  git -C "$ROOT" pull --rebase origin master || {
+    echo "!! pull --rebase failed — resolve conflicts first, then re-run update.sh" >&2; exit 1; }
+fi
+
 TOP=$(tar tzf "$TARBALL" | head -1 | cut -d/ -f1)
 case "$TOP" in
   tea)          STRIP=1 ;;

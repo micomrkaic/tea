@@ -24,6 +24,7 @@
 #include "plot.h"
 #include "graph.h"
 #include "sysdata.h"
+#include "xlsx.h"
 #include "progress.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -2235,7 +2236,11 @@ static int run_with_activity(const char *cmd, const char *label){
 #endif
 }
 
-/* shell out to ssconvert (gnumeric) or libreoffice to turn xlsx/ods into csv.
+/* Turn a spreadsheet into CSV at a temp path.  For .xlsx the NATIVE
+ * reader (src/xlsx.c: zip + inflate + sheet XML) is used — no external
+ * tools, identical on native and WASM/browser builds.  ssconvert or
+ * libreoffice remain as the path for .ods and as a fallback should the
+ * native reader fail on an exotic file.
  * Returns 0 on success and writes the temp .csv path into out_path. */
 static int convert_spreadsheet(const char *src, const char *sheet, char *out_path, size_t op_sz){
     if(access(src,R_OK)!=0){
@@ -2244,6 +2249,24 @@ static int convert_spreadsheet(const char *src, const char *sheet, char *out_pat
             tea_err("(note: the path contains backslashes \u2014 on Linux/macOS use forward slashes)\n");
         return 601;
     }
+    /* NATIVE path for .xlsx: no external tools, works in the browser.
+     * Cached formula values, shared strings, rich runs, sheet() by name
+     * all handled; ssconvert stays as the .ods path / exotic fallback. */
+    { size_t sl = strlen(src);
+      if(sl > 5 && !strcasecmp(src + sl - 5, ".xlsx")){
+        struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts);
+        unsigned long tok=(unsigned long)getpid() ^ (unsigned long)ts.tv_nsec ^ ((unsigned long)ts.tv_sec<<20);
+        snprintf(out_path, op_sz, "/tmp/tea-xlsx-%lx.csv", tok);
+        int nrc = xlsx_to_csv(src, sheet, out_path);
+        if(nrc == 0) return 0;
+        /* no such sheet is a USER error — report it rather than letting a
+         * fallback converter silently pick a different sheet */
+        if(sheet && sheet[0]){
+            tea_err("import excel: sheet '%s' not found in %s\n", sheet, src);
+            return 601;
+        }
+        /* otherwise fall through to the external converters */
+    } }
     /* try ssconvert first (gnumeric — fast, scriptable) */
     int have_ss = (system("command -v ssconvert >/dev/null 2>&1")==0);
 
@@ -2406,7 +2429,16 @@ static int do_import(Cmd *c){
         if(rngcsv[0]) unlink(rngcsv);
         unlink(tmpcsv);
         /* try to remove the temp dir; ignore failure */
-        char *slash=strrchr(tmpcsv,'/'); if(slash){ *slash=0; rmdir(tmpcsv); }
+        /* remove the per-import directory the ssconvert path creates —
+         * and ONLY that: the native xlsx path writes straight into /tmp,
+         * and rmdir("/tmp") silently no-ops on Linux (non-empty) but
+         * SUCCEEDED on the browser's MEMFS once our unlinks emptied it,
+         * deleting /tmp itself and breaking every later temp file. */
+        char *slash=strrchr(tmpcsv,'/');
+        if(slash){ *slash=0;
+            const char *base=strrchr(tmpcsv,'/'); base = base? base+1 : tmpcsv;
+            if(!strncmp(base,"tea-xlsx",8)) rmdir(tmpcsv);
+        }
         if(rc){ tea_err("import %s: conversion produced no usable CSV\n",w1); return rc; }
         snprintf(c->f->source,sizeof c->f->source,"%s",fn);
         if(!c->quiet) printf("(%d vars, %zu obs)\n",c->f->nvar,c->f->nobs);
@@ -2575,6 +2607,9 @@ static void csv_quote_write(FILE *fp, const char *s, char delim)
     }
     fputc('"', fp);
 }
+
+void csv_quote_write_pub(FILE *fp, const char *s, char delim);
+void csv_quote_write_pub(FILE *fp, const char *s, char delim){ csv_quote_write(fp, s, delim); }
 
 static int do_export(Cmd *c){
     char fn[1024]=""; const char *s=c->args; char w1[32]; sscanf(s,"%31s",w1); s+=strlen(w1);

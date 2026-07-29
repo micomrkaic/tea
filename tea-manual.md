@@ -304,6 +304,11 @@ missing extension to `.dta`.
     import excel "WPP2024.xlsx", sheet("Estimates") ///
         cellrange(A17:AF22000) firstrow case(lower) clear
 
+Excel import is NATIVE: tea reads .xlsx itself (including cached
+formula values and multi-sheet workbooks) with no external converter —
+identically on Linux, macOS, and in the browser, where a dragged-in
+workbook imports directly.  Only .ods still uses ssconvert/libreoffice.
+
 `cellrange(A17[:AF22000])` restricts an Excel import to a sheet
 rectangle — real workbooks (the UN WPP file) carry title junk above the
 table, and with `firstrow` the range's FIRST row is the header row.

@@ -1329,3 +1329,30 @@ used in `egen`.
   names in export tables (publication behavior); it was simply
   unobservable until bundled data had labels.  Test 65 locks labels
   across all six datasets.
+
+## v1.6.26 — native Excel import: the browser reads xlsx now
+
+- NEW — src/xlsx.c: a native .xlsx reader (zip parsing + zlib inflate +
+  sheet XML), replacing the ssconvert shell-out for .xlsx.  No gnumeric
+  or libreoffice needed anywhere, and — the point — `import excel`
+  works IN THE BROWSER: drag a workbook into the page and import it.
+  Handled: shared strings (incl. rich-text runs), CACHED FORMULA VALUES
+  (a cell holding ='Sheet'!B2 imports its last evaluated value),
+  inline strings, booleans, XML entities, gap cells, sheet() selection
+  by name with a loud 601 for a missing sheet.  Cells are emitted as
+  CSV to the same temp path as before, so firstrow/case()/cellrange()
+  behave identically.  ssconvert remains the .ods path and an exotic-
+  file fallback.  The WASM build links an inflate-only zlib built from
+  madler/zlib source.
+- Bug 36 — the ssconvert-era cleanup rmdir'd the temp CSV's PARENT
+  directory.  Correct when that parent was the per-import
+  /tmp/tea-xlsx-PID/ dir; with the native path writing straight into
+  /tmp it became rmdir("/tmp") — silently a no-op on Linux (non-empty)
+  but SUCCESSFUL on the browser's MEMFS once our own unlinks emptied
+  it: /tmp deleted, every later temp operation (sysuse!) broken.  The
+  rmdir now fires only for directories named tea-xlsx*.  Found because
+  the demo rehearsal ran import-then-sysuse in one session — exactly
+  the order a real workflow uses.
+- Test 66 (with a stored-zip fixture in tests/fixtures/) locks the
+  native reader on all rigs — including WASM, where import excel was
+  previously impossible.
