@@ -67,7 +67,7 @@
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
   <div class="tagline">tiny econometric assistant</div>
-  <div class="ver">v<!--TEAVER-->1.6.27<!--/TEAVER--> &middot; runs entirely in your browser</div>
+  <div class="ver">v<!--TEAVER-->1.6.28<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
   <div class="foot">free software (GPLv3) &middot; no data leaves your machine</div>
@@ -359,17 +359,62 @@ window.addEventListener('drop', async ev => {
   ed._lastCursorRow = 0; ed.render();
 });
 
+/* Multiple programmatic downloads are gated behind a browser permission
+ * prompt, and the attempts that TRIGGERED the prompt are discarded —
+ * "Allow" only covers future clicks.  So: never fire more than one
+ * download.  One new file downloads directly; several are bundled into
+ * a single ZIP (stored entries, no compression) assembled right here. */
+function crc32(buf) {
+  if (!crc32.t) { crc32.t = new Int32Array(256);
+    for (let i = 0; i < 256; i++) { let c = i;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (c >>> 1) ^ 0xEDB88320 : c >>> 1;
+      crc32.t[i] = c; } }
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = (c >>> 8) ^ crc32.t[(c ^ buf[i]) & 0xFF];
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function storedZip(files) {   /* files: [{name, data:Uint8Array}] */
+  const enc = new TextEncoder(); const parts = []; const central = [];
+  let off = 0;
+  const u16 = v => new Uint8Array([v & 255, (v >> 8) & 255]);
+  const u32 = v => new Uint8Array([v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255]);
+  for (const f of files) {
+    const nm = enc.encode(f.name), crc = crc32(f.data);
+    const head = [u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0),
+                  u32(crc), u32(f.data.length), u32(f.data.length),
+                  u16(nm.length), u16(0)];
+    const headLen = 30 + nm.length;
+    parts.push(...head, nm, f.data);
+    central.push([u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0),
+                  u32(crc), u32(f.data.length), u32(f.data.length),
+                  u16(nm.length), u16(0), u16(0), u16(0), u16(0), u32(0),
+                  u32(off), nm]);
+    off += headLen + f.data.length;
+  }
+  const cdStart = off; let cdLen = 0;
+  for (const e of central) { for (const p of e) { parts.push(p); cdLen += p.length; } }
+  parts.push(u32(0x06054b50), u16(0), u16(0), u16(central.length), u16(central.length),
+             u32(cdLen), u32(cdStart), u16(0));
+  return new Blob(parts, { type: 'application/zip' });
+}
 document.getElementById('dl').addEventListener('click', () => {
-  let n = 0;
+  const files = [];
   for (const f of M.FS.readdir('/')) {
     if (known.has(f) || f === '.' || f === '..') continue;
     try {
       if (!M.FS.isFile(M.FS.stat('/' + f).mode)) continue;
-      const data = M.FS.readFile('/' + f);
-      triggerDownload(new Blob([data]), f); n++;
+      files.push({ name: f, data: M.FS.readFile('/' + f) });
     } catch(e) {}
   }
-  term.writeln(`\r\n(${n} new file${n===1?'':'s'} downloaded)`);
+  if (files.length === 0) {
+    term.writeln('\r\n(no new files to download)');
+  } else if (files.length === 1) {
+    triggerDownload(new Blob([files[0].data]), files[0].name);
+    term.writeln(`\r\n(downloaded ${files[0].name})`);
+  } else {
+    triggerDownload(storedZip(files), 'tea-workspace.zip');
+    term.writeln(`\r\n(downloaded tea-workspace.zip: ${files.map(f=>f.name).join(', ')})`);
+  }
   ed._lastCursorRow = 0; ed.render();
 });
 </script>

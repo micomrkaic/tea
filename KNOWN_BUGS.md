@@ -1371,3 +1371,18 @@ used in `egen`.
   the browser then dropped the baton.  Both handlers now share one
   triggerDownload(): append to DOM, click, remove, revoke deferred
   10 s.  Web UI only; the engine is unchanged.
+
+## v1.6.28 — Bug 38: multi-file download discarded by the permission prompt
+
+- v1.6.27 fixed the detached-anchor and premature-revoke defects, and
+  single-file downloads (Save .do) work.  But "Download workspace
+  files" with SEVERAL new files still delivered nothing: Chromium
+  gates multiple programmatic downloads behind a permission prompt,
+  and the attempts that TRIGGERED the prompt are discarded — "Allow"
+  only covers future clicks.  Diagnosed live on Edge the night before
+  an IMF demo.
+- Architectural fix: never fire more than one download.  One new file
+  downloads directly; several are bundled client-side into a single
+  tea-workspace.zip (stored entries, CRC32, plain JS — ~50 lines,
+  validated byte-for-byte against unzip).  One file, one download, no
+  permission prompt, every browser.  Web UI only; engine unchanged.
