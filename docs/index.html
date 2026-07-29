@@ -67,7 +67,7 @@
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
   <div class="tagline">tiny econometric assistant</div>
-  <div class="ver">v<!--TEAVER-->1.6.28<!--/TEAVER--> &middot; runs entirely in your browser</div>
+  <div class="ver">v<!--TEAVER-->1.6.29<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
   <div class="foot">free software (GPLv3) &middot; no data leaves your machine</div>
@@ -399,6 +399,14 @@ function storedZip(files) {   /* files: [{name, data:Uint8Array}] */
 }
 document.getElementById('dl').addEventListener('click', () => {
   const files = [];
+  /* the workspace INCLUDES the data being worked on: serialize the
+   * current in-memory dataset quietly and ship it as a .dta */
+  try {
+    if (M.ccall('tea_web_save_memory','number',['string'],['/tmp/_mem.dta']) === 0) {
+      files.push({ name: 'data_in_memory.dta', data: M.FS.readFile('/tmp/_mem.dta') });
+      M.FS.unlink('/tmp/_mem.dta');
+    }
+  } catch(e) {}
   for (const f of M.FS.readdir('/')) {
     if (known.has(f) || f === '.' || f === '..') continue;
     try {

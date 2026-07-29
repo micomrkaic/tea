@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include "interp.h"
 #include "dataset.h"
+#include "dta.h"
 
 static Workspace  *g_web_ws = NULL;
 static Interp     *g_web_ip = NULL;
@@ -42,6 +43,22 @@ int tea_web_init(void){
     g_web_ip = interp_new(g_web_ws);
     g_web_s  = tea_session_new(g_web_ip, /*interactive=*/true);
     return g_web_s ? 0 : 1;
+}
+
+/* Serialize the CURRENT in-memory dataset to a .dta at `path`, silently.
+ * Returns 0 on success, 1 if no data is loaded, 2 on write error.  Used
+ * by the "Download workspace files" button so the workspace download
+ * includes the data being worked on — no explicit `save` required. */
+EMSCRIPTEN_KEEPALIVE
+int tea_web_save_memory(const char *path);
+EMSCRIPTEN_KEEPALIVE
+int tea_web_save_memory(const char *path){
+    if (!g_web_ws || !g_web_ws->cur) return 1;
+    Frame *f = g_web_ws->cur;
+    if (f->nvar == 0 || f->nobs == 0) return 1;
+    const char *err = NULL;
+    int rc = dta_write(f, g_web_ws, path, 118, &err);
+    return rc == 0 ? 0 : 2;
 }
 
 EMSCRIPTEN_KEEPALIVE

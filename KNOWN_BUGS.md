@@ -1386,3 +1386,18 @@ used in `egen`.
   tea-workspace.zip (stored entries, CRC32, plain JS — ~50 lines,
   validated byte-for-byte against unzip).  One file, one download, no
   permission prompt, every browser.  Web UI only; engine unchanged.
+
+## v1.6.29 — the workspace download includes the data in memory
+
+- Design gap, called by Mico: "Download workspace files" shipped only
+  files the session had explicitly saved — but the workspace, as a
+  user understands it, INCLUDES the dataset being worked on.  sysuse +
+  modify + download yielded nothing unless you remembered `save`.
+- New quiet engine export tea_web_save_memory(path): serializes the
+  current frame to .dta (format 118, labels and all) with no terminal
+  output; returns 1 when memory is empty.  The download handler calls
+  it first and adds data_in_memory.dta to the bundle.  Verified by
+  round-trip: modified grunfeld (25 obs + generated variable + labels)
+  and the demo's collapsed end-state both re-open natively, exact.
+- The explicit-save workflow is unchanged; this only makes the
+  download button's promise true.
