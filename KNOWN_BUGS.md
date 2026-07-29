@@ -1356,3 +1356,18 @@ used in `egen`.
 - Test 66 (with a stored-zip fixture in tests/fixtures/) locks the
   native reader on all rigs — including WASM, where import excel was
   previously impossible.
+
+## v1.6.27 — Bug 37: browser downloads silently cancelled
+
+- "Download workspace files" counted the files and delivered none, and
+  "Save .do" did nothing, in some browsers.  Two independent defects
+  with one visible symptom: the download anchor was never appended to
+  the document (Firefox ignores programmatic clicks on detached
+  anchors), and URL.revokeObjectURL() ran synchronously after click()
+  — but click() only QUEUES the download, so the immediate revoke
+  could destroy the blob before the browser read it.  Whether anything
+  landed depended on engine and timing; tea's own counter was honest
+  ("3 new files downloaded") because the filesystem side succeeded —
+  the browser then dropped the baton.  Both handlers now share one
+  triggerDownload(): append to DOM, click, remove, revoke deferred
+  10 s.  Web UI only; the engine is unchanged.

@@ -67,7 +67,7 @@
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
   <div class="tagline">tiny econometric assistant</div>
-  <div class="ver">v<!--TEAVER-->1.6.26<!--/TEAVER--> &middot; runs entirely in your browser</div>
+  <div class="ver">v<!--TEAVER-->1.6.27<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
   <div class="foot">free software (GPLv3) &middot; no data leaves your machine</div>
@@ -315,10 +315,24 @@ document.getElementById('ed-restore').addEventListener('click', ev => {
     localStorage.setItem(EDKEY, b);
   } catch(e) {}
 });
-document.getElementById('ed-save').addEventListener('click', () => {
+/* Trigger a real browser download.  Two subtleties both required for
+ * cross-browser correctness: the anchor must be IN the document
+ * (Firefox ignores clicks on detached anchors), and the object URL
+ * must be revoked LATER — click() only queues the download, and a
+ * synchronous revoke can destroy the blob before the browser reads
+ * it, silently cancelling the download. */
+function triggerDownload(blob, name) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([edtext.value], {type:'text/plain'}));
-  a.download = 'script.do'; a.click(); URL.revokeObjectURL(a.href);
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+document.getElementById('ed-save').addEventListener('click', () => {
+  triggerDownload(new Blob([edtext.value], {type:'text/plain'}), 'script.do');
 });
 
 /* ---- drag & drop: .do opens in the editor, data files upload ---- */
@@ -352,9 +366,7 @@ document.getElementById('dl').addEventListener('click', () => {
     try {
       if (!M.FS.isFile(M.FS.stat('/' + f).mode)) continue;
       const data = M.FS.readFile('/' + f);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([data]));
-      a.download = f; a.click(); URL.revokeObjectURL(a.href); n++;
+      triggerDownload(new Blob([data]), f); n++;
     } catch(e) {}
   }
   term.writeln(`\r\n(${n} new file${n===1?'':'s'} downloaded)`);
