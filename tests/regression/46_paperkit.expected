@@ -16,7 +16,7 @@ Duplicates in terms of the varlist
 VARIABLES	(1) FE	(2) RE	(3) OLS
 Market value	0.110***	0.110***	0.141***
 	(0.012)	(0.011)	(0.006)
-capital	0.310***	0.308***	
+Capital stock (millions)	0.310***	0.308***	
 	(0.017)	(0.017)	
 Constant		-57.847**	-6.976
 		(29.103)	(10.273)

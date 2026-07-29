@@ -1,0 +1,9 @@
+country	Country name
+isocode	3-letter ISO country code
+year	Year
+pop	Population (millions)
+emp	Number of persons engaged (millions)
+hc	Human capital index (schooling and returns to education)
+rgdpna	Real GDP at constant 2017 national prices (million 2017 USD)
+labsh	Share of labour compensation in GDP at current national prices
+avh	Average annual hours worked by persons engaged

@@ -1,0 +1,76 @@
+(grunfeld: 200 obs loaded — Grunfeld (1958) investment panel: 10 US firms x 1935-1954 (xtreg, hausman))
+
+Contains data
+  obs: 200
+ vars: 5
+-------------------------------------------------------------
+variable         type     format     label
+firm             double   %9.0g      Firm number (1-10)
+year             double   %9.0g      Year
+invest           double   %9.0g      Gross investment (millions of 1947 dollars)
+value            double   %9.0g      Market value of the firm (millions)
+capital          double   %9.0g      Capital stock (millions)
+-------------------------------------------------------------
+(longley: 16 obs loaded — Longley (1967) US macro, 16 obs: famously ill-conditioned (regress))
+
+Contains data
+  obs: 16
+ vars: 7
+-------------------------------------------------------------
+variable         type     format     label
+gnpdeflator      double   %9.0g      GNP implicit price deflator (1954 = 100)
+gnp              double   %9.0g      GNP (millions of dollars)
+unemployed       double   %9.0g      Unemployment (thousands)
+armedforces      double   %9.0g      Size of armed forces (thousands)
+population       double   %9.0g      Non-institutional population 14+ (thousands)
+year             double   %9.0g      Year
+employed         double   %9.0g      Total employment (thousands)
+-------------------------------------------------------------
+(nmes1988: 4406 obs loaded — Deb-Trivedi (1997) medical care demand, 4406 persons 66+ (poisson, logit))
+
+Contains data
+  obs: 4406
+ vars: 3 (filtered)
+-------------------------------------------------------------
+variable         type     format     label
+health           str      %9.0g      Self-perceived health (poor/average/excellent)
+adl              str      %9.0g      Activities of daily living (limited/normal)
+insurance        str      %9.0g      Covered by private insurance (yes/no)
+-------------------------------------------------------------
+(pwt: 1540 obs loaded — Penn World Table 10.0 sample: 22 countries x 1950-2019, CC BY 4.0 (growth))
+
+Contains data
+  obs: 1540
+ vars: 3 (filtered)
+-------------------------------------------------------------
+variable         type     format     label
+rgdpna           double   %9.0g      Real GDP at constant 2017 national prices (million 2017 USD)
+hc               double   %9.0g      Human capital index (schooling and returns to education)
+labsh            double   %9.0g      Share of labour compensation in GDP at current national prices
+-------------------------------------------------------------
+(airline: 144 obs loaded — Box-Jenkins airline passengers, monthly 1949-1960 (tsset, arima))
+
+Contains data
+  obs: 144
+ vars: 3
+-------------------------------------------------------------
+variable         type     format     label
+year             double   %9.0g      Year
+month            double   %9.0g      Month (1-12)
+passengers       double   %9.0g      International airline passengers (thousands)
+-------------------------------------------------------------
+(weo: 10168 obs loaded — IMF World Economic Outlook, April 2026: 197 countries + 13 aggregates, 145 indicators)
+
+Contains data
+  obs: 10168
+ vars: 7 (filtered)
+-------------------------------------------------------------
+variable         type     format     label
+country          str      %9.0g      Country name
+iso              str      %9.0g      3-letter ISO country code
+year             double   %9.0g      Year
+aggregate        double   %9.0g      Region/group aggregate row (1) vs. individual country (0)
+ngdp_rpch        double   %9.0g      Gross domestic product (GDP), Constant prices, Percent change (Percent [Units])
+bca_ngdpd        double   %9.0g      Current account balance (credit less debit), Percent of GDP (Percent [Units])
+dsi              double   %9.0g      External debt: total debt service, interest, US dollar (US dollar [Billions])
+-------------------------------------------------------------

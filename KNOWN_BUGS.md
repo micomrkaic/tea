@@ -1311,3 +1311,21 @@ used in `egen`.
   byte-identity promise hostage to its own pathology.
 - With these, all 64 goldens are expected green on all five platforms:
   x86 gcc, x86 clang, ASan/UBSan, WASM, and Apple silicon.
+
+## v1.6.25 — sysuse datasets carry variable labels
+
+- The bundled datasets loaded with bare column names: they are embedded
+  as raw CSVs, a format that cannot carry labels.  Each dataset now
+  embeds a companion variable-label table (data/NAME.lbl, plain
+  "var<TAB>label" lines; weo's 145 indicator labels generated from
+  data/weo_codes.txt, truncated at the 80-char vlabel bound) which
+  sysuse applies after the CSV load — describe on grunfeld now reads
+  like the textbook, and the WEO extract documents itself.
+- Fixed in passing: sysuse's missing-braces bug printed the "obs
+  loaded" message even when the load failed (the if(rc==0) guarded only
+  the source-string line) — the misleading-indentation class, caught by
+  reading the code it sat next to.
+- Test 46 re-blessed: outreg has ALWAYS preferred variable labels over
+  names in export tables (publication behavior); it was simply
+  unobservable until bundled data had labels.  Test 65 locks labels
+  across all six datasets.

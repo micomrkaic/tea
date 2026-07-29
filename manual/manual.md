@@ -1163,6 +1163,11 @@ SVG drops directly into LaTeX documents (via the `svg` package, or one
 
 # Bundled practice datasets (`sysuse`)
 
+Every bundled dataset carries variable labels (`describe` after any
+`sysuse` shows them; the WEO extract's 145 indicators are labeled from
+the IMF subject descriptions).  The label tables live beside the CSVs
+as `data/NAME.lbl` and are embedded at generation time.
+
 Six datasets are embedded inside the binary itself — no files to
 install, no network, identical in the browser edition:
 

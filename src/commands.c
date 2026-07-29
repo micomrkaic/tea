@@ -4394,9 +4394,30 @@ static int do_sysuse(Cmd *c){
     frame_clear(c->f);
     int rc = load_csv_into(c->f, tmp, ',', CSV_DELIM, CSVCASE_LOWER);
     unlink(tmp);
-    if(rc==0)
+    if(rc==0){        /* braces matter: the loaded-message printed even on failure */
         snprintf(c->f->source,sizeof c->f->source,"%s (sysuse)",d->name);
+        /* apply the embedded variable labels ("var\tlabel" lines) */
+        if(d->lbl){
+            const char *p=(const char*)d->lbl, *end=p+d->lbl_len;
+            while(p<end){
+                const char *nl=memchr(p,'\n',(size_t)(end-p)); if(!nl)nl=end;
+                const char *tab=memchr(p,'\t',(size_t)(nl-p));
+                if(tab){
+                    char vn[33]; size_t vl=(size_t)(tab-p); if(vl>32)vl=32;
+                    memcpy(vn,p,vl); vn[vl]=0;
+                    for(int v=0; v<c->f->nvar; v++)
+                        if(!strcmp(c->f->vars[v].name,vn)){
+                            size_t ll=(size_t)(nl-tab-1); if(ll>80)ll=80;
+                            memcpy(c->f->vars[v].vlabel,tab+1,ll);
+                            c->f->vars[v].vlabel[ll]=0;
+                            break;
+                        }
+                }
+                p = nl<end ? nl+1 : end;
+            }
+        }
         printf("(%s: %zu obs loaded \u2014 %s)\n", d->name, c->f->nobs, d->desc);
+    }
     return rc;
 }
 

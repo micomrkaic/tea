@@ -1,0 +1,19 @@
+visits	Physician office visits
+nvisits	Non-physician office visits
+ovisits	Physician hospital outpatient visits
+novisits	Non-physician hospital outpatient visits
+emergency	Emergency room visits
+hospital	Hospital stays
+health	Self-perceived health (poor/average/excellent)
+chronic	Number of chronic conditions
+adl	Activities of daily living (limited/normal)
+region	Census region of residence
+age	Age in years (divided by 10)
+afam	African-American (yes/no)
+gender	Gender
+married	Married (yes/no)
+school	Years of education
+income	Family income ($10,000s)
+employed	Employed (yes/no)
+insurance	Covered by private insurance (yes/no)
+medicaid	Covered by Medicaid (yes/no)

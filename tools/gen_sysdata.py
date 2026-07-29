@@ -53,12 +53,22 @@ with open(out_c, "w") as c:
         path = os.path.join(root, "data", fn)
         data = open(path, "rb").read()
         c.write(f"static const unsigned char {name}_csv[] = {{\n  {c_bytes(data)}\n}};\n\n")
+        # optional variable-label file: data/NAME.lbl, "var<TAB>label" lines
+        lp = os.path.join(root, "data", name + ".lbl")
+        if os.path.exists(lp):
+            lb = open(lp, "rb").read()
+            c.write(f"static const unsigned char {name}_lbl[] = {{\n  {c_bytes(lb)}\n}};\n\n")
     c.write("const SysDataset SYSDATA[] = {\n")
     for name, fn, desc in REGISTRY:
         path = os.path.join(root, "data", fn)
         n = os.path.getsize(path)
         esc = desc.replace('"', '\\"')
-        c.write(f'    {{"{name}", {name}_csv, {n}, "{esc}"}},\n')
+        lp = os.path.join(root, "data", name + ".lbl")
+        if os.path.exists(lp):
+            ln = os.path.getsize(lp)
+            c.write(f'    {{"{name}", {name}_csv, {n}, "{esc}", {name}_lbl, {ln}}},\n')
+        else:
+            c.write(f'    {{"{name}", {name}_csv, {n}, "{esc}", 0, 0}},\n')
     c.write("};\n")
     c.write(f"const int SYSDATA_N = {len(REGISTRY)};\n")
 
@@ -73,6 +83,8 @@ typedef struct {
     const unsigned char *csv;    /* raw CSV bytes            */
     size_t               len;
     const char          *desc;   /* one-liner for sysuse dir */
+    const unsigned char *lbl;    /* optional variable labels: "var\\tlabel" lines */
+    size_t               lbl_len;
 } SysDataset;
 
 extern const SysDataset SYSDATA[];

@@ -1,0 +1,5 @@
+firm	Firm number (1-10)
+year	Year
+invest	Gross investment (millions of 1947 dollars)
+value	Market value of the firm (millions)
+capital	Capital stock (millions)

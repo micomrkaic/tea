@@ -13,6 +13,8 @@ typedef struct {
     const unsigned char *csv;    /* raw CSV bytes            */
     size_t               len;
     const char          *desc;   /* one-liner for sysuse dir */
+    const unsigned char *lbl;    /* optional variable labels: "var\tlabel" lines */
+    size_t               lbl_len;
 } SysDataset;
 
 extern const SysDataset SYSDATA[];
