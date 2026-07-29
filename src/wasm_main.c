@@ -28,6 +28,7 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <stdio.h>
+#include <string.h>
 #include "interp.h"
 #include "dataset.h"
 #include "dta.h"
@@ -59,6 +60,39 @@ int tea_web_save_memory(const char *path){
     const char *err = NULL;
     int rc = dta_write(f, g_web_ws, path, 118, &err);
     return rc == 0 ? 0 : 2;
+}
+
+/* Cheap fingerprint of the current in-memory dataset: names, types,
+ * labels, and all data bytes, FNV-1a folded to 32 bits.  The UI calls
+ * this after every executed command to light the "Save data" button
+ * exactly when memory has changed since the last save.  0 = no data. */
+EMSCRIPTEN_KEEPALIVE
+unsigned tea_web_data_hash(void);
+EMSCRIPTEN_KEEPALIVE
+unsigned tea_web_data_hash(void){
+    if (!g_web_ws || !g_web_ws->cur) return 0;
+    Frame *f = g_web_ws->cur;
+    if (f->nvar == 0) return 0;
+    unsigned h = 2166136261u;
+    #define MIX(p, n) do { const unsigned char *_b = (const unsigned char*)(p); \
+        for (size_t _i = 0; _i < (n); _i++){ h ^= _b[_i]; h *= 16777619u; } } while (0)
+    MIX(&f->nobs, sizeof f->nobs);
+    for (int v = 0; v < f->nvar; v++){
+        Variable *V = &f->vars[v];
+        MIX(V->name, strlen(V->name)+1);
+        MIX(V->vlabel, strlen(V->vlabel)+1);
+        MIX(&V->type, sizeof V->type);
+        if (V->type == VT_NUM){
+            MIX(V->num, f->nobs * sizeof(double));
+        } else {
+            for (size_t i = 0; i < f->nobs; i++){
+                const char *s = V->str[i] ? V->str[i] : "";
+                MIX(s, strlen(s)+1);
+            }
+        }
+    }
+    #undef MIX
+    return h ? h : 1;   /* reserve 0 for "no data" */
 }
 
 EMSCRIPTEN_KEEPALIVE

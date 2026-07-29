@@ -1401,3 +1401,21 @@ used in `egen`.
   and the demo's collapsed end-state both re-open natively, exact.
 - The explicit-save workflow is unchanged; this only makes the
   download button's promise true.
+
+## v1.6.30 — save buttons with live state: memory is the deliverable
+
+- Redesign, specified by Mico after demo rehearsals: the workspace-zip
+  download conflated too much (script-saved intermediates, the editor
+  autosave, charts) and had no notion of "unsaved".  New semantics:
+  "Save data (.dta)" downloads exactly the CURRENT IN-MEMORY dataset,
+  and both save buttons carry live state — lit when there are unsaved
+  changes, grayed otherwise.
+- Engine: tea_web_data_hash(), an FNV-1a fingerprint of the frame
+  (names, types, labels, all data bytes; 0 = empty).  The UI re-hashes
+  after every executed command and compares against the last-saved
+  hash: reads (summarize, list) keep the button gray, writes (gen,
+  drop, label, keep) light it, and a value-identical replace correctly
+  stays gray — the fingerprint knows better than a dirty flag would.
+- Editor: input events set a dirty flag; Save .do clears it.  Charts:
+  each plot in the Plots tab now carries its own "save NAME.svg" link
+  (single-file downloads, no permission prompts).

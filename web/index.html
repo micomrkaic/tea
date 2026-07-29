@@ -42,6 +42,7 @@
   .tabbar { display:flex; gap:6px; }
   .tabbar button { background:#e7ddcc; color:var(--ink); }
   .tabbar button.on { background:var(--accent); color:white; }
+  button:disabled, .btn.off { opacity:.45; cursor:default; }
   #plots { flex:1; overflow:auto; background:white; border:1px solid #ddd; border-radius:8px; padding:10px; }
   #editor { flex:1; display:none; flex-direction:column; gap:8px; }
   #edtext { flex:1; width:100%; resize:none; font:13px/1.5 "DejaVu Sans Mono",Menlo,Consolas,monospace;
@@ -67,7 +68,7 @@
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
   <div class="tagline">tiny econometric assistant</div>
-  <div class="ver">v<!--TEAVER-->1.6.29<!--/TEAVER--> &middot; runs entirely in your browser</div>
+  <div class="ver">v<!--TEAVER-->1.6.30<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
   <div class="foot">free software (GPLv3) &middot; no data leaves your machine</div>
@@ -89,7 +90,7 @@
         <button id="tab-editor">Editor</button>
       </span>
       <label class="btn">Upload data file<input type="file" id="upload" multiple></label>
-      <button id="dl">Download workspace files</button>
+      <button id="dl" disabled>Save data (.dta)</button>
       <span id="status"></span>
     </div>
     <div id="plots"><div class="placeholder">Plots will appear here — try:<br>
@@ -150,6 +151,7 @@ const ed = new LineEditor({
   submit: cmd => {
     if (cmd.trim().length)
       needMore = M.ccall('tea_web_exec','number',['string'],[cmd]) === 1;
+    refreshSaveState();
     ed.freshPrompt();
   },
   complete: (line, pt) => {
@@ -206,12 +208,20 @@ async function fetchWasm(){
       const svg = new TextDecoder().decode(M.FS.readFile(fname));
       const box = document.getElementById('plots');
       if (box.firstChild && box.firstChild.className==='placeholder') box.innerHTML='';
-      box.insertAdjacentHTML('afterbegin', svg);
+      const wrap = document.createElement('div');
+      wrap.innerHTML = `<div style="text-align:right"><a href="#" class="plot-save" data-f="${fname}">save ${fname.replace(/^\//,'')}</a></div>` + svg;
+      box.insertBefore(wrap, box.firstChild);
+      wrap.querySelector('.plot-save').addEventListener('click', ev => {
+        ev.preventDefault();
+        triggerDownload(new Blob([M.FS.readFile(fname)], {type:'image/svg+xml'}),
+                        fname.replace(/^\//,''));
+      });
     } catch(e) {}
   };
   M.ccall('tea_web_init','number',[],[]);
   const v = M.ccall('tea_web_version','string',[],[]);
   for (const f of M.FS.readdir('/')) known.add(f);
+  refreshSaveState();
   document.getElementById('status').textContent = 'ready';
 
   /* banner */
@@ -277,8 +287,25 @@ function runScript(text){
   M.ccall('tea_web_exec','number',['string'],['set echo on']);
   needMore = M.ccall('tea_web_exec','number',['string'],['do /_editor.do']) === 1;
   M.ccall('tea_web_exec','number',['string'],['set echo off']);
+  refreshSaveState();
   ed.freshPrompt();
 }
+/* ---- live save-state: buttons light up exactly when there is
+ * something unsaved.  Data: engine-side fingerprint compared after
+ * every executed command.  Editor: input-dirty flag. ---- */
+const dlBtn = document.getElementById('dl');
+const edSaveBtn = document.getElementById('ed-save');
+let savedDataHash = 0, edDirty = false;
+function dataHash(){ try { return M.ccall('tea_web_data_hash','number',[],[]); } catch(e){ return 0; } }
+function refreshSaveState(){
+  const h = dataHash();
+  dlBtn.disabled = (h === 0 || h === savedDataHash);
+  dlBtn.title = dlBtn.disabled ? 'no unsaved changes to the data in memory'
+                               : 'download the data in memory as a .dta';
+  edSaveBtn.disabled = !edDirty || !edtext.value.trim().length;
+}
+edtext.addEventListener('input', () => { edDirty = true; refreshSaveState(); });
+
 document.getElementById('ed-run').addEventListener('click', () => runScript(edtext.value));
 
 /* Ctrl+D (Stata muscle memory) / Ctrl+Enter: run selection, else whole
@@ -332,6 +359,7 @@ function triggerDownload(blob, name) {
 }
 
 document.getElementById('ed-save').addEventListener('click', () => {
+  edDirty = false; refreshSaveState();
   triggerDownload(new Blob([edtext.value], {type:'text/plain'}), 'script.do');
 });
 
@@ -398,31 +426,17 @@ function storedZip(files) {   /* files: [{name, data:Uint8Array}] */
   return new Blob(parts, { type: 'application/zip' });
 }
 document.getElementById('dl').addEventListener('click', () => {
-  const files = [];
-  /* the workspace INCLUDES the data being worked on: serialize the
-   * current in-memory dataset quietly and ship it as a .dta */
   try {
-    if (M.ccall('tea_web_save_memory','number',['string'],['/tmp/_mem.dta']) === 0) {
-      files.push({ name: 'data_in_memory.dta', data: M.FS.readFile('/tmp/_mem.dta') });
-      M.FS.unlink('/tmp/_mem.dta');
+    if (M.ccall('tea_web_save_memory','number',['string'],['/tmp/_mem.dta']) !== 0) {
+      term.writeln('\r\n(no data in memory to save)'); return;
     }
-  } catch(e) {}
-  for (const f of M.FS.readdir('/')) {
-    if (known.has(f) || f === '.' || f === '..') continue;
-    try {
-      if (!M.FS.isFile(M.FS.stat('/' + f).mode)) continue;
-      files.push({ name: f, data: M.FS.readFile('/' + f) });
-    } catch(e) {}
-  }
-  if (files.length === 0) {
-    term.writeln('\r\n(no new files to download)');
-  } else if (files.length === 1) {
-    triggerDownload(new Blob([files[0].data]), files[0].name);
-    term.writeln(`\r\n(downloaded ${files[0].name})`);
-  } else {
-    triggerDownload(storedZip(files), 'tea-workspace.zip');
-    term.writeln(`\r\n(downloaded tea-workspace.zip: ${files.map(f=>f.name).join(', ')})`);
-  }
+    const data = M.FS.readFile('/tmp/_mem.dta');
+    M.FS.unlink('/tmp/_mem.dta');
+    triggerDownload(new Blob([data]), 'data_in_memory.dta');
+    savedDataHash = dataHash();
+    refreshSaveState();
+    term.writeln(`\r\n(saved data_in_memory.dta: ${data.length} bytes)`);
+  } catch(e) { term.writeln('\r\n(save failed: ' + e.message + ')'); }
   ed._lastCursorRow = 0; ed.render();
 });
 </script>
