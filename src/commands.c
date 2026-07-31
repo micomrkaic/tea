@@ -23,6 +23,7 @@
 #include "tsop.h"
 #include "plot.h"
 #include "graph.h"
+#include <gsl/gsl_cdf.h>
 #include "sysdata.h"
 #include "xlsx.h"
 #include "progress.h"
@@ -4230,6 +4231,259 @@ static int do_tempname(Cmd *c){
     return 0;
 }
 
+
+
+/* ---- ttest ----------------------------------------------------------- *
+ * Stata [R] ttest, the three everyday forms:
+ *   ttest var == #                 one-sample
+ *   ttest var1 == var2             paired (obs with both nonmissing)
+ *   ttest var [if] [in], by(g) [unequal]   two-sample; unequal = Welch
+ * Output follows Stata's table layout; probabilities via the t CDF. */
+static void ttest_row(const char *lab, long n, double mean, double sd){
+    double se = sd / sqrt((double)n);
+    double tcrit = gsl_cdf_tdist_Pinv(0.975, (double)(n-1));
+    printf("%8.8s |%9ld  %10.6g  %10.6g  %10.6g  %10.6g  %10.6g\n",
+           lab, n, mean, se, sd, mean - tcrit*se, mean + tcrit*se);
+}
+static void ttest_tail(const char *what, double t, double df){
+    printf("    diff = %s%*st = %9.4f\n", what,
+           (int)(51 - strlen(what) > 0 ? 51 - strlen(what) : 1), "", t);
+    printf("H0: diff = 0                     Degrees of freedom = %12.4g\n", df);
+    double p_lt = gsl_cdf_tdist_P(t, df);
+    double p_gt = 1.0 - p_lt;
+    double p_2  = 2.0 * (t < 0 ? p_lt : p_gt);
+    printf("\n    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0\n");
+    printf(" Pr(T < t) = %6.4f         Pr(|T| > |t|) = %6.4f          Pr(T > t) = %6.4f\n",
+           p_lt, p_2, p_gt);
+}
+static int do_ttest(Cmd *c){
+    /* parse "a == b" | "a == #" | "a" (+by) from varlist/args */
+    char lhs[65]="", rhs[65]="";
+    const char *eq = strstr(c->varlist, "==");
+    if(!eq) eq = strchr(c->varlist, '=');
+    if(eq){
+        size_t ll = (size_t)(eq - c->varlist);
+        while(ll && (c->varlist[ll-1]==' ')) ll--;
+        if(ll >= sizeof lhs) ll = sizeof lhs - 1;
+        memcpy(lhs, c->varlist, ll); lhs[ll]=0;
+        const char *r = eq; while(*r=='=' ) r++; while(*r==' ') r++;
+        snprintf(rhs, sizeof rhs, "%s", r);
+        size_t rl=strlen(rhs); while(rl && rhs[rl-1]==' ') rhs[--rl]=0;
+    } else {
+        sscanf(c->varlist, "%64s", lhs);
+    }
+    int vi = var_find(c->f, lhs);
+    if(vi < 0 || c->f->vars[vi].type != VT_NUM){
+        tea_err("ttest: numeric variable required\n"); return 111; }
+    Node *ifn=NULL; const char *pe;
+    if(c->ifexp[0]){ ifn=expr_parse(c->ifexp,c->f,&pe);
+        if(!ifn){ tea_err("if error: %s\n",pe); return 111; } }
+    EvalCtx ec={0}; ec.f=c->f;
+    Sel sel={ifn,c->in_lo,c->in_hi};
+    char byv[33]="";
+    int has_by = opt_value(c->options,"by",byv,sizeof byv);
+    int unequal = opt_present(c->options,"unequal") || opt_present(c->options,"welch");
+    int rc = 0;
+
+    if(has_by){
+        int bi = var_find(c->f, byv);
+        if(bi < 0){ tea_err("ttest: by() variable %s not found\n", byv); node_free(ifn); return 111; }
+        Variable *bv=&c->f->vars[bi], *xv=&c->f->vars[vi];
+        double g1v=0,g2v=0; char g1s[65]="",g2s[65]=""; int ng=0;
+        long n1=0,n2=0; double s1=0,s2=0,ss1=0,ss2=0;
+        for(size_t r=0;r<c->f->nobs;r++){
+            if(!sel_ok(&sel,&ec,r,r+1)) continue;
+            double x=xv->num[r]; if(sv_is_miss(x)) continue;
+            int g=-1;
+            if(bv->type==VT_NUM){ double b=bv->num[r]; if(sv_is_miss(b)) continue;
+                if(ng>0 && b==g1v) g=0; else if(ng>1 && b==g2v) g=1;
+                else if(ng<2){ if(ng==0)g1v=b; else g2v=b; g=ng++; }
+            } else { const char *b=bv->str[r]?bv->str[r]:"";
+                if(ng>0 && !strcmp(b,g1s)) g=0; else if(ng>1 && !strcmp(b,g2s)) g=1;
+                else if(ng<2){ snprintf(ng==0?g1s:g2s,65,"%s",b); g=ng++; }
+            }
+            if(g<0){ tea_err("ttest: by() has more than 2 groups\n");
+                node_free(ifn); return 420; }
+            if(g==0){ n1++; s1+=x; ss1+=x*x; } else { n2++; s2+=x; ss2+=x*x; }
+        }
+        if(n1<2||n2<2){ tea_err("ttest: insufficient observations\n"); node_free(ifn); return 2000; }
+        double m1=s1/n1, m2=s2/n2;
+        double v1=(ss1-s1*s1/n1)/(n1-1), v2=(ss2-s2*s2/n2)/(n2-1);
+        double d1=sqrt(v1), d2=sqrt(v2);
+        char l1[65],l2[65];
+        if(bv->type==VT_NUM){ snprintf(l1,65,"%g",g1v); snprintf(l2,65,"%g",g2v); }
+        else { snprintf(l1,65,"%s",g1s); snprintf(l2,65,"%s",g2s); }
+        printf("Two-sample t test with %s variances\n", unequal?"unequal":"equal");
+        printf("------------------------------------------------------------------------------\n");
+        printf("   Group |     Obs        Mean    Std. err.   Std. dev.   [95%% conf. interval]\n");
+        printf("---------+--------------------------------------------------------------------\n");
+        ttest_row(l1,n1,m1,d1);
+        ttest_row(l2,n2,m2,d2);
+        printf("---------+--------------------------------------------------------------------\n");
+        long N=n1+n2; double mC=(s1+s2)/N;
+        double vC=((ss1+ss2)-(s1+s2)*(s1+s2)/N)/(N-1);
+        ttest_row("Combined",N,mC,sqrt(vC));
+        printf("---------+--------------------------------------------------------------------\n");
+        double diff=m1-m2, sed, df;
+        if(unequal){
+            sed=sqrt(v1/n1+v2/n2);
+            double a=v1/n1,b=v2/n2;
+            df=(a+b)*(a+b)/(a*a/(n1-1)+b*b/(n2-1));   /* Welch-Satterthwaite */
+        } else {
+            double sp2=((n1-1)*v1+(n2-1)*v2)/(N-2);
+            sed=sqrt(sp2*(1.0/n1+1.0/n2));
+            df=(double)(N-2);
+        }
+        double tcrit=gsl_cdf_tdist_Pinv(0.975,df);
+        printf("%8.8s |%9s  %10.6g  %10.6g  %10s  %10.6g  %10.6g\n",
+               "diff","",diff,sed,"",diff-tcrit*sed,diff+tcrit*sed);
+        printf("------------------------------------------------------------------------------\n");
+        char what[160]; snprintf(what,sizeof what,"mean(%s) - mean(%s)",l1,l2);
+        ttest_tail(what, diff/sed, df);
+    } else if(rhs[0] && var_find(c->f,rhs) >= 0){
+        /* paired */
+        int wi = var_find(c->f, rhs);
+        if(c->f->vars[wi].type != VT_NUM){ tea_err("ttest: numeric variable required\n"); node_free(ifn); return 111; }
+        Variable *a=&c->f->vars[vi], *b=&c->f->vars[wi];
+        long n=0; double sa=0,sb=0,ssa=0,ssb=0,sd_=0,ssd=0;
+        for(size_t r=0;r<c->f->nobs;r++){
+            if(!sel_ok(&sel,&ec,r,r+1)) continue;
+            double x=a->num[r], y=b->num[r];
+            if(sv_is_miss(x)||sv_is_miss(y)) continue;
+            n++; sa+=x; sb+=y; ssa+=x*x; ssb+=y*y;
+            double d=x-y; sd_+=d; ssd+=d*d;
+        }
+        if(n<2){ tea_err("ttest: insufficient observations\n"); node_free(ifn); return 2000; }
+        double ma=sa/n, mb=sb/n, md=sd_/n;
+        double va=(ssa-sa*sa/n)/(n-1), vb=(ssb-sb*sb/n)/(n-1), vd=(ssd-sd_*sd_/n)/(n-1);
+        printf("Paired t test\n");
+        printf("------------------------------------------------------------------------------\n");
+        printf("Variable |     Obs        Mean    Std. err.   Std. dev.   [95%% conf. interval]\n");
+        printf("---------+--------------------------------------------------------------------\n");
+        ttest_row(lhs,n,ma,sqrt(va));
+        ttest_row(rhs,n,mb,sqrt(vb));
+        printf("---------+--------------------------------------------------------------------\n");
+        ttest_row("diff",n,md,sqrt(vd));
+        printf("------------------------------------------------------------------------------\n");
+        char what[160]; snprintf(what,sizeof what,"mean(%s - %s)",lhs,rhs);
+        ttest_tail(what, md/(sqrt(vd)/sqrt((double)n)), (double)(n-1));
+    } else if(rhs[0]){
+        /* one-sample against a constant */
+        char *endp=NULL; double mu=strtod(rhs,&endp);
+        if(endp==rhs){ tea_err("ttest: %s is neither a variable nor a number\n",rhs); node_free(ifn); return 111; }
+        Variable *a=&c->f->vars[vi];
+        long n=0; double sx=0,ssx=0;
+        for(size_t r=0;r<c->f->nobs;r++){
+            if(!sel_ok(&sel,&ec,r,r+1)) continue;
+            double x=a->num[r]; if(sv_is_miss(x)) continue;
+            n++; sx+=x; ssx+=x*x;
+        }
+        if(n<2){ tea_err("ttest: insufficient observations\n"); node_free(ifn); return 2000; }
+        double m=sx/n, v=(ssx-sx*sx/n)/(n-1);
+        printf("One-sample t test\n");
+        printf("------------------------------------------------------------------------------\n");
+        printf("Variable |     Obs        Mean    Std. err.   Std. dev.   [95%% conf. interval]\n");
+        printf("---------+--------------------------------------------------------------------\n");
+        ttest_row(lhs,n,m,sqrt(v));
+        printf("------------------------------------------------------------------------------\n");
+        printf("    mean = mean(%s)%*st = %9.4f\n", lhs,
+               (int)(44-strlen(lhs)>0?44-strlen(lhs):1),"",
+               (m-mu)/(sqrt(v)/sqrt((double)n)));
+        printf("H0: mean = %-10g       Degrees of freedom = %12ld\n", mu, n-1);
+        double t=(m-mu)/(sqrt(v)/sqrt((double)n)), df=(double)(n-1);
+        double p_lt=gsl_cdf_tdist_P(t,df), p_gt=1.0-p_lt, p_2=2.0*(t<0?p_lt:p_gt);
+        printf("\n    Ha: mean < %-8g         Ha: mean != %-8g          Ha: mean > %-8g\n",mu,mu,mu);
+        printf(" Pr(T < t) = %6.4f         Pr(|T| > |t|) = %6.4f          Pr(T > t) = %6.4f\n",
+               p_lt,p_2,p_gt);
+    } else {
+        tea_err("ttest: syntax is  ttest var == #  |  ttest var1 == var2  |  ttest var, by(group)\n");
+        rc = 198;
+    }
+    node_free(ifn);
+    return rc;
+}
+
+/* ---- correlate ------------------------------------------------------- *
+ * Stata: correlate [varlist] [if] [in] [, means covariance]
+ * LISTWISE deletion (pwcorr is the pairwise sibling).  Output layout
+ * follows [R] correlate: "(obs=N)", optional means table, then the
+ * lower-triangular matrix with the variable-name column stub. */
+static int do_correlate(Cmd *c){
+    int *vs=NULL, nv, n_temps=0; const char *vlerr=NULL;
+    const char *vl = c->varlist[0] ? c->varlist : "_all";
+    nv = tsop_expand_varlist(c->f, vl, &vs, &n_temps, &vlerr);
+    if(nv<=0){ tea_err("correlate: %s\n",vlerr?vlerr:"no variables"); free(vs); return 111; }
+    /* numeric only */
+    int w=0;
+    for(int j=0;j<nv;j++) if(c->f->vars[vs[j]].type==VT_NUM) vs[w++]=vs[j];
+    nv=w;
+    if(nv<1){ tea_err("correlate: no numeric variables\n"); free(vs); tsop_drop_temps(c->f,n_temps); return 111; }
+    Node *ifn=NULL; const char *pe;
+    if(c->ifexp[0]){ ifn=expr_parse(c->ifexp,c->f,&pe);
+        if(!ifn){ tea_err("if error: %s\n",pe); free(vs); tsop_drop_temps(c->f,n_temps); return 111; } }
+    EvalCtx ec={0}; ec.f=c->f;
+    Sel sel={ifn,c->in_lo,c->in_hi};
+    /* listwise sample */
+    unsigned char *use = calloc(c->f->nobs,1);
+    long N=0;
+    for(size_t r=0;r<c->f->nobs;r++){
+        if(!sel_ok(&sel,&ec,r,r+1)) continue;
+        {
+        int ok=1;
+        for(int j=0;j<nv;j++) if(sv_is_miss(c->f->vars[vs[j]].num[r])){ ok=0; break; }
+        if(ok){ use[r]=1; N++; }
+        }
+    }
+    node_free(ifn);
+    if(N<2){ tea_err("correlate: insufficient observations\n");
+        free(use); free(vs); tsop_drop_temps(c->f,n_temps); return 2000; }
+    /* moments on the common sample */
+    double *mean=calloc(nv,sizeof(double)), *sd=calloc(nv,sizeof(double));
+    double *cov=calloc((size_t)nv*nv,sizeof(double));
+    double *mn=calloc(nv,sizeof(double)), *mx=calloc(nv,sizeof(double));
+    for(int j=0;j<nv;j++){ mn[j]=1e308; mx[j]=-1e308; }
+    for(size_t r=0;r<c->f->nobs;r++){ if(!use[r]) continue;
+        for(int j=0;j<nv;j++){ double x=c->f->vars[vs[j]].num[r];
+            mean[j]+=x; if(x<mn[j])mn[j]=x; if(x>mx[j])mx[j]=x; } }
+    for(int j=0;j<nv;j++) mean[j]/=N;
+    for(size_t r=0;r<c->f->nobs;r++){ if(!use[r]) continue;
+        for(int j=0;j<nv;j++){ double dj=c->f->vars[vs[j]].num[r]-mean[j];
+            for(int k=0;k<=j;k++){ double dk=c->f->vars[vs[k]].num[r]-mean[k];
+                cov[(size_t)j*nv+k]+=dj*dk; } } }
+    for(int j=0;j<nv;j++){ for(int k=0;k<=j;k++) cov[(size_t)j*nv+k]/=(N-1);
+        sd[j]=sqrt(cov[(size_t)j*nv+j]); }
+    printf("(obs=%ld)\n", N);
+    if(opt_present(c->options,"means")){
+        printf("\n%12s |%11s%11s%11s%11s\n","Variable","Mean","Std. dev.","Min","Max");
+        printf("-------------+--------------------------------------------\n");
+        for(int j=0;j<nv;j++)
+            printf("%12.12s |%11.7g%11.7g%11.7g%11.7g\n",
+                   c->f->vars[vs[j]].name, mean[j], sd[j], mn[j], mx[j]);
+    }
+    int docov = opt_present(c->options,"covariance");
+    int cw = docov ? 10 : 9;      /* covariance needs the wider cell */
+    printf("\n%13s|","");
+    for(int j=0;j<nv;j++) printf("%*.8s", cw, c->f->vars[vs[j]].name);
+    printf("\n-------------+");
+    for(int j=0;j<nv;j++) for(int d=0;d<cw;d++) putchar('-');
+    printf("\n");
+    for(int i=0;i<nv;i++){
+        printf("%12.12s |", c->f->vars[vs[i]].name);
+        for(int j=0;j<=i;j++){
+            if(docov) printf("%10.4g", cov[(size_t)i*nv+j]);
+            else{
+                double rho=(sd[i]>0&&sd[j]>0)? cov[(size_t)i*nv+j]/(sd[i]*sd[j]) : SV_MISS;
+                if(sv_is_miss(rho)) printf("%9s",".");
+                else printf("%9.4f",rho);
+            }
+        }
+        printf("\n");
+    }
+    free(mean);free(sd);free(cov);free(mn);free(mx);free(use);
+    free(vs); tsop_drop_temps(c->f,n_temps);
+    return 0;
+}
+
 static int do_pwcorr(Cmd *c){
     int *vs=NULL, nv, n_temps=0; const char *vlerr=NULL;
     nv = tsop_expand_varlist(c->f, c->varlist, &vs, &n_temps, &vlerr);
@@ -5211,6 +5465,12 @@ Disp TABLE[]={
         "tempfile NAME...  \u2014 set local macros to fresh temp-file paths"},
     {"tempname",do_tempname,0,
         "tempname NAME...  \u2014 set local macros to fresh scratch names"},
+    {"ttest",do_ttest,1,
+        "ttest VAR == # | VAR1 == VAR2 | VAR, by(G)   t tests (one-sample, paired, two-sample)"},
+    {"correlate",do_correlate,1,
+        "correlate [varlist] [if] [in][, means covariance]  correlation (listwise)"},
+    {"corr",do_correlate,1,
+        "corr ...                                     abbreviation of correlate"},
     {"pwcorr",do_pwcorr,1,
         "pwcorr varlist  \u2014 pairwise correlation matrix"},
     {"file",do_file,0,

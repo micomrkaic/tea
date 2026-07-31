@@ -1472,3 +1472,20 @@ used in `egen`.
 - Test 68 locks the estimator x {default, robust, cluster} matrix
   cross-rig, with xtreg's robust==cluster equality as two identical
   golden lines.
+
+## v1.6.34 — hygiene tier: correlate and ttest
+
+- Two daily-use commands were missing while their siblings existed
+  (pwcorr but no correlate; regress inference but no ttest).  Both now
+  implemented per [R] correlate / [R] ttest:
+  correlate = LISTWISE deletion (the defining difference from pwcorr),
+  default _all, honors if/in via the house Sel idiom (which pwcorr,
+  noted for later, does not), means and covariance options, Stata's
+  matrix layout with the "(obs=N)" line.  ttest = one-sample against a
+  constant, paired, and two-sample by() with pooled or Welch (unequal)
+  variances, Stata's full table including the three-alternative
+  p-value footer; t probabilities via the GSL t CDF.
+- Verification: correlations and all four t statistics (incl. the
+  Welch-Satterthwaite df) reproduced independently to displayed
+  precision; tools/stata_check_vce.do gained a companion section so
+  the Stata run pins layout as well as numbers.  Test 69.

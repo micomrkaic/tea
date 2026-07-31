@@ -2209,6 +2209,24 @@ import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) cas
   tempname NAME...  — set local macros to fresh scratch names
 ```
 
+## `ttest`
+
+```
+  ttest VAR == # | VAR1 == VAR2 | VAR, by(G)   t tests (one-sample, paired, two-sample)
+```
+
+## `correlate`
+
+```
+  correlate [varlist] [if] [in][, means covariance]  correlation (listwise)
+```
+
+## `corr`
+
+```
+  corr ...                                     abbreviation of correlate
+```
+
 ## `pwcorr`
 
 ```
