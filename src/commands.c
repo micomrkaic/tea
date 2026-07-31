@@ -4761,25 +4761,41 @@ static int do_cd(Cmd *c){
 /* mkdir DIR [, recursive] — create a directory.  With 'recursive', creates
  * intermediate parents (equivalent to 'mkdir -p'). */
 /* dir [pattern] — list files in current directory.  Stata's syntax. */
+static int dir_name_cmp(const void *a, const void *b){
+    return strcmp(*(char *const*)a, *(char *const*)b);
+}
 static int do_dir(Cmd *c){
     char pat[1024]=""; const char *s=c->varlist; scan_filename(&s, pat, sizeof pat);
     DIR *d = opendir(".");
     if(!d){ perror("dir"); return 601; }
+    /* collect, then SORT: readdir order is filesystem-dependent (ext4
+     * hash order vs others), which broke the golden the first time the
+     * suite ran on a second filesystem.  Deterministic output is the
+     * whole point of this test suite. */
+    char **names=NULL; long count=0, cap=0;
     struct dirent *e;
-    long count=0;
     while((e = readdir(d))){
         if(e->d_name[0]=='.') continue;       /* skip hidden + . / .. */
         if(pat[0] && fnmatch(pat, e->d_name, 0) != 0) continue;
-        struct stat st;
-        if(stat(e->d_name, &st) == 0){
-            char kind = S_ISDIR(st.st_mode) ? 'd' : '-';
-            printf("  %c  %10lld  %s\n", kind, (long long)st.st_size, e->d_name);
-        } else {
-            printf("  ?  %10s  %s\n", "?", e->d_name);
-        }
-        count++;
+        if(count==cap){ cap = cap? cap*2 : 16;
+            char **nn = realloc(names, (size_t)cap*sizeof(char*));
+            if(!nn){ free(names); closedir(d); return 693; }
+            names = nn; }
+        names[count++] = strdup(e->d_name);
     }
     closedir(d);
+    qsort(names, (size_t)count, sizeof(char*), dir_name_cmp);
+    for(long i=0;i<count;i++){
+        struct stat st;
+        if(stat(names[i], &st) == 0){
+            char kind = S_ISDIR(st.st_mode) ? 'd' : '-';
+            printf("  %c  %10lld  %s\n", kind, (long long)st.st_size, names[i]);
+        } else {
+            printf("  ?  %10s  %s\n", "?", names[i]);
+        }
+        free(names[i]);
+    }
+    free(names);
     if(!count && pat[0]) printf("  (no files matching %s)\n", pat);
     return 0;
 }
@@ -5240,6 +5256,8 @@ Disp TABLE[]={
     {"mkdir",do_mkdir,0,"mkdir DIR [, recursive]                      create directory (recursive = mkdir -p)"},
     {"dir",do_dir,0,"dir [pattern]                                list files in current directory"},
     {"ls",do_dir,0,NULL},
+    {"dir",do_dir,0,"dir                                          list files in the working directory"},
+    {"ls",do_dir,0,"ls                                           synonym for dir"},
     {"rmdir",do_rmdir,0,"rmdir DIR                                    remove empty directory"},
     {"erase",do_erase,0,"erase FILE  |  rm FILE                       delete a file"},
     {"rm",do_erase,0,NULL},

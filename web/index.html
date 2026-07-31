@@ -43,6 +43,7 @@
   .tabbar button { background:#e7ddcc; color:var(--ink); }
   .tabbar button.on { background:var(--accent); color:white; }
   button:disabled, .btn.off { opacity:.45; cursor:default; }
+  button.hot, .btn.hot { background:#1a6ee0; color:#fff; border-color:#1a6ee0; }
   #plots { flex:1; overflow:auto; background:white; border:1px solid #ddd; border-radius:8px; padding:10px; }
   #editor { flex:1; display:none; flex-direction:column; gap:8px; }
   #edtext { flex:1; width:100%; resize:none; font:13px/1.5 "DejaVu Sans Mono",Menlo,Consolas,monospace;
@@ -68,7 +69,7 @@
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
   <div class="tagline">tiny econometric assistant</div>
-  <div class="ver">v<!--TEAVER-->1.6.30<!--/TEAVER--> &middot; runs entirely in your browser</div>
+  <div class="ver">v<!--TEAVER-->1.6.32<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
   <div class="foot">free software (GPLv3) &middot; no data leaves your machine</div>
@@ -298,11 +299,18 @@ const edSaveBtn = document.getElementById('ed-save');
 let savedDataHash = 0, edDirty = false;
 function dataHash(){ try { return M.ccall('tea_web_data_hash','number',[],[]); } catch(e){ return 0; } }
 function refreshSaveState(){
+  /* policy: saving is ALWAYS possible when there is data (re-downloads
+   * are legitimate); the highlight — not the disabled state — carries
+   * the "unsaved changes" signal */
   const h = dataHash();
-  dlBtn.disabled = (h === 0 || h === savedDataHash);
-  dlBtn.title = dlBtn.disabled ? 'no unsaved changes to the data in memory'
-                               : 'download the data in memory as a .dta';
-  edSaveBtn.disabled = !edDirty || !edtext.value.trim().length;
+  dlBtn.disabled = (h === 0);
+  dlBtn.classList.toggle('hot', h !== 0 && h !== savedDataHash);
+  dlBtn.title = h === 0 ? 'no data in memory'
+              : h === savedDataHash ? 'data in memory already saved — click to download again'
+              : 'unsaved changes — download the data in memory as a .dta';
+  const hasText = edtext.value.trim().length > 0;
+  edSaveBtn.disabled = !hasText;
+  edSaveBtn.classList.toggle('hot', edDirty && hasText);
 }
 edtext.addEventListener('input', () => { edDirty = true; refreshSaveState(); });
 

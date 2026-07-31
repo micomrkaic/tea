@@ -541,6 +541,19 @@ import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) cas
   dir [pattern]                                list files in current directory
 ```
 
+## `dir`
+
+```
+  dir [pattern]                                list files in current directory
+```
+
+## `ls`
+
+```
+  dir [pattern]                                list files in current directory
+  (alias for 'dir')
+```
+
 ## `rmdir`
 
 ```

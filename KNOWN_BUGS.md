@@ -1419,3 +1419,30 @@ used in `egen`.
 - Editor: input events set a dirty flag; Save .do clears it.  Charts:
   each plot in the Plots tab now carries its own "save NAME.svg" link
   (single-file downloads, no permission prompts).
+
+## v1.6.31 — dir/ls resurrected; save buttons never lock you out
+
+- Sandbox-filesystem visibility (Mico): in the browser you could drop
+  a file in and then not SEE it anywhere.  The answer was already in
+  the tree: a complete do_dir — Stata's dir/ls with glob patterns —
+  implemented but never registered in the command table.  Dead code,
+  now wired: `dir` lists the working directory (sizes deterministic,
+  courtesy of the byte-identical writers), `ls *.dta` filters, and
+  `status` continues to describe the data in memory.  Test 67.
+- Save-button policy bug (v1.6.30 was too literal): after saving, the
+  data button DISABLED itself until the data changed, so a re-download
+  — mid-demo, after a lost file, after saving a chart in between —
+  was impossible.  New policy: disabled only when there is NO data;
+  the highlight, not the disabled state, carries "unsaved changes".
+  Save .do likewise: enabled whenever the editor has text, highlighted
+  when dirty.
+
+## v1.6.32 — dir output sorted (readdir order is filesystem-dependent)
+
+- Test 67 failed on its second filesystem within the hour: the
+  resurrected do_dir printed raw readdir() order — alphabetical by
+  luck on one filesystem, ext4 hash order on another.  The listing is
+  now collected and qsorted before printing.  A tidy demonstration of
+  why the goldens exist: the dead code carried a latent
+  nondeterminism, and the suite caught it on the first cross-machine
+  run.  Golden unchanged (it was authored on the lucky filesystem).
