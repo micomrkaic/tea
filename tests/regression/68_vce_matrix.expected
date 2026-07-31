@@ -1,0 +1,16 @@
+(grunfeld: 200 obs loaded — Grunfeld (1958) investment panel: 10 US firms x 1935-1954 (xtreg, hausman))
+0.005836
+0.006811
+0.015894
+0.017209
+0.02168
+0.024715
+0.017994
+0.037573
+0.037573
+(nmes1988: 4406 obs loaded — Deb-Trivedi (1997) medical care demand, 4406 persons 66+ (poisson, logit))
+0.004086
+0.01063
+0.009116
+logit: insurance is a string variable (regress requires numeric)
+do-file aborted at line 34 (rc=198)

@@ -30,6 +30,7 @@
 #include "interp.h"
 #include "estimates.h"
 #include "linalg.h"
+#include "vce.h"
 #include "stats.h"
 #include "mle.h"
 #include <stdio.h>
@@ -266,7 +267,7 @@ static int ols_solve_drop(double *X, double *y, long N, long K,
 
     /* Build reduced design and solve via dgels. */
     int Kr = eff_rank;
-    double *Xr = malloc((size_t)N*Kr*sizeof(double));
+    double *Xr = calloc((size_t)N*Kr, sizeof(double));
     int col=0;
     for(int j=0;j<K;j++) if(!omitted[j]){
         memcpy(Xr + (size_t)col*N, X + (size_t)j*N, N*sizeof(double));
@@ -315,34 +316,25 @@ static double *compute_XtXinv(const double *X, long N, int K, const int *omitted
 
 static double *robust_V(const double *X, long N, int K, const int *omitted,
                         const double *resid){
-    /* HC1: (X'X)^-1 X' diag(e^2) X (X'X)^-1 * N/(N-Kr) */
+    /* HC1 via the shared module (DESIGN_VCE.md): scores s_i = e_i x_i,
+     * bread (X'X)^-1, adjustment N/(N-Kr). */
     int Kr=0; for(int j=0;j<K;j++) if(!omitted[j]) Kr++;
-    double *Xr = malloc((size_t)N*Kr*sizeof(double));
+    double *Xr = calloc((size_t)N*Kr, sizeof(double));
     int col=0;
     for(int j=0;j<K;j++) if(!omitted[j]){
         memcpy(Xr + (size_t)col*N, X + (size_t)j*N, N*sizeof(double));
         col++;
     }
-    /* meat = sum_i e_i^2 x_i x_i' */
-    double *meat = calloc((size_t)Kr*Kr, sizeof(double));
-    for(long i=0;i<N;i++){
-        double e2 = resid[i]*resid[i];
-        for(int j=0;j<Kr;j++) for(int k=0;k<Kr;k++)
-            meat[(size_t)j*Kr + k] += e2 * Xr[(size_t)j*N+i] * Xr[(size_t)k*N+i];
-    }
+    double *S = calloc((size_t)N*Kr, sizeof(double));
+    for(int j=0;j<Kr;j++) for(long i=0;i<N;i++)
+        S[(size_t)j*N+i] = resid[i] * Xr[(size_t)j*N+i];
     double *XtX = calloc((size_t)Kr*Kr, sizeof(double));
     at_b(Xr, N, Kr, Xr, Kr, XtX);
     mat_inv_sym(XtX, Kr);
-    /* sandwich = XtXinv * meat * XtXinv */
-    double *tmp = calloc((size_t)Kr*Kr, sizeof(double));
-    cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, Kr, Kr, Kr,
-                1.0, XtX, Kr, meat, Kr, 0.0, tmp, Kr);
-    double *sand = calloc((size_t)Kr*Kr, sizeof(double));
-    cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, Kr, Kr, Kr,
-                1.0, tmp, Kr, XtX, Kr, 0.0, sand, Kr);
-    double adj = (double)N / (double)(N - Kr);
-    for(int i=0;i<Kr*Kr;i++) sand[i] *= adj;
-    /* expand to K×K */
+    double *sand = vce_sandwich(XtX, S, N, Kr, NULL, 0,
+                                vce_adj_ls_robust(N, Kr));
+    free(S); free(Xr); free(XtX);
+    /* expand to K\u00d7K */
     double *V = calloc((size_t)K*K, sizeof(double));
     int rj=0; int *map = malloc(K*sizeof(int));
     for(int j=0;j<K;j++) map[j] = omitted[j] ? -1 : rj++;
@@ -350,40 +342,30 @@ static double *robust_V(const double *X, long N, int K, const int *omitted,
         int ii=map[i], jj=map[j]; if(ii<0||jj<0) continue;
         V[(size_t)i*K+j] = sand[(size_t)ii*Kr+jj];
     }
-    free(Xr); free(meat); free(XtX); free(tmp); free(sand); free(map);
+    free(sand); free(map);
     return V;
 }
 
 static double *cluster_V(const double *X, long N, int K, const int *omitted,
                          const double *resid, const long *cid, long G){
-    /* CR1: (X'X)^-1 [sum_g (X_g' e_g)(X_g' e_g)'] (X'X)^-1 * (G/(G-1))*((N-1)/(N-Kr)) */
+    /* CR1 via the shared module: same scores, clustered meat,
+     * adjustment (G/(G-1))((N-1)/(N-Kr)). */
     int Kr=0; for(int j=0;j<K;j++) if(!omitted[j]) Kr++;
-    double *Xr = malloc((size_t)N*Kr*sizeof(double));
+    double *Xr = calloc((size_t)N*Kr, sizeof(double));
     int col=0;
     for(int j=0;j<K;j++) if(!omitted[j]){
         memcpy(Xr + (size_t)col*N, X + (size_t)j*N, N*sizeof(double));
         col++;
     }
-    /* compute per-cluster sums u_g = sum_{i in g} e_i * x_i,  meat = sum u_g u_g' */
-    double *u = calloc((size_t)G*Kr, sizeof(double));   /* G x Kr column-major: u[g + Kr-index*G] */
-    for(long i=0;i<N;i++){
-        long g = cid[i];
-        for(int j=0;j<Kr;j++) u[(size_t)j*G + g] += resid[i] * Xr[(size_t)j*N + i];
-    }
-    double *meat = calloc((size_t)Kr*Kr, sizeof(double));
-    at_b(u, G, Kr, u, Kr, meat);
-
+    double *S = calloc((size_t)N*Kr, sizeof(double));
+    for(int j=0;j<Kr;j++) for(long i=0;i<N;i++)
+        S[(size_t)j*N+i] = resid[i] * Xr[(size_t)j*N+i];
     double *XtX = calloc((size_t)Kr*Kr, sizeof(double));
     at_b(Xr, N, Kr, Xr, Kr, XtX);
     mat_inv_sym(XtX, Kr);
-    double *tmp = calloc((size_t)Kr*Kr, sizeof(double));
-    cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, Kr, Kr, Kr,
-                1.0, XtX, Kr, meat, Kr, 0.0, tmp, Kr);
-    double *sand = calloc((size_t)Kr*Kr, sizeof(double));
-    cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, Kr, Kr, Kr,
-                1.0, tmp, Kr, XtX, Kr, 0.0, sand, Kr);
-    double adj = ((double)G/(double)(G-1)) * ((double)(N-1)/(double)(N-Kr));
-    for(int i=0;i<Kr*Kr;i++) sand[i] *= adj;
+    double *sand = vce_sandwich(XtX, S, N, Kr, cid, G,
+                                vce_adj_ls_cluster(N, Kr, G));
+    free(S); free(Xr); free(XtX);
     double *V = calloc((size_t)K*K, sizeof(double));
     int rj=0; int *map = malloc(K*sizeof(int));
     for(int j=0;j<K;j++) map[j] = omitted[j] ? -1 : rj++;
@@ -391,7 +373,7 @@ static double *cluster_V(const double *X, long N, int K, const int *omitted,
         int ii=map[i], jj=map[j]; if(ii<0||jj<0) continue;
         V[(size_t)i*K+j] = sand[(size_t)ii*Kr+jj];
     }
-    free(Xr); free(u); free(meat); free(XtX); free(tmp); free(sand); free(map);
+    free(sand); free(map);
     return V;
 }
 
@@ -418,7 +400,8 @@ static void print_regress_table(const Estimates *e){
         printf("\n");
     }
     /* coefficient table */
-    const char *selab = e->se_kind==SE_ROBUST?"Robust":e->se_kind==SE_CLUSTER?"Cluster":"Std. err.";
+    /* Stata prints "Robust" for BOTH robust and cluster (the clusters note carries the distinction) */
+    const char *selab = e->se_kind!=SE_CLASSICAL?"Robust":"Std. err.";
     printf("------------------------------------------------------------------------------\n");
     printf("%12s | Coefficient  %-10s    t    P>|t|     [95%% conf. interval]\n",e->depvar,selab);
     printf("-------------+----------------------------------------------------------------\n");
@@ -1321,6 +1304,15 @@ int do_xtreg(Cmd *c)
         else if(!strncmp(vce,"cluster",7)){ se_kind=SE_CLUSTER;
             char *p=vce+7; while(*p==' ')p++; snprintf(clvar,33,"%s",p); }
         else se_kind=SE_ROBUST;
+    }
+    /* Stata semantics (since Stata 10): on the within estimator plain
+     * HC1 is inconsistent (Stock & Watson, Econometrica 2008), so
+     * `robust` PROMOTES to vce(cluster panelvar).  Before v1.6.33 tea
+     * computed the inconsistent HC1 here — different number than Stata
+     * for the same command line (Bug 39). */
+    if(se_kind == SE_ROBUST && c->f->ts_panel >= 0){
+        se_kind = SE_CLUSTER;
+        snprintf(clvar, sizeof clvar, "%s", c->f->vars[c->f->ts_panel].name);
     }
 
     /* Split varlist into depvar + regressor list (paren-aware first token). */

@@ -1446,3 +1446,29 @@ used in `egen`.
   why the goldens exist: the dead code carried a latent
   nondeterminism, and the suite caught it on the first cross-machine
   run.  Golden unchanged (it was authored on the lucky filesystem).
+
+## v1.6.33 — the unified VCE module (DESIGN_VCE.md); Bug 39
+
+- Foundation work for the econometrics roadmap: sandwich VCEs existed
+  as FOUR independent implementations (regress, the GLM family,
+  ivregress, xtreg).  New src/vce.c owns the abstraction — V = c*BMB
+  from estimator-supplied bread and score rows — plus the option
+  parser, the finite-sample policy table, and the output furniture.
+  DESIGN_VCE.md is the contract, including the migration plan and the
+  Stata-verification protocol (tools/stata_check_vce.do).
+- Bug 39 (semantic): `xtreg, fe robust` computed plain HC1 on the
+  within regression.  Stata has promoted robust to
+  vce(cluster panelvar) since Stata 10 because HC1 is inconsistent
+  under the within transformation (Stock & Watson 2008) — tea printed
+  a different number than Stata for the same command line.  Fixed:
+  robust promotes, the two spellings now agree exactly, and the
+  cluster note prints.  Cosmetic contract fix alongside: the SE column
+  header under clustering reads "Robust" (Stata's label), not
+  "Cluster".
+- regress and xtreg now route through the module (their shared
+  robust_V/cluster_V are thin wrappers; numbers verified unchanged).
+  The GLM family and ivregress keep their in-place implementations
+  this release and port next, per the design note's staging.
+- Test 68 locks the estimator x {default, robust, cluster} matrix
+  cross-rig, with xtreg's robust==cluster equality as two identical
+  golden lines.
