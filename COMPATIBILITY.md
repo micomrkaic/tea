@@ -225,3 +225,32 @@ Documented graphics deviations from Stata:
   positive-definiteness of the Lyapunov solution (an algebraic
   solution exists for many explosive T; only the PD one is a
   covariance).
+
+## sspace subset (v1.6.40)
+
+- sspace implements time-invariant stationary models: state equations
+  linear in lag-1 states (higher lags via auxiliary identity states),
+  observation equations linear in contemporaneous states with
+  optional constants and per-equation noerror; covstate(identity)
+  default and covstate(diagonal), covobs(diagonal) only (the engine's
+  diagonal-H requirement).  Identification is the user's job through
+  the constraints subsystem, as in Stata.  Nonstationary
+  specifications are evaluation errors (the PD-Lyapunov guard);
+  Stata's diffuse option is staged.
+- Verified: the AR(1) written as sspace reproduces arima's exact ML
+  to reported precision INCLUDING the OIM standard error (same
+  likelihood through a different front door); a noisy-AR(1)
+  signal-extraction model matches a hand-written statsmodels custom
+  MLEModel's optimum to 5 decimals; identity-vs-diagonal
+  normalizations reach identical likelihoods with the scale migrated
+  into the loading.
+
+## set seed and the Box-Muller spare (Bug 40, v1.6.40)
+
+- tea_srand previously reset the PCG stream but not the Box-Muller
+  spare, so after an odd number of prior normal draws a stale spare
+  survived `set seed` and shifted the post-seed stream by one draw.
+  Stata's set seed fully determines subsequent draws; tea's now does
+  too.  No shipped golden depended on the buggy behavior (all
+  mid-file re-seeds in the suite happened to sit at even draw
+  parity), so no golden changed.

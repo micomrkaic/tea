@@ -72,12 +72,20 @@ static uint64_t g_rng_inc   = 1ULL;
 
 void tea_srand(unsigned long seed);   /* prototype: defined just below */
 
+/* Box-Muller spare (Bug 40): must be reset by tea_srand so that
+ * set seed fully determines the subsequent stream, as in Stata.
+ * Before the fix, a stale spare from an odd number of prior normal
+ * draws survived re-seeding and shifted the post-seed stream by one. */
+static double g_bm_cached = 0;
+static int    g_bm_has = 0;
+
 void tea_srand(unsigned long seed)
 {
     g_rng_state = (uint64_t)seed;
     g_rng_inc   = (((uint64_t)seed) << 1u) | 1u;
     /* Burn one to mix */
     g_rng_state = g_rng_state * 6364136223846793005ULL + g_rng_inc;
+    g_bm_has = 0;
 }
 
 static uint32_t pcg32(void)
@@ -98,16 +106,14 @@ static double rng_uniform(void)
 /* Standard normal via Box-Muller.  We cache the second draw. */
 static double rng_normal(void)
 {
-    static double cached = 0;
-    static int has_cache = 0;
-    if(has_cache){ has_cache = 0; return cached; }
+    if(g_bm_has){ g_bm_has = 0; return g_bm_cached; }
     double u1, u2;
     do { u1 = rng_uniform(); } while(u1 <= 1e-300);
     u2 = rng_uniform();
     double r = sqrt(-2.0 * log(u1));
     double theta = 2.0 * M_PI * u2;
-    cached = r * sin(theta);
-    has_cache = 1;
+    g_bm_cached = r * sin(theta);
+    g_bm_has = 1;
     return r * cos(theta);
 }
 

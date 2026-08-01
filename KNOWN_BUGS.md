@@ -1618,3 +1618,30 @@ used in `egen`.
 - dsyev entered the wasm LAPACKE shim for the PCA starting values —
   instance eight, predicted in writing in the design note before the
   linker could complain.
+
+## v1.6.40 — the sspace subset completes the state-space tier; Bug 40
+
+- sspace arrives per DESIGN_SSPACE.md Addendum A (appended this
+  release): state equations in lag-1 states, observation equations in
+  contemporaneous states, covstate(identity|diagonal),
+  covobs(diagonal), noerror/noconstant per equation, smstates(stub),
+  identification via the constraints subsystem — the v1.6.39
+  machinery this command was the stated reason for.  Estimation is
+  the dfactor pipeline verbatim.  The tier's delivery order
+  (ucm -> exact-ML arima -> dfactor -> sspace) is complete.
+- Verification: (1) internal exactness — the AR(1) as sspace
+  reproduces arima's ll (-218.04181), coefficient (.673299), and OIM
+  standard error (.0431407) identically: the same exact likelihood
+  reached through a different front door; (2) a noisy-AR(1) matches a
+  hand-written statsmodels custom MLEModel to 5 decimals (-310.16419
+  both); (3) identity-vs-diagonal covstate normalizations reach the
+  same likelihood with the loading absorbing the scale
+  (.506174 = sqrt(.256214)).
+- Bug 40, found BY the sspace regression test: tea_srand did not
+  clear the Box-Muller spare, so `set seed` after an odd number of
+  normal draws produced a stream shifted by one stale value.  Test
+  74's in-session data refused to match the same commands run from a
+  fresh session — the discrepancy that unmasked it.  Fixed: the spare
+  is file-scope state reset by tea_srand.  Every mid-file re-seed in
+  the shipped suite sat at even parity, so no golden moved; the fix
+  is pure correctness.

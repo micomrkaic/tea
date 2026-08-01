@@ -25,7 +25,9 @@ and `graph combine`, all on a dependency-free SVG engine.  Since v1.6.35 it has 
 macro time-series inference tier (`newey`, unit-root tests, filters,
 `var`, `vecrank`, impulse responses), and since v1.6.36 a state-space
 tier (`ucm`; exact-ML `arima` since v1.6.37).  Since v1.6.39 it has dfactor
-(multi-factor dynamic-factor models) and Stata's constraint language.
+(multi-factor dynamic-factor models) and Stata's constraint language,
+and since v1.6.40 the sspace command for general stationary
+state-space models.
 Still not implemented: seasonal ARIMA, GARCH, mixed-effects models,
 survival analysis, structural breaks, VEC estimation, Bayesian
 inference, or machine learning. It also does not

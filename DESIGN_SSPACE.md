@@ -281,3 +281,54 @@ H, square-root filtering, simulation smoother, EM estimation,
 mixed-frequency observation equations, `ucm` cycles, multivariate
 dfactor generalizations, full sspace syntax.  Each is an extension of
 this design, not a revision of it.
+
+## Addendum A (v1.6.40): the sspace subset — syntax and semantics
+
+Promised in §8.4; implementable now that the engine (v1.6.36-38) and
+the constraints subsystem (v1.6.39) exist.  Stata's sspace is
+unusable without constraints, which is why this lands last.
+
+### Syntax
+
+    sspace (sname L.s1 [L.s2 ...], state [noerror])
+           [more state equations]
+           (depvar s1 [s2 ...] [, noerror noconstant])
+           [more observation equations]
+           [, constraints(numlist) covstate(identity|diagonal)
+              covobs(diagonal) smstates(stub)]
+
+- State equations (marked `state`): each names a NEW state and lists
+  the LAG-1 states it loads on; every listed `L.sj` coefficient is a
+  free parameter named [sname]L.sj.  Higher lags are expressed the
+  standard way, with auxiliary identity states (s2lag = L.s2), kept
+  out of the syntax.  No constants in state equations (staged).
+  `noerror` drops the equation's disturbance.
+- Observation equations: depvar loads on CONTEMPORANEOUS states;
+  coefficients named [depvar]sj; constant unless noconstant; exog
+  staged.  `noerror` makes the equation an identity up to the states
+  (H row = 0 — legal in the univariate filter).
+- covstate(identity) is the default (Stata's): state disturbance
+  variances fixed at 1, scale identified through coefficients.
+  covstate(diagonal) frees them (log-sigma).  covobs(diagonal) is the
+  only observation form (the engine's H-diagonal requirement, §1).
+- Identification is the user's job via constraints(), as in Stata.
+  Everything the constraint language can say about the coefficient
+  parameters is allowed; variance parameters are not constrainable
+  (v1.6.39 policy).
+
+### Semantics and limits
+
+- Time-invariant, stationary models only: at each likelihood
+  evaluation T is assembled from the state-equation coefficients and
+  P1 solved by Lyapunov; a non-PD solution (unit or explosive roots)
+  is an evaluation error (the v1.6.39 guard).  Stata's sspace has the
+  same stationarity default; the diffuse option is staged.
+- Estimation, starts, OIM, output conventions, smstates(): the
+  dfactor machinery verbatim (BFGS2, central differences, three
+  deterministic starts, Hessian in the reparameterized psi space).
+- Verification protocol: (1) internal exactness — the AR(1) written
+  as sspace must reproduce `arima, arima(1 0 0) noconstant` to
+  reported precision (same likelihood function reached through a
+  different front door); (2) a noisy-AR(1) (signal extraction) model
+  against a hand-written statsmodels custom MLEModel with identical
+  structure; (3) constrained-coefficient printing.

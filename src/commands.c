@@ -4486,6 +4486,7 @@ static int do_correlate(Cmd *c){
 
 int do_constraint(Cmd *c);
 int do_dfactor(Cmd *c);
+int do_sspace(Cmd *c);
 int do_ucm(Cmd *c);
 int do_var(Cmd *c);
 int do_vargranger(Cmd *c);
@@ -5482,6 +5483,8 @@ Disp TABLE[]={
         "constraint [define] # expr = expr | list | drop #|_all      linear constraints"},
     {"dfactor",do_dfactor,1,
         "dfactor (y1 y2 ... [= exog][, noconstant]) (f1 [f2..] = , ar(#))  dynamic factors"},
+    {"sspace",do_sspace,1,
+        "sspace (s L.s.., state [noerror]).. (y s.. [, noerror nocons]).. , constraints(#)  state space"},
     {"ucm",do_ucm,1,
         "ucm Y, model(llevel|lltrend|rwalk|rwdrift|ntrend) [seasonal(#) smstate(NEW)]  unobserved components"},
     {"var",do_var,1,

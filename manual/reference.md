@@ -419,6 +419,12 @@ import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) cas
   dfactor (y1 y2 ... [= exog][, noconstant]) (f1 [f2..] = , ar(#))  dynamic factors
 ```
 
+## `sspace`
+
+```
+  sspace (s L.s.., state [noerror]).. (y s.. [, noerror nocons]).. , constraints(#)  state space
+```
+
 ## `ucm`
 
 ```
