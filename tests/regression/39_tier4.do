@@ -53,6 +53,10 @@ quietly arima y, arima(1 0 0) noconstant
 display ""
 * The optimizer's last digits depend on the libm/BLAS backend; assert the
 * estimate with a tolerance instead of printing full precision.
+* GOLDEN CHANGE v1.6.37 (announced in DESIGN_SSPACE.md §8.2): arima moved
+* from conditional likelihood to exact ML on the state-space engine; the
+* rounded estimate moved 0.671 -> 0.6733, now matching statsmodels exact
+* ML (0.673301) on the identical series.
 display "ARIMA AR(1) within 0.05 of true 0.7: " (abs(_b[ar1] - 0.7) < 0.05)
 display "ARIMA AR(1) rounded: " round(_b[ar1]*10000)/10000
 

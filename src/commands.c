@@ -4484,6 +4484,7 @@ static int do_correlate(Cmd *c){
     return 0;
 }
 
+int do_ucm(Cmd *c);
 int do_var(Cmd *c);
 int do_vargranger(Cmd *c);
 int do_irf(Cmd *c);
@@ -5475,6 +5476,8 @@ Disp TABLE[]={
         "tempfile NAME...  \u2014 set local macros to fresh temp-file paths"},
     {"tempname",do_tempname,0,
         "tempname NAME...  \u2014 set local macros to fresh scratch names"},
+    {"ucm",do_ucm,1,
+        "ucm Y, model(llevel|lltrend|rwalk|rwdrift|ntrend) [seasonal(#) smstate(NEW)]  unobserved components"},
     {"var",do_var,1,
         "var Y1 Y2 ...[, lags(1/p)]                  reduced-form VAR"},
     {"vargranger",do_vargranger,0,

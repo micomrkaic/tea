@@ -358,7 +358,7 @@ number of observations set to 300
 (1 real change made)
 
 ARIMA AR(1) within 0.05 of true 0.7: 1
-ARIMA AR(1) rounded: 0.671
+ARIMA AR(1) rounded: 0.6733
 
 First runiform with seed 42:
 number of observations set to 3

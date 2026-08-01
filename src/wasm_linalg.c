@@ -28,6 +28,7 @@
  * the row-major transpose machinery is dead weight we simply don't carry.
  */
 #ifdef __EMSCRIPTEN__
+#include <math.h>
 #include <stdlib.h>
 #include "../wasm/include/lapacke.h"
 #include "../wasm/include/cblas.h"
@@ -241,7 +242,28 @@ void cblas_dgemv(CBLAS_ORDER order, CBLAS_TRANSPOSE ta, int m, int n,
     f2c_int fm=m,fn=n,flda=lda,fincx=incx,fincy=incy;
     dgemv_(&ca,&fm,&fn,&alpha,(f2c_dbl*)a,&flda,(f2c_dbl*)x,&fincx,&beta,y,&fincy);
 }
-#endif /* __EMSCRIPTEN__ */
+
 
 /* keep the translation unit non-empty in native builds */
+
+/* ---- level-1 BLAS for GSL multimin ---------------------------------- */
+void cblas_daxpy(int n, double a, const double *x, int incx, double *y, int incy){
+    for(int i=0;i<n;i++) y[(size_t)i*incy] += a*x[(size_t)i*incx];
+}
+void cblas_dcopy(int n, const double *x, int incx, double *y, int incy){
+    for(int i=0;i<n;i++) y[(size_t)i*incy] = x[(size_t)i*incx];
+}
+double cblas_ddot(int n, const double *x, int incx, const double *y, int incy){
+    double s=0; for(int i=0;i<n;i++) s += x[(size_t)i*incx]*y[(size_t)i*incy];
+    return s;
+}
+double cblas_dnrm2(int n, const double *x, int incx){
+    double s=0; for(int i=0;i<n;i++){ double v=x[(size_t)i*incx]; s+=v*v; }
+    return sqrt(s);
+}
+void cblas_dscal(int n, double a, double *x, int incx){
+    for(int i=0;i<n;i++) x[(size_t)i*incx] *= a;
+}
+
+#endif /* __EMSCRIPTEN__ */
 typedef int tea_wasm_linalg_placeholder;

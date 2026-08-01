@@ -25,6 +25,8 @@
 #include "linalg.h"
 #include "tsop.h"
 #include "estimates.h"
+#include "interp.h"
+extern void store_coef_macros(Estimates *e, MacroKV **tbl);
 
 #include "value.h"
 #define _USE_MATH_DEFINES
@@ -179,6 +181,7 @@ int do_newey(Cmd *c){
         snprintf(ee->fitted_frame,33,"%s",c->f->name);
         est_free(c->ws->last_est);
         c->ws->last_est = ee;
+        store_coef_macros(ee, &c->ip->rret);
     }
     free(X);free(y);free(b);free(e);free(Binv);free(S);free(V);
     free(vs); free(rows); tsop_drop_temps(c->f,n_temps);

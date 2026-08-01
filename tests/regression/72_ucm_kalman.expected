@@ -1,0 +1,17 @@
+(nile: 100 obs loaded — Nile annual flow at Aswan 1871-1970 - the Durbin-Koopman example (ucm))
+1469.18
+15098.5
+1280
+3146
+
+    Variable |        Obs        Mean    Std. dev.         Min         Max
+-------------+--------------------------------------------------------------
+        r_sl |        100       919.4        106.1       798.4        1117
+515.4
+16106
+(airline: 144 obs loaded — Box-Jenkins airline passengers, monthly 1949-1960 (tsset, arima))
+airline var(level) ok: 1
+airline var(seas) ok: 1
+airline var(e) ok: 1
+0.01135
+0.01136

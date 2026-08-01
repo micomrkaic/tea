@@ -163,3 +163,37 @@ Documented graphics deviations from Stata:
   (e.g. 29.68 vs 29.80 at m-r=3).  Trace statistics agree exactly.
 - irf is an in-memory subset (create/table from the last var); no .irf
   files, sets, or fevd.  lpirf is univariate (own-shock responses).
+
+## State-space tier, release one (v1.6.36)
+
+- ucm uses EXACT diffuse initialization (Koopman 1997) with univariate
+  filtering; log-likelihoods match statsmodels' use_exact_diffuse=True
+  to 5 decimals.  Stata's ucm approximates the diffuse prior with a
+  large kappa, so reported log-likelihoods can differ in the diffuse
+  terms; variance estimates and smoothed states should agree to
+  reported precision.
+- The ML optimizer (BFGS, central-difference gradients, three
+  deterministic starting points) can in principle land at different
+  points of a flat likelihood across BLAS backends; regression goldens
+  therefore round derived series before summarizing, and the release
+  gate enforces cross-rig identity of everything printed.
+- Release one implements models ntrend/llevel/lltrend/rwalk/rwdrift +
+  dummy seasonal; cycles, sspace, dfactor, and exact-ML arima follow
+  per DESIGN_SSPACE.md.
+
+## Exact-ML arima (v1.6.37)
+
+- arima now computes exact maximum likelihood through the state-space
+  engine (differencing first, mean/regression-intercept
+  parameterization for the constant — both Stata's conventions).
+  Verified against statsmodels exact ML: identical log-likelihoods to
+  4 decimals on AR, MA, ARMA-with-constant, ARIMA(0,1,1), and
+  regression-with-ARMA-errors test problems.
+- Standard errors are OIM: the numerical Hessian of the exact
+  likelihood (computed in the transformed parameter space, delta
+  method back).  Stata's arima defaults to OPG/BHHH, so SEs differ in
+  finite samples.  Note also that statsmodels' cov_type='oim' for
+  ARMA terms is itself an approximation: the finite-difference Hessian
+  of statsmodels' own log-likelihood at its own optimum reproduces
+  tea's standard errors (to 5 decimals), not the ones statsmodels
+  reports.

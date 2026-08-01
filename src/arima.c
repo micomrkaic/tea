@@ -2,7 +2,8 @@
  * Copyright (C) 2026 Mico Mrkaic
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * arima.c — ARIMA(p,d,q) via conditional likelihood.
+ * arima.c — ARIMA(p,d,q) via EXACT maximum likelihood on the
+ * state-space engine (kalman.c), per DESIGN_SSPACE.md §8.2.
  *
  * Syntax:
  *   arima y [exog_varlist] [if] [in], arima(p d q) [noconstant]
@@ -19,32 +20,27 @@
  *        + Σ_{j=1..q} θ_j ε_{t-j} + u_t
  *   u_t ~ N(0, σ²)
  *
- * Conditional likelihood: assumes ε_{0}, ε_{-1}, ..., ε_{1-q} = 0.
- * Then ε_t for t=1..n is computed recursively, and we maximize
- *   ℓ(φ, θ, β, μ) = -(n/2) log(2π σ²) - (1/(2σ²)) Σ u_t²
- * by concentrating out σ² = (1/n) Σ u_t² and minimizing the SSR
- * over (φ, θ, β, μ).
+ * Method: the ARMA(p,q) process on the d-times-differenced,
+ * mean/regression-adjusted series is cast in Harvey companion form
+ * (m = max(p, q+1) states) with stationary Lyapunov initialization,
+ * and the exact Gaussian likelihood is evaluated by the univariate
+ * Kalman filter.  Optimization is BFGS2 with central-difference
+ * gradients from three deterministic starting points, over
+ * transformed parameters: Monahan's partial-autocorrelation transform
+ * for the AR and MA polynomials (stationarity and invertibility
+ * enforced), log-sigma for the scale.  Standard errors are the
+ * observed information matrix (numerical Hessian of the exact
+ * likelihood in the transformed space, delta method back to the
+ * reported scale).  COMPATIBILITY.md records the conventions:
+ * Stata differences first and reports the regression-intercept
+ * (mean-form) constant — both matched here — but defaults to
+ * OPG/BHHH standard errors, which differ from OIM in finite samples.
  *
- * Numerical strategy: Gauss-Newton iteration with step halving.
- * Score (gradient of SSR) and approximate Hessian computed by
- * numerical differentiation (forward finite differences).  This is
- * less elegant than analytic gradients but produces correct results
- * and avoids re-deriving the MA-recursion gradient by hand.
+ * The conditional-SSR recursion (arima_ssr) is retained only to seed
+ * the variance starting value.
  *
- * Starting values:
- *   - AR coefficients: from OLS regression of y* on its own lags
- *     (Yule-Walker would be slightly better but OLS is robust)
- *   - MA coefficients: zero
- *   - Constant: ȳ_d
- *   - Exog coefficients: from OLS of y* on the exog vars
- *
- * Convergence: relative change in SSR < tol, max_iter = 50.
- *
- * v1.0 limitations:
- *   - Conditional likelihood only (no Kalman filter for exact ML)
- *   - No seasonal terms (sar, sma)
- *   - Stationarity/invertibility NOT enforced — extreme starting values
- *     can lead to nonconvergence.  We warn if |Σφ|, |Σθ| > 0.99.
+ * Remaining limitations:
+ *   - No seasonal terms (sarima) yet; staged per the design note.
  */
 #define _GNU_SOURCE
 #include "interp.h"
@@ -52,7 +48,9 @@
 #include "estimates.h"
 #include "stats.h"
 #include "tsop.h"
-#include "linalg.h"
+#include <lapacke.h>
+#include <gsl/gsl_multimin.h>
+#include "kalman.h"
 #include "value.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -141,55 +139,134 @@ static long difference_series(double *y, long n, int d)
 /* Numerical gradient of SSR at theta via forward differences.
  * grad[k] = (SSR(θ + h e_k) - SSR(θ)) / h.
  * h is scaled by |θ_k| if non-trivial. */
-static void arima_grad(const ArimaCtx *c, const double *theta,
-                       double f0, double *grad)
-{
-    int K = K_total(c);
-    double *th2 = malloc(K * sizeof(double));
-    memcpy(th2, theta, K * sizeof(double));
-    for(int k = 0; k < K; k++){
-        double h = 1e-6 * (1.0 + fabs(theta[k]));
-        th2[k] = theta[k] + h;
-        double f1 = arima_ssr(c, th2, NULL);
-        grad[k] = (f1 - f0) / h;
-        th2[k] = theta[k];
-    }
-    free(th2);
-}
 
 /* Approximate Hessian via finite differences of the gradient.
  * For Gauss-Newton, we'd use J'J where J is the residual Jacobian; for
  * simplicity we use the SSR Hessian directly.  v1.0 uses central
  * differences of the gradient. */
-static void arima_hess(const ArimaCtx *c, const double *theta,
-                       double *hess)
-{
-    int K = K_total(c);
-    double *grad0 = malloc(K * sizeof(double));
-    double *grad1 = malloc(K * sizeof(double));
-    double *th2 = malloc(K * sizeof(double));
-    double f0 = arima_ssr(c, theta, NULL);
-    arima_grad(c, theta, f0, grad0);
-    memcpy(th2, theta, K * sizeof(double));
-    for(int k = 0; k < K; k++){
-        double h = 1e-5 * (1.0 + fabs(theta[k]));
-        th2[k] = theta[k] + h;
-        double f1 = arima_ssr(c, th2, NULL);
-        arima_grad(c, th2, f1, grad1);
-        for(int j = 0; j < K; j++){
-            hess[(size_t)j*K + k] = (grad1[j] - grad0[j]) / h;
-        }
-        th2[k] = theta[k];
-    }
-    /* Symmetrize. */
-    for(int i = 0; i < K; i++) for(int j = i+1; j < K; j++){
-        double avg = 0.5 * (hess[(size_t)i*K + j] + hess[(size_t)j*K + i]);
-        hess[(size_t)i*K + j] = hess[(size_t)j*K + i] = avg;
-    }
-    free(grad0); free(grad1); free(th2);
-}
 
 /* ---- parse arima(p d q) option ----------------------------------------- */
+
+/* ---- exact ML via the state-space engine (DESIGN_SSPACE.md §8.2) ----
+ *
+ * Parameterization (Decision 7): AR and MA polynomials through
+ * Monahan's partial-autocorrelation transform (stationarity and
+ * invertibility enforced during optimization), variance as log-sigma.
+ * Unconstrained z maps to partials r = z/sqrt(1+z^2) in (-1,1), then
+ * the Durbin-Levinson recursion maps partials to coefficients. */
+static void pacf_to_coef(const double *r, int k, double *out)
+{
+    double work[16];
+    for(int i = 0; i < k; i++){
+        out[i] = r[i];
+        for(int j = 0; j < i; j++) work[j] = out[j] - r[i]*out[i-1-j];
+        for(int j = 0; j < i; j++) out[j] = work[j];
+    }
+}
+static void z_to_coef(const double *z, int k, double *out)
+{
+    double r[16];
+    for(int i = 0; i < k; i++) r[i] = z[i]/sqrt(1.0 + z[i]*z[i]);
+    pacf_to_coef(r, k, out);
+}
+/* inverse Durbin-Levinson: coefficients -> partials -> z (for starting
+ * values); clips partials into the open interval */
+static void coef_to_z(const double *coef, int k, double *z)
+{
+    double a[16], b[16];
+    memcpy(a, coef, (size_t)k*sizeof(double));
+    for(int i = k-1; i >= 0; i--){
+        double r = a[i];
+        if(r >  0.95) r =  0.95;
+        if(r < -0.95) r = -0.95;
+        z[i] = r/sqrt(1.0 - r*r);
+        if(i > 0){
+            double den = 1.0 - r*r;
+            for(int j = 0; j < i; j++)
+                b[j] = (a[j] + r*a[i-1-j])/den;
+            memcpy(a, b, (size_t)i*sizeof(double));
+        }
+    }
+}
+
+typedef struct {
+    const double *y;      /* differenced series */
+    const double *X;      /* exog, col-major n x K_ex */
+    long n;
+    int K_ex, hc, p, q;
+} ExactCtx;
+
+/* psi layout: [mu (if hc), beta (K_ex), zAR (p), zMA (q), log sigma] */
+static double exact_negll(const gsl_vector *x, void *params)
+{
+    ExactCtx *e = params;
+    int p = e->p, q = e->q, m = (p > q+1) ? p : q+1;
+    double psi[40];
+    for(size_t i = 0; i < x->size; i++) psi[i] = gsl_vector_get(x, i);
+    double mu = e->hc ? psi[0] : 0.0;
+    const double *beta = psi + e->hc;
+    double phi[16] = {0}, thq[16] = {0};
+    if(p) z_to_coef(psi + e->hc + e->K_ex, p, phi);
+    if(q) z_to_coef(psi + e->hc + e->K_ex + p, q, thq);
+    double s2 = exp(2.0*psi[e->hc + e->K_ex + p + q]);
+    /* Harvey-form ARMA state space */
+    double Z[16] = {0}, T[256] = {0}, R[256] = {0}, H[1] = {0};
+    double a1[16] = {0}, Pst[256], Pinf[256] = {0}, RQR[256] = {0};
+    Z[0] = 1.0;
+    for(int j = 0; j < p; j++) T[j] = phi[j];               /* first column */
+    for(int j = 0; j < m-1; j++) T[(size_t)(j+1)*m + j] = 1.0;
+    /* R: m x 1 disturbance loading [1, th1, ..., th_{m-1}]' */
+    R[0] = 1.0;
+    for(int j = 0; j < q; j++) R[j+1] = thq[j];
+    double Q1[1] = { s2 };
+    for(int r2 = 0; r2 < m; r2++) for(int c2 = 0; c2 < m; c2++)
+        RQR[(size_t)c2*m + r2] = R[r2]*R[c2]*s2;
+    if(ss_lyapunov(T, RQR, m, Pst)) return 1e30;
+    for(int i = 0; i < m*m; i++) if(!isfinite(Pst[i])) return 1e30;
+    SSModel M = { m, 1, 1, Z, H, T, R, Q1, a1, Pst, Pinf };
+    double w_stack[4096];
+    double *w = e->n <= 4096 ? w_stack : malloc((size_t)e->n*sizeof(double));
+    for(long t = 0; t < e->n; t++){
+        double mm = mu;
+        for(int k = 0; k < e->K_ex; k++) mm += beta[k]*e->X[(size_t)k*e->n + t];
+        w[t] = e->y[t] - mm;
+    }
+    double ll = ss_loglik(&M, w, e->n, NULL, NULL);
+    if(w != w_stack) free(w);
+    if(!isfinite(ll)) return 1e30;
+    return -ll;
+}
+static void exact_negll_df(const gsl_vector *x, void *params, gsl_vector *g)
+{
+    double h = 1e-5;
+    gsl_vector *xp = gsl_vector_alloc(x->size);
+    for(size_t i = 0; i < x->size; i++){
+        gsl_vector_memcpy(xp, x);
+        gsl_vector_set(xp, i, gsl_vector_get(x,i)+h);
+        double fp = exact_negll(xp, params);
+        gsl_vector_set(xp, i, gsl_vector_get(x,i)-h);
+        double fm = exact_negll(xp, params);
+        gsl_vector_set(g, i, (fp-fm)/(2*h));
+    }
+    gsl_vector_free(xp);
+}
+static void exact_negll_fdf(const gsl_vector *x, void *params, double *f, gsl_vector *g)
+{
+    *f = exact_negll(x, params); exact_negll_df(x, params, g);
+}
+
+/* untransformed coefficient vector [mu, beta, phi, thq] from psi */
+static void psi_to_theta(const ExactCtx *e, const double *psi, double *theta)
+{
+    int idx = 0;
+    if(e->hc) theta[idx++] = psi[0];
+    for(int k = 0; k < e->K_ex; k++) theta[idx++] = psi[e->hc + k];
+    double tmp[16];
+    if(e->p){ z_to_coef(psi + e->hc + e->K_ex, e->p, tmp);
+              for(int k = 0; k < e->p; k++) theta[idx++] = tmp[k]; }
+    if(e->q){ z_to_coef(psi + e->hc + e->K_ex + e->p, e->q, tmp);
+              for(int k = 0; k < e->q; k++) theta[idx++] = tmp[k]; }
+}
 
 static int parse_pdq(const char *spec, int *p, int *d, int *q)
 {
@@ -388,81 +465,125 @@ int do_arima(Cmd *c)
     }
     /* θ_0 stays zero. */
 
-    /* Gauss-Newton with step halving. */
-    int max_iter = 50;
-    double tol = 1e-8;
-    double ssr_prev = arima_ssr(&ctx, theta, NULL);
-    int iter;
-    for(iter = 0; iter < max_iter; iter++){
-        double *grad = malloc(K * sizeof(double));
-        double *hess = malloc((size_t)K * K * sizeof(double));
-        arima_grad(&ctx, theta, ssr_prev, grad);
-        arima_hess(&ctx, theta, hess);
-        /* Add a small ridge to keep Hessian positive definite. */
-        for(int k = 0; k < K; k++) hess[(size_t)k*K + k] += 1e-8;
-        /* Solve hess · Δ = grad via dgesv (general; Hessian might not be SPD). */
-        int *ipiv = malloc(K * sizeof(int));
-        double *delta = malloc(K * sizeof(double));
-        for(int k = 0; k < K; k++) delta[k] = grad[k];
-        int info = LAPACKE_dgesv(LAPACK_COL_MAJOR, K, 1, hess, K, ipiv, delta, K);
-        free(ipiv);
-        if(info != 0){
-            free(grad); free(hess); free(delta);
-            fprintf(stderr,"arima: Hessian singular at iter %d\n", iter);
-            break;
+    /* Exact ML via the state-space engine (BFGS2 on transformed
+     * parameters, central-difference gradients, deterministic
+     * multistart — the ucm pattern; DESIGN_SSPACE.md Decisions 6/7). */
+    ExactCtx ectx = { y, ctx.X, n_d, K_ex, has_cons, p, q };
+    int Kp = K + 1;                       /* + log sigma */
+    double psi0[40] = {0};
+    {
+        int idx = 0;
+        if(has_cons) psi0[idx++] = theta[0];
+        for(int k = 0; k < K_ex; k++) psi0[idx++] = theta[has_cons + k];
+        if(p){
+            double zar[16];
+            coef_to_z(theta + has_cons + K_ex, p, zar);
+            for(int k = 0; k < p; k++) psi0[idx++] = zar[k];
         }
-        /* Step halving: try full Newton step (theta - delta), halve if SSR didn't decrease. */
-        double *th_try = malloc(K * sizeof(double));
-        double step = 1.0;
-        double ssr_new = ssr_prev;
-        bool accepted = false;
-        for(int halve = 0; halve < 12; halve++){
-            for(int k = 0; k < K; k++) th_try[k] = theta[k] - step * delta[k];
-            ssr_new = arima_ssr(&ctx, th_try, NULL);
-            if(isfinite(ssr_new) && ssr_new < ssr_prev){
-                accepted = true;
-                break;
+        for(int k = 0; k < q; k++) psi0[idx++] = 0.0;
+        /* sigma start from the conditional-SSR at the starting values */
+        double ssr0 = arima_ssr(&ctx, theta, NULL);
+        psi0[idx] = 0.5*log((isfinite(ssr0) && ssr0 > 0 ? ssr0 : 1.0)/n_d);
+    }
+    double psi[40]; double ll = -1e300; int iter = 0;
+    {
+        double starts[3][40];
+        int nstarts = (p + q) > 0 ? 3 : 1;
+        memcpy(starts[0], psi0, sizeof psi0);
+        memcpy(starts[1], psi0, sizeof psi0);
+        memcpy(starts[2], psi0, sizeof psi0);
+        for(int k = 0; k < p + q; k++){
+            starts[1][has_cons + K_ex + k] =  0.75;   /* partials ~ +0.6 */
+            starts[2][has_cons + K_ex + k] = -0.75;
+        }
+        gsl_multimin_function_fdf F =
+            { exact_negll, exact_negll_df, exact_negll_fdf, (size_t)Kp, &ectx };
+        for(int s0 = 0; s0 < nstarts; s0++){
+            gsl_multimin_fdfminimizer *s =
+                gsl_multimin_fdfminimizer_alloc(
+                    gsl_multimin_fdfminimizer_vector_bfgs2, Kp);
+            gsl_vector *x0 = gsl_vector_alloc(Kp);
+            for(int i = 0; i < Kp; i++) gsl_vector_set(x0, i, starts[s0][i]);
+            gsl_multimin_fdfminimizer_set(s, &F, x0, 0.1, 1e-4);
+            int status = GSL_CONTINUE, it = 0;
+            double f_prev = 1e300;
+            while(status == GSL_CONTINUE && it < 300){
+                it++;
+                status = gsl_multimin_fdfminimizer_iterate(s);
+                if(status) break;
+                if(fabs(f_prev - s->f) < 1e-10*(1.0 + fabs(s->f))) break;
+                f_prev = s->f;
+                status = gsl_multimin_test_gradient(s->gradient, 1e-7);
             }
-            step *= 0.5;
-        }
-        if(accepted){
-            memcpy(theta, th_try, K * sizeof(double));
-            double rel = fabs(ssr_new - ssr_prev) / (fabs(ssr_prev) + 1.0);
-            ssr_prev = ssr_new;
-            free(grad); free(hess); free(delta); free(th_try);
-            if(rel < tol){ iter++; break; }
-        } else {
-            free(grad); free(hess); free(delta); free(th_try);
-            break;
+            iter += it;
+            if(-s->f > ll){
+                ll = -s->f;
+                for(int i = 0; i < Kp; i++) psi[i] = gsl_vector_get(s->x, i);
+            }
+            gsl_multimin_fdfminimizer_free(s);
+            gsl_vector_free(x0);
         }
     }
-    double sigma2 = ssr_prev / n_d;
+    psi_to_theta(&ectx, psi, theta);
+    double sigma2 = exp(2.0*psi[K]);
     double rmse = sqrt(sigma2);
-    double loglik = -0.5 * n_d * (log(2*M_PI*sigma2) + 1.0);
+    double loglik = ll;
 
-    /* Compute SE from the final Hessian.  V ≈ σ² · (Hess/2)^{-1}
-     * (factor of 2 because we're working with SSR, not -log L).
-     * Actually for conditional ML the asymptotic V ≈ (J'J)^{-1} σ²
-     * where J is the residual Jacobian; the Hessian we computed is
-     * approximately 2 J'J, so V ≈ 2σ² · Hess^{-1}. */
-    double *hess_final = malloc((size_t)K * K * sizeof(double));
-    arima_hess(&ctx, theta, hess_final);
+    /* OIM standard errors: numerical Hessian of -ll in psi-space
+     * (always inside the stationary region), inverted, then mapped to
+     * the reported [mu, beta, phi, thq] scale by the delta method with
+     * a finite-difference Jacobian.  (COMPATIBILITY.md: Stata's arima
+     * default is OPG/BHHH, so SEs differ slightly in finite samples;
+     * point estimates and the log likelihood are the comparable
+     * quantities.) */
     double *V = malloc((size_t)K * K * sizeof(double));
-    memcpy(V, hess_final, (size_t)K * K * sizeof(double));
-    for(int k = 0; k < K; k++) V[(size_t)k*K + k] += 1e-8;  /* ridge */
-    int *ipiv2 = malloc(K * sizeof(int));
-    int rc1 = LAPACKE_dgetrf(LAPACK_COL_MAJOR, K, K, V, K, ipiv2);
-    int rc2 = 0;
-    if(rc1 == 0) rc2 = LAPACKE_dgetri(LAPACK_COL_MAJOR, K, V, K, ipiv2);
-    free(ipiv2);
-    if(rc1 || rc2){
-        fprintf(stderr,"arima: variance matrix not invertible — SEs unavailable\n");
-        for(long k = 0; k < (long)K*K; k++) V[k] = 0;
-    } else {
-        /* Scale by 2σ² */
-        for(long k = 0; k < (long)K*K; k++) V[k] *= 2.0 * sigma2;
+    {
+        double Hp[1600];
+        double h = 1e-4;
+        for(int i = 0; i < Kp; i++) for(int j = 0; j <= i; j++){
+            double tpp[40], tpm[40], tmp2[40], tmm[40];
+            memcpy(tpp, psi, sizeof psi); memcpy(tpm, psi, sizeof psi);
+            memcpy(tmp2, psi, sizeof psi); memcpy(tmm, psi, sizeof psi);
+            tpp[i] += h; tpp[j] += h;  tpm[i] += h; tpm[j] -= h;
+            tmp2[i] -= h; tmp2[j] += h; tmm[i] -= h; tmm[j] -= h;
+            gsl_vector_view vv2;
+            double fpp, fpm, fmp, fmm;
+            vv2 = gsl_vector_view_array(tpp, Kp); fpp = exact_negll(&vv2.vector, &ectx);
+            vv2 = gsl_vector_view_array(tpm, Kp); fpm = exact_negll(&vv2.vector, &ectx);
+            vv2 = gsl_vector_view_array(tmp2, Kp); fmp = exact_negll(&vv2.vector, &ectx);
+            vv2 = gsl_vector_view_array(tmm, Kp); fmm = exact_negll(&vv2.vector, &ectx);
+            double hij = (fpp - fpm - fmp + fmm)/(4*h*h);
+            Hp[(size_t)i*Kp + j] = Hp[(size_t)j*Kp + i] = hij;
+        }
+        int okH = (LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'U', Kp, Hp, Kp) == 0)
+               && (LAPACKE_dpotri(LAPACK_COL_MAJOR, 'U', Kp, Hp, Kp) == 0);
+        if(!okH){
+            fprintf(stderr, "arima: information matrix not positive definite — SEs unavailable\n");
+            memset(V, 0, (size_t)K*K*sizeof(double));
+        } else {
+            for(int i = 0; i < Kp; i++) for(int j = i+1; j < Kp; j++)
+                Hp[(size_t)i*Kp + j] = Hp[(size_t)j*Kp + i];
+            /* J: K x Kp Jacobian of theta(psi) */
+            double J[640];
+            double hj = 1e-6;
+            double thp[40], thm[40];
+            for(int j = 0; j < Kp; j++){
+                double pp[40], pm[40];
+                memcpy(pp, psi, sizeof psi); memcpy(pm, psi, sizeof psi);
+                pp[j] += hj; pm[j] -= hj;
+                psi_to_theta(&ectx, pp, thp);
+                psi_to_theta(&ectx, pm, thm);
+                for(int i = 0; i < K; i++)
+                    J[(size_t)j*K + i] = (thp[i] - thm[i])/(2*hj);
+            }
+            /* V = J Hinv J' */
+            double JH[640];
+            cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, K, Kp, Kp,
+                        1.0, J, K, Hp, Kp, 0.0, JH, K);
+            cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, K, K, Kp,
+                        1.0, JH, K, J, K, 0.0, V, K);
+        }
     }
-    free(hess_final);
 
     /* Build coefficient names. */
     int hc = ctx.has_cons;
@@ -532,7 +653,7 @@ int do_arima(Cmd *c)
         printf("%-12s |\n", "/sigma");
         printf("%12s | %10s\n", "sigma", gfit(rmse,9));
         printf("------------------------------------------------------------------------------\n");
-        printf("Iterations: %d.  Conditional likelihood (no Kalman filter in v1.0).\n", iter);
+        printf("Iterations: %d.  Exact ML via the Kalman filter (state-space engine).\n", iter);
     }
 
     /* Stash an Estimates struct. */

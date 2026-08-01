@@ -407,6 +407,12 @@ import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) cas
   tempname NAME...  — set local macros to fresh scratch names
 ```
 
+## `ucm`
+
+```
+  ucm Y, model(llevel|lltrend|rwalk|rwdrift|ntrend) [seasonal(#) smstate(NEW)]  unobserved components
+```
+
 ## `var`
 
 ```

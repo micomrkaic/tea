@@ -21,11 +21,13 @@ even if you eventually move to Stata or R for the final analysis.
 
 `tea` v1.0 did not implement graphics; since v1.6.6 it has `scatter`,
 `line`, `histogram`, multi-series `twoway` (with lowess), `graph box`,
-and `graph combine`, all on a dependency-free SVG engine.  Still not
-implemented: exact-ML ARIMA
-(we use conditional likelihood), seasonal ARIMA, GARCH, mixed-effects
-models, survival analysis, structural breaks, VAR, VECM, cointegration
-tests, Bayesian inference, or machine learning. It also does not
+and `graph combine`, all on a dependency-free SVG engine.  Since v1.6.35 it has a
+macro time-series inference tier (`newey`, unit-root tests, filters,
+`var`, `vecrank`, impulse responses), and since v1.6.36 a state-space
+tier (`ucm`; exact-ML `arima` since v1.6.37).  Still not implemented:
+seasonal ARIMA, GARCH, mixed-effects models, survival analysis,
+structural breaks, VEC estimation, Bayesian inference, or machine
+learning. It also does not
 implement Stata’s full programming language — `tea` has macros, loops,
 and `capture`, but no `program define`, no `syntax` parser, no Mata.
 
@@ -907,21 +909,20 @@ Specifies an ARIMA$(p, d, q)$ model: AR order $p$, difference order $d$,
 MA order $q$. Exogenous regressors can be included (then the model is
 ARMAX).
 
-**Important.** v1.0’s `arima` uses *conditional likelihood*, not the
-Kalman-filter exact ML that Stata uses by default. The differences:
+**Method (since v1.6.37).** `arima` computes *exact maximum
+likelihood* via the state-space engine: the ARMA process on the
+differenced, mean-adjusted series is cast in companion form and the
+exact Gaussian likelihood is evaluated by the Kalman filter with
+stationary (Lyapunov) initialization — the same approach as Stata.
+Stationarity and invertibility are enforced during optimization
+through the partial-autocorrelation transform.  Conventions that still
+differ from Stata (see COMPATIBILITY.md):
 
-- Coefficient estimates are consistent and converge to the same limit,
-  but finite-sample values can differ by a few percent.
+- Standard errors are OIM (observed information); Stata defaults to
+  OPG/BHHH.  Point estimates and log likelihoods are the comparable
+  quantities and match exact-ML references to reported precision.
 
-- The absolute log-likelihood differs (we drop the initial-state
-  contribution).
-
-- Standard errors come from a numerical-difference Hessian and can be
-  off by 1–5% on the MA components specifically. Point estimates are
-  unaffected.
-
-If you need exact ML, escape to R’s `arima()` or Python’s
-`statsmodels.tsa.arima`.
+- No seasonal terms yet.
 
 ## Example
 
@@ -1359,9 +1360,8 @@ v1.0 that we may revisit based on testing.
 
 ## Econometric estimators
 
-- **ARIMA uses conditional likelihood, not Kalman-filter exact ML.** See
-  the "Time series models" chapter for details. For serious work,
-  use R’s `arima()`.
+- **ARIMA is exact ML** (state-space engine, since v1.6.37); standard
+  errors are OIM where Stata defaults to OPG.
 
 - **No seasonal ARIMA** (`sar`, `sma` terms).
 
@@ -1773,7 +1773,7 @@ A quick reference for Stata users adapting to `tea`.
 
 - `xtreg, be` uses simple OLS on panel means.
 
-- `arima` uses conditional likelihood.
+- `arima` is exact ML (v1.6.37+); SEs are OIM (Stata: OPG).
 
 - `i.country#c.L.gdp` doesn’t parse; pre-compute the lag.
 
@@ -2207,6 +2207,12 @@ import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) cas
 
 ```
   tempname NAME...  — set local macros to fresh scratch names
+```
+
+## `ucm`
+
+```
+  ucm Y, model(llevel|lltrend|rwalk|rwdrift|ntrend) [seasonal(#) smstate(NEW)]  unobserved components
 ```
 
 ## `var`

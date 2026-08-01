@@ -17,6 +17,8 @@ REGISTRY = [
      "Grunfeld (1958) investment panel: 10 US firms x 1935-1954 (xtreg, hausman)"),
     ("airline",  "airline.csv",
      "Box-Jenkins airline passengers, monthly 1949-1960 (tsset, arima)"),
+    ("nile",     "nile.csv",
+     "Nile annual flow at Aswan 1871-1970 - the Durbin-Koopman example (ucm)"),
     ("longley",  "longley.csv",
      "Longley (1967) US macro, 16 obs: famously ill-conditioned (regress)"),
     ("nmes1988", "nmes1988.csv",

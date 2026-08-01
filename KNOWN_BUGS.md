@@ -1514,3 +1514,75 @@ used in `egen`.
   vecrank) lock the tier cross-rig.  Staged out per the design note:
   vec estimation, fevd, irf files, multivariate lpirf, svar, dfgls,
   xtunitroot.
+
+## v1.6.36 — the state-space engine and ucm (tier release one)
+
+- The Kalman tier arrives per the signed DESIGN_SSPACE.md: src/kalman.c
+  is the engine — DK-form models, UNIVARIATE (sequential) filtering,
+  EXACT diffuse initialization carried as (Pstar, Pinf) until rank
+  exhaustion, the DK backward smoother with the (r0, r1) diffuse
+  extension, Lyapunov initialization for stationary blocks — and
+  src/sspace.c is the first front-end: ucm with
+  ntrend/llevel/lltrend/rwalk/rwdrift, dummy seasonal(#), OIM standard
+  errors on the variance scale by delta method, smstate(NEW) for the
+  smoothed level, and ML by BFGS2 with central-difference gradients
+  from three deterministic starting points (flat UC likelihoods have
+  boundary-swapped local optima; airline finds the global one on the
+  third start).
+- Verification: Nile local level reproduces THE canonical numbers of
+  the literature — var(e)=15098.5, var(level)=1469.18 against
+  Durbin-Koopman's 15099/1469.1 — and matches statsmodels'
+  exact-diffuse log-likelihood to 5 decimals (-633.46456), including
+  on a sample with a missing decade (-567.14230 vs -567.14231), where
+  the smoothed level inside the hole agrees to display precision.
+  Airline lltrend+seasonal(12) matches statsmodels' optimum
+  (ll 217.42013 vs 217.4203) with the same variance decomposition.
+  sysuse nile ships embedded so the literature's example is a
+  regression test.
+- Next per the design note: exact-ML arima re-grounded on the engine
+  (a documented golden change), then dfactor, then the sspace subset.
+
+## v1.6.37 — arima re-grounded on exact ML (the announced golden change)
+
+- arima now evaluates the EXACT Gaussian likelihood through the
+  state-space engine (Harvey companion form, Lyapunov initialization,
+  univariate Kalman filter) instead of the conditional-SSR
+  Gauss-Newton of v1.0, per DESIGN_SSPACE.md §8.2.  Stationarity and
+  invertibility are enforced by Monahan's partial-autocorrelation
+  transform; optimization is BFGS2 with central-difference gradients
+  from three deterministic starts; standard errors are honest OIM.
+- This is the documented Bug-39-class numbers change announced in the
+  design note.  In the end no golden actually moved: the only arima
+  regression assertion was already tolerance-based.  The stale
+  "conditional likelihood" caveats were removed from the manual, and
+  COMPATIBILITY.md gained the OIM-vs-OPG paragraph — including the
+  finding that statsmodels' reported 'oim' for ARMA terms disagrees
+  with the finite-difference Hessian of its own likelihood, which
+  reproduces tea's numbers instead.
+- Verification (exact ML vs statsmodels on identical series): AR(1)
+  ll -218.0418 both; airline ARIMA(0,1,1) ll 121.7537 both; ARMA(1,1)
+  with constant ll -575.8401 both, tea's _cons the mean form (4.80252
+  vs implied 4.80247); regression with AR(1) errors ll -213.2064 both,
+  with the intercept identity _cons*(1-phi) = sm's c to 5 decimals.
+  The OIM constant SE matches statsmodels' mean-form ARIMA class to 6
+  digits (.136483 vs .136484).
+
+## v1.6.38 — test 72 hardened against optimizer landing-point spread
+
+- Mico's X1 (ext4, OpenBLAS) failed test 72 on the airline
+  lltrend+seasonal(12) problem: var(level) .0006993 vs the container's
+  .0006994, and correspondingly in var(seas) and var(e) — 4th
+  significant digit, exceeding the golden's 1e-7 rounding.  The
+  seventh documented substrate instance, and the second delivery on
+  DESIGN_SSPACE.md Decision 6's prediction that an iterative optimizer
+  is where backend arithmetic first becomes visible: the airline UC
+  likelihood is famously flat (it is the problem that forced the
+  three-start strategy), and different BLAS backends walk its ridge to
+  points ~2e-7 apart.  Nile, rwalk, and rwdrift — sharp likelihoods —
+  were byte-identical across all rigs.
+- Per the design's own doctrine (goldens lock signal, not dust), the
+  airline trio is now asserted with tolerances against the
+  statsmodels optimum (the signal: tea agrees with the reference to
+  ~4 digits) instead of printing digits whose last place is
+  backend-dependent.  Mico's observed values pass with 60x margin.
+  No engine or front-end code changed.

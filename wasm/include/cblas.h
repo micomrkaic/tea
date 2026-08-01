@@ -10,4 +10,11 @@ void cblas_dgemm(CBLAS_ORDER order, CBLAS_TRANSPOSE ta, CBLAS_TRANSPOSE tb,
 void cblas_dgemv(CBLAS_ORDER order, CBLAS_TRANSPOSE ta, int m, int n,
                  double alpha, const double *a, int lda, const double *x, int incx,
                  double beta, double *y, int incy);
+
+/* level-1 kernels required by GSL multimin (BFGS2) */
+void   cblas_daxpy(int n, double a, const double *x, int incx, double *y, int incy);
+void   cblas_dcopy(int n, const double *x, int incx, double *y, int incy);
+double cblas_ddot(int n, const double *x, int incx, const double *y, int incy);
+double cblas_dnrm2(int n, const double *x, int incx);
+void   cblas_dscal(int n, double a, double *x, int incx);
 #endif
