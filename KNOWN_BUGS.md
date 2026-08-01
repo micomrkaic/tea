@@ -1489,3 +1489,28 @@ used in `egen`.
   Welch-Satterthwaite df) reproduced independently to displayed
   precision; tools/stata_check_vce.do gained a companion section so
   the Stata run pins layout as well as numbers.  Test 69.
+
+## v1.6.35 — the macro time-series inference tier
+
+- The largest single addition since graphics (DESIGN_TSINFER.md, new
+  src/tsinfer.c): newey (HAC via the vce module's new Bartlett meat —
+  "a different M from the same s_i", exactly as DESIGN_VCE.md
+  promised), dfuller (constant/trend/drift/noconstant, lags(),
+  ts-operators, regress option), pperron, tsfilter hp/bk/hamilton
+  (frequency-aware defaults; hp by exact banded solve), var (up to 8
+  variables, 8 lags; per-equation tables, LL and information
+  criteria), vargranger (per-pair and ALL Wald tests), irf
+  create/table (simple + Cholesky-orthogonalized, in memory), lpirf
+  (Jorda local projections, Newey SEs with lag = horizon), and
+  vecrank (Johansen trace with Osterwald-Lenum critical values).
+- Verification: ADF t statistics, MacKinnon critical values, HP filter
+  moments, the Newey-West SE, all VAR coefficients, and all Johansen
+  trace statistics reproduce statsmodels EXACTLY at displayed
+  precision on the airline and WEO-USA test problems.  Documented
+  convention differences (unit-root p-value approximation, Sigma
+  divisor, CV table editions) recorded in COMPATIBILITY.md;
+  tools/stata_check_ts.do pins the tier against Stata.
+- Tests 70 (unit roots + filters) and 71 (var/granger/irf/lpirf/
+  vecrank) lock the tier cross-rig.  Staged out per the design note:
+  vec estimation, fevd, irf files, multivariate lpirf, svar, dfgls,
+  xtunitroot.

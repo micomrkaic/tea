@@ -29,6 +29,12 @@ int vce_parse(const char *opts, VceSpec *spec);
 double *vce_sandwich(const double *bread, const double *scores,
                      long N, int K, const long *cid, long G, double c);
 
+/* HAC (Bartlett) sandwich and scalar long-run variance — the
+ * time-series tier (DESIGN_TSINFER.md).  scores in time order. */
+double *vce_hac(const double *bread, const double *scores,
+                long N, int K, int L, double c);
+double vce_lrvar(const double *e, long N, int L);
+
 /* Policy-table adjustments (DESIGN_VCE.md).  N obs, k model params,
  * G clusters. */
 double vce_adj_ls_robust(long N, int k);              /* HC1 */

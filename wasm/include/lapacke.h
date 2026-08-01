@@ -16,4 +16,14 @@ lapack_int LAPACKE_dgetrf(int layout, lapack_int m, lapack_int n, double *a, lap
 lapack_int LAPACKE_dgetri(int layout, lapack_int n, double *a, lapack_int lda, const lapack_int *ipiv);
 lapack_int LAPACKE_dpotrf(int layout, char uplo, lapack_int n, double *a, lapack_int lda);
 lapack_int LAPACKE_dpotri(int layout, char uplo, lapack_int n, double *a, lapack_int lda);
+lapack_int LAPACKE_dpotrs(int layout, char uplo, lapack_int n, lapack_int nrhs,
+                          const double *a, lapack_int lda, double *b, lapack_int ldb);
+lapack_int LAPACKE_dposv(int layout, char uplo, lapack_int n, lapack_int nrhs,
+                         double *a, lapack_int lda, double *b, lapack_int ldb);
+lapack_int LAPACKE_dgbsv(int layout, lapack_int n, lapack_int kl, lapack_int ku,
+                         lapack_int nrhs, double *ab, lapack_int ldab,
+                         lapack_int *ipiv, double *b, lapack_int ldb);
+lapack_int LAPACKE_dsygv(int layout, lapack_int itype, char jobz, char uplo,
+                         lapack_int n, double *a, lapack_int lda, double *b,
+                         lapack_int ldb, double *w);
 #endif

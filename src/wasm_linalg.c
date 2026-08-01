@@ -165,6 +165,51 @@ lapack_int LAPACKE_dpotrf(int layout, char uplo, lapack_int n, double *a,
     return info;
 }
 
+int dpotrs_(char*,f2c_int*,f2c_int*,double*,f2c_int*,double*,f2c_int*,f2c_int*);
+int dposv_(char*,f2c_int*,f2c_int*,double*,f2c_int*,double*,f2c_int*,f2c_int*);
+int dgbsv_(f2c_int*,f2c_int*,f2c_int*,f2c_int*,double*,f2c_int*,f2c_int*,double*,f2c_int*,f2c_int*);
+int dsygv_(f2c_int*,char*,char*,f2c_int*,double*,f2c_int*,double*,f2c_int*,double*,double*,f2c_int*,f2c_int*);
+
+lapack_int LAPACKE_dpotrs(int layout, char uplo, lapack_int n, lapack_int nrhs,
+                          const double *a, lapack_int lda, double *b, lapack_int ldb)
+{
+    REQUIRE_COLMAJOR(layout);
+    f2c_int info=0;
+    dpotrs_(&uplo,&n,&nrhs,(double*)a,&lda,b,&ldb,&info);
+    return info;
+}
+lapack_int LAPACKE_dposv(int layout, char uplo, lapack_int n, lapack_int nrhs,
+                         double *a, lapack_int lda, double *b, lapack_int ldb)
+{
+    REQUIRE_COLMAJOR(layout);
+    f2c_int info=0;
+    dposv_(&uplo,&n,&nrhs,a,&lda,b,&ldb,&info);
+    return info;
+}
+lapack_int LAPACKE_dgbsv(int layout, lapack_int n, lapack_int kl, lapack_int ku,
+                         lapack_int nrhs, double *ab, lapack_int ldab,
+                         lapack_int *ipiv, double *b, lapack_int ldb)
+{
+    REQUIRE_COLMAJOR(layout);
+    f2c_int info=0;
+    /* lapack_int and f2c_int are both 32-bit here; ipiv is compatible */
+    dgbsv_(&n,&kl,&ku,&nrhs,ab,&ldab,(f2c_int*)ipiv,b,&ldb,&info);
+    return info;
+}
+lapack_int LAPACKE_dsygv(int layout, lapack_int itype, char jobz, char uplo,
+                         lapack_int n, double *a, lapack_int lda, double *b,
+                         lapack_int ldb, double *w)
+{
+    REQUIRE_COLMAJOR(layout);
+    f2c_int info=0;
+    f2c_int lwork = 3*n > 1 ? 3*n : 1;
+    double *work = malloc((size_t)lwork*sizeof(double));
+    f2c_int it = itype;
+    dsygv_(&it,&jobz,&uplo,&n,a,&lda,b,&ldb,w,work,&lwork,&info);
+    free(work);
+    return info;
+}
+
 lapack_int LAPACKE_dpotri(int layout, char uplo, lapack_int n, double *a,
                           lapack_int lda)
 {

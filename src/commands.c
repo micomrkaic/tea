@@ -4484,6 +4484,16 @@ static int do_correlate(Cmd *c){
     return 0;
 }
 
+int do_var(Cmd *c);
+int do_vargranger(Cmd *c);
+int do_irf(Cmd *c);
+int do_lpirf(Cmd *c);
+int do_vecrank(Cmd *c);
+int do_newey(Cmd *c);
+int do_dfuller(Cmd *c);
+int do_pperron(Cmd *c);
+int do_tsfilter(Cmd *c);
+
 static int do_pwcorr(Cmd *c){
     int *vs=NULL, nv, n_temps=0; const char *vlerr=NULL;
     nv = tsop_expand_varlist(c->f, c->varlist, &vs, &n_temps, &vlerr);
@@ -5465,6 +5475,24 @@ Disp TABLE[]={
         "tempfile NAME...  \u2014 set local macros to fresh temp-file paths"},
     {"tempname",do_tempname,0,
         "tempname NAME...  \u2014 set local macros to fresh scratch names"},
+    {"var",do_var,1,
+        "var Y1 Y2 ...[, lags(1/p)]                  reduced-form VAR"},
+    {"vargranger",do_vargranger,0,
+        "vargranger                                   Granger Wald tests after var"},
+    {"irf",do_irf,0,
+        "irf create[, step(#)] | irf table [irf|oirf] impulse responses after var"},
+    {"lpirf",do_lpirf,1,
+        "lpirf VAR[, step(#) lags(#)]                local-projection IRFs (Newey SEs)"},
+    {"vecrank",do_vecrank,1,
+        "vecrank Y1 Y2 ...[, lags(#)]                Johansen trace test"},
+    {"newey",do_newey,1,
+        "newey Y XS [if] [in], lag(#)                 OLS with Newey-West (HAC) SEs"},
+    {"dfuller",do_dfuller,1,
+        "dfuller VAR[, lags(#) trend drift noconstant regress]  augmented Dickey-Fuller"},
+    {"pperron",do_pperron,1,
+        "pperron VAR[, lags(#) trend noconstant regress]        Phillips-Perron unit-root test"},
+    {"tsfilter",do_tsfilter,1,
+        "tsfilter hp|bk|hamilton NEW = VAR[, opts]    business-cycle filters"},
     {"ttest",do_ttest,1,
         "ttest VAR == # | VAR1 == VAR2 | VAR, by(G)   t tests (one-sample, paired, two-sample)"},
     {"correlate",do_correlate,1,

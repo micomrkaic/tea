@@ -407,6 +407,60 @@ import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) cas
   tempname NAME...  — set local macros to fresh scratch names
 ```
 
+## `var`
+
+```
+  var Y1 Y2 ...[, lags(1/p)]                  reduced-form VAR
+```
+
+## `vargranger`
+
+```
+  vargranger                                   Granger Wald tests after var
+```
+
+## `irf`
+
+```
+  irf create[, step(#)] | irf table [irf|oirf] impulse responses after var
+```
+
+## `lpirf`
+
+```
+  lpirf VAR[, step(#) lags(#)]                local-projection IRFs (Newey SEs)
+```
+
+## `vecrank`
+
+```
+  vecrank Y1 Y2 ...[, lags(#)]                Johansen trace test
+```
+
+## `newey`
+
+```
+  newey Y XS [if] [in], lag(#)                 OLS with Newey-West (HAC) SEs
+```
+
+## `dfuller`
+
+```
+  dfuller VAR[, lags(#) trend drift noconstant regress]  augmented Dickey-Fuller
+```
+
+## `pperron`
+
+```
+  pperron VAR[, lags(#) trend noconstant regress]        Phillips-Perron unit-root test
+```
+
+## `tsfilter`
+
+```
+  tsfilter hp|bk|hamilton NEW = VAR[, opts]    business-cycle filters
+```
+
 ## `ttest`
 
 ```

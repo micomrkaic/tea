@@ -1,0 +1,89 @@
+(airline: 144 obs loaded — Box-Jenkins airline passengers, monthly 1949-1960 (tsset, arima))
+Regression with Newey-West standard errors      Number of obs  =        144
+Maximum lag = 4                                 F(  1,    142)  =     591.13
+                                                 Prob > F       =     0.0000
+------------------------------------------------------------------------------
+             |             Newey-West
+          lp | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+        time |  0.0100484  0.000413289   24.31  0.000    0.00923139   0.0108654
+       _cons |    4.81367     0.03121  154.23  0.000       4.75197     4.87536
+------------------------------------------------------------------------------
+
+Dickey-Fuller test for unit root
+Variable: lp                              Number of obs  =       143
+Constant only                              Number of lags =         0
+
+                  Test         1% critical    5% critical   10% critical
+                 statistic         value          value          value
+------------------------------------------------------------------------------
+ Z(t)             -1.816          -3.477         -2.882         -2.578
+------------------------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.3548
+
+Augmented Dickey-Fuller test for unit root
+Variable: lp                              Number of obs  =       139
+Constant and trend                         Number of lags =         4
+
+                  Test         1% critical    5% critical   10% critical
+                 statistic         value          value          value
+------------------------------------------------------------------------------
+ Z(t)             -5.664          -4.025         -3.443         -3.146
+------------------------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.0000
+
+Augmented Dickey-Fuller test for unit root
+Variable: D.lp                            Number of obs  =       138
+Constant only                              Number of lags =         4
+
+                  Test         1% critical    5% critical   10% critical
+                 statistic         value          value          value
+------------------------------------------------------------------------------
+ Z(t)             -6.976          -3.479         -2.883         -2.578
+------------------------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.0000
+
+Augmented Dickey-Fuller test for unit root
+Variable: lp                              Number of obs  =       142
+Constant only                              Number of lags =         1
+
+                  Test         1% critical    5% critical   10% critical
+                 statistic         value          value          value
+------------------------------------------------------------------------------
+ Z(t)             -2.018          (Z(t) has t(139) distribution under drift)
+------------------------------------------------------------------------------
+p-value (one-sided) = 0.0227
+
+Phillips-Perron test for unit root
+Variable: lp                              Number of obs  =       143
+Constant only                              Newey-West lags =        4
+
+                  Test         1% critical    5% critical   10% critical
+                 statistic         value          value          value
+------------------------------------------------------------------------------
+ Z(rho)           -5.160
+ Z(t)             -1.808          -3.477         -2.882         -2.578
+------------------------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.3586
+
+Phillips-Perron test for unit root
+Variable: lp                              Number of obs  =       143
+Constant and trend                         Newey-West lags =        4
+
+                  Test         1% critical    5% critical   10% critical
+                 statistic         value          value          value
+------------------------------------------------------------------------------
+ Z(rho)          -47.932
+ Z(t)             -5.150          -4.024         -3.442         -3.145
+------------------------------------------------------------------------------
+MacKinnon approximate p-value for Z(t) = 0.0001
+(hp filter: lambda = 129600, 144 obs)
+(bk filter: periods 6-32, K = 12, 144 obs)
+(hamilton filter: h = 2, p = 1, 142 obs)
+
+    Variable |        Obs        Mean    Std. dev.         Min         Max
+-------------+--------------------------------------------------------------
+        r_hp |        144  -3.472e-08       0.1341     -0.2912      0.2756
+       lp_tr |        144       5.542       0.4202       4.769       6.199
+        r_bk |        120     0.00053        0.111     -0.1901      0.2163
+       r_ham |        142  -2.817e-08       0.1611     -0.3848      0.3148

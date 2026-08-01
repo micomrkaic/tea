@@ -146,3 +146,20 @@ Documented graphics deviations from Stata:
   (Stata connects in data order); scatter order is irrelevant.
 - The legend is a simple swatch list drawn inside the plot region,
   top-right, rather than Stata's below-plot legend.
+
+## Time-series inference tier (v1.6.35)
+
+- Unit-root p-values ("MacKinnon approximate p-value") are computed by
+  probit-space interpolation through the finite-sample 1/5/10%
+  MacKinnon (2010) response-surface quantiles, not the MacKinnon
+  (1994) p-value regressions Stata uses.  Test statistics and the
+  printed critical values match Stata/statsmodels exactly; mid-range
+  p-values can differ by ~0.02 (e.g. 0.3548 vs 0.3725).
+- var: Sigma uses the ML divisor T, as Stata does.  statsmodels
+  divides by T-k, so its orthogonalized IRFs differ by the factor
+  sqrt(T/(T-k)); the Phi matrices agree exactly.
+- vecrank prints Osterwald-Lenum (1992) 5% trace critical values —
+  Stata's tables.  statsmodels prints MacKinnon-Haug-Michelis values
+  (e.g. 29.68 vs 29.80 at m-r=3).  Trace statistics agree exactly.
+- irf is an in-memory subset (create/table from the last var); no .irf
+  files, sets, or fevd.  lpirf is univariate (own-shock responses).
