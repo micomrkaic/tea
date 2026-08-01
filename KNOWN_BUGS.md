@@ -1586,3 +1586,35 @@ used in `egen`.
   ~4 digits) instead of printing digits whose last place is
   backend-dependent.  Mico's observed values pass with 60x margin.
   No engine or front-end code changed.
+
+## v1.6.39 — dfactor, the constraints subsystem, and dsyev (tier release three)
+
+- dfactor arrives per the signed DESIGN_DFACTOR.md with Mico's amended
+  D2: identification through a GENERAL constraints subsystem
+  (constraint define/list/drop + constraints() on the estimator),
+  because generic sspace models will need constraints even more often
+  than dfactor.  Multi-factor from day one per the same-name-same-
+  functionality compatibility ruling: k <= 4 factors, full interacting
+  AR(p <= 4) dynamics, Stata's Var(v)=I normalization, constants and
+  exog in the observation equations, smfactor(stub) for smoothed
+  factors, ragged edges and interior missing values handled by the
+  univariate filter.
+- The constraints machinery reparameterizes R theta = r exactly:
+  minimum-norm particular solution (dgelsd) plus SVD null basis
+  (dgesdd), theta = theta_p + N psi, and the BFGS2/multistart/OIM
+  pipeline runs unchanged on psi with V_theta = N V_psi N'.
+- Verification: k=1 demeaned/noconstant loglik equals statsmodels
+  DynamicFactor to 5 decimals (-930.83738 both); k=2 identified by
+  [y1]f2=0 reproduces the UNCONSTRAINED statsmodels optimum exactly
+  (-1753.32571 both) — the rotation-invariance theorem holding
+  numerically; ragged-edge scalar-observation accounting exact.
+- One real bug found and fixed before release: an explosive factor
+  transition can still solve the Lyapunov equation algebraically,
+  yielding a non-PD "covariance" and a garbage likelihood the
+  optimizer exploited (observed companion root 1.96).  The evaluation
+  guard now requires positive definiteness (dpotrf) of the Lyapunov
+  solution.  arima was never exposed (Monahan's transform keeps its T
+  stationary by construction).
+- dsyev entered the wasm LAPACKE shim for the PCA starting values —
+  instance eight, predicted in writing in the design note before the
+  linker could complain.

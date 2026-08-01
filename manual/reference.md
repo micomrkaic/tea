@@ -407,6 +407,18 @@ import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) cas
   tempname NAME...  — set local macros to fresh scratch names
 ```
 
+## `constraint`
+
+```
+  constraint [define] # expr = expr | list | drop #|_all      linear constraints
+```
+
+## `dfactor`
+
+```
+  dfactor (y1 y2 ... [= exog][, noconstant]) (f1 [f2..] = , ar(#))  dynamic factors
+```
+
 ## `ucm`
 
 ```

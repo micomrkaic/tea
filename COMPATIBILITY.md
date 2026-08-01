@@ -197,3 +197,31 @@ Documented graphics deviations from Stata:
   of statsmodels' own log-likelihood at its own optimum reproduces
   tea's standard errors (to 5 decimals), not the ones statsmodels
   reports.
+
+## dfactor and the constraints subsystem (v1.6.39)
+
+- dfactor is exact ML via the state-space engine, k <= 4 factors with
+  full interacting AR(p <= 4) dynamics, Var(v)=I normalization, iid
+  idiosyncratic errors (idiosyncratic ar() is staged).  Verified
+  against statsmodels DynamicFactor: k=1 demeaned loglik identical to
+  5 decimals; a k=2 model identified by a triangular constraint
+  reproduces the unconstrained statsmodels optimum's loglik exactly
+  (constraints used for identification are normalizations and cost
+  zero likelihood).  On boundary (Heywood) cases tea's multistart
+  optimizer reaches higher likelihoods than statsmodels' default.
+- k >= 2 without constraints() runs, per Stata, but is identified only
+  up to rotation; tea prints a note.  Goldens and the Stata check
+  script only ever lock constrained forms.  A deterministic sign
+  convention (first loading positive) is applied when unconstrained.
+- constraint define/list/drop implements Stata's linear-constraint
+  language; constraints are parsed at estimation time against the
+  model's parameter names.  Estimation under R theta = r is by exact
+  reparameterization theta = theta_p + N psi (SVD null basis), so any
+  linear constraint set is handled without penalties or Lagrangians.
+  Constrained coefficients print with "(constrained)".  Constraints on
+  variance parameters are not accepted in this release.
+- The nonstationarity guard: a factor transition with roots on or
+  outside the unit circle is rejected during likelihood evaluation by
+  positive-definiteness of the Lyapunov solution (an algebraic
+  solution exists for many explosive T; only the PD one is a
+  covariance).

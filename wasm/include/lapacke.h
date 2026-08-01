@@ -23,6 +23,8 @@ lapack_int LAPACKE_dposv(int layout, char uplo, lapack_int n, lapack_int nrhs,
 lapack_int LAPACKE_dgbsv(int layout, lapack_int n, lapack_int kl, lapack_int ku,
                          lapack_int nrhs, double *ab, lapack_int ldab,
                          lapack_int *ipiv, double *b, lapack_int ldb);
+lapack_int LAPACKE_dsyev(int layout, char jobz, char uplo,
+                         lapack_int n, double *a, lapack_int lda, double *w);
 lapack_int LAPACKE_dsygv(int layout, lapack_int itype, char jobz, char uplo,
                          lapack_int n, double *a, lapack_int lda, double *b,
                          lapack_int ldb, double *w);

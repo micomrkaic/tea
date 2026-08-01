@@ -170,6 +170,7 @@ int dpotrs_(char*,f2c_int*,f2c_int*,double*,f2c_int*,double*,f2c_int*,f2c_int*);
 int dposv_(char*,f2c_int*,f2c_int*,double*,f2c_int*,double*,f2c_int*,f2c_int*);
 int dgbsv_(f2c_int*,f2c_int*,f2c_int*,f2c_int*,double*,f2c_int*,f2c_int*,double*,f2c_int*,f2c_int*);
 int dsygv_(f2c_int*,char*,char*,f2c_int*,double*,f2c_int*,double*,f2c_int*,double*,double*,f2c_int*,f2c_int*);
+int dsyev_(char*,char*,f2c_int*,double*,f2c_int*,double*,double*,f2c_int*,f2c_int*);
 
 lapack_int LAPACKE_dpotrs(int layout, char uplo, lapack_int n, lapack_int nrhs,
                           const double *a, lapack_int lda, double *b, lapack_int ldb)
@@ -195,6 +196,16 @@ lapack_int LAPACKE_dgbsv(int layout, lapack_int n, lapack_int kl, lapack_int ku,
     f2c_int info=0;
     /* lapack_int and f2c_int are both 32-bit here; ipiv is compatible */
     dgbsv_(&n,&kl,&ku,&nrhs,ab,&ldab,(f2c_int*)ipiv,b,&ldb,&info);
+    return info;
+}
+lapack_int LAPACKE_dsyev(int layout, char jobz, char uplo,
+                         lapack_int n0, double *a, lapack_int lda0, double *w)
+{
+    (void)layout;
+    f2c_int n = n0, lda = lda0, lwork = 3*n0 > 1 ? 3*n0 : 1, info = 0;
+    double *work = malloc((size_t)lwork*sizeof(double));
+    dsyev_(&jobz, &uplo, &n, a, &lda, w, work, &lwork, &info);
+    free(work);
     return info;
 }
 lapack_int LAPACKE_dsygv(int layout, lapack_int itype, char jobz, char uplo,

@@ -24,10 +24,11 @@ even if you eventually move to Stata or R for the final analysis.
 and `graph combine`, all on a dependency-free SVG engine.  Since v1.6.35 it has a
 macro time-series inference tier (`newey`, unit-root tests, filters,
 `var`, `vecrank`, impulse responses), and since v1.6.36 a state-space
-tier (`ucm`; exact-ML `arima` since v1.6.37).  Still not implemented:
-seasonal ARIMA, GARCH, mixed-effects models, survival analysis,
-structural breaks, VEC estimation, Bayesian inference, or machine
-learning. It also does not
+tier (`ucm`; exact-ML `arima` since v1.6.37).  Since v1.6.39 it has dfactor
+(multi-factor dynamic-factor models) and Stata's constraint language.
+Still not implemented: seasonal ARIMA, GARCH, mixed-effects models,
+survival analysis, structural breaks, VEC estimation, Bayesian
+inference, or machine learning. It also does not
 implement Stata’s full programming language — `tea` has macros, loops,
 and `capture`, but no `program define`, no `syntax` parser, no Mata.
 

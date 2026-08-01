@@ -85,6 +85,9 @@ typedef struct {
     struct Estimates *fe_est;
     struct Estimates *re_est;
     StoredEst *stored_est;  /* named saved estimates */
+    /* constraint definitions (DESIGN_DFACTOR.md §7): text, parsed at
+     * estimation time against the estimator's parameter names */
+    struct CnsDef { int num; char *text; struct CnsDef *next; } *cns;
     char *preserve_path;    /* preserve/restore snapshot (.tea tempfile), or NULL */
 } Workspace;
 

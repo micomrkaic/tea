@@ -4484,6 +4484,8 @@ static int do_correlate(Cmd *c){
     return 0;
 }
 
+int do_constraint(Cmd *c);
+int do_dfactor(Cmd *c);
 int do_ucm(Cmd *c);
 int do_var(Cmd *c);
 int do_vargranger(Cmd *c);
@@ -5476,6 +5478,10 @@ Disp TABLE[]={
         "tempfile NAME...  \u2014 set local macros to fresh temp-file paths"},
     {"tempname",do_tempname,0,
         "tempname NAME...  \u2014 set local macros to fresh scratch names"},
+    {"constraint",do_constraint,0,
+        "constraint [define] # expr = expr | list | drop #|_all      linear constraints"},
+    {"dfactor",do_dfactor,1,
+        "dfactor (y1 y2 ... [= exog][, noconstant]) (f1 [f2..] = , ar(#))  dynamic factors"},
     {"ucm",do_ucm,1,
         "ucm Y, model(llevel|lltrend|rwalk|rwdrift|ntrend) [seasonal(#) smstate(NEW)]  unobserved components"},
     {"var",do_var,1,
