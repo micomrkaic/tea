@@ -299,6 +299,13 @@ manual: $(BIN)
 	  --toc --toc-depth=2 -V colorlinks=true
 	@echo "built tea-manual.md and tea-manual.pdf (version $(VER))"
 
+# run both wasm gates: the regression suite through tea.js, then the
+# page-script smoke (index.html's inline JS in a stubbed browser) —
+# Bug 41 shipped through a green 77/77 gate precisely because the page
+# script had no coverage; it now does
+wasm-test:
+	cd web && node run_wasm_tests.cjs && node run_page_smoke.cjs
+
 # stamp the VERSION into the browser splash (marker-based, idempotent)
 sync-web-version:
 	sed -E -i 's|(<!--TEAVER-->)[^<]*(<!--/TEAVER-->)|\1$(VER)\2|' web/index.html

@@ -1760,3 +1760,30 @@ used in `egen`.
   a string-hash constant (unsigned long is 32-bit under wasm32);
   functionally harmless truncation, surfaced only now that per-object
   logs are readable.  Left as-is deliberately.
+
+## v1.6.46 — Bug 41: the browser loader broke, and the gate never looked
+
+- Symptom: the v1.6.45 browser edition failed to load.  The suspected
+  cause (the new per-object wasm build "optimized too much") was
+  ruled out by evidence: tea.js was byte-identical to the working
+  v1.6.44 artifact, tea.wasm differed only past the version string,
+  and the node harness ran all 77 tests through that exact binary.
+- Actual cause: the v1.6.44 styling change added one line to
+  index.html referencing `Module`, but the page's module instance is
+  named `M` — a ReferenceError inside the async loader, whose catch
+  paints "failed to load: Module is not defined" over a momentary
+  'ready'.  One identifier, one line.  Fixed.
+- Why the gate missed it: the wasm suite drives tea.wasm through
+  tea.js directly and never executes index.html's inline script —
+  the page had zero coverage.  New harness web/run_page_smoke.cjs
+  runs the page's actual inline JS (with lineeditor.js and tea.js
+  loaded in tag order) in a stubbed DOM/xterm environment against
+  the real tea.wasm, and requires the loader to reach a STABLE
+  'ready' — fatal() always wins, and 'ready' must hold for a second,
+  because Bug 41's exact presentation was ready-then-fatal one
+  microtask later.  Validated in both directions: reintroducing the
+  bug fails the harness with the verbatim browser symptom;
+  the fix passes.  Wired into the gate as `make wasm-test`.
+  Substrate instance nine: the new substrate was the page script
+  itself, and the bug it found was the harness's own success
+  criterion racing the failure it was built to catch.

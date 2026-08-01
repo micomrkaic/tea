@@ -69,7 +69,7 @@
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
   <div class="tagline">tiny econometric assistant</div>
-  <div class="ver">v<!--TEAVER-->1.6.45<!--/TEAVER--> &middot; runs entirely in your browser</div>
+  <div class="ver">v<!--TEAVER-->1.6.46<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
   <div class="foot">free software (GPLv3) &middot; no data leaves your machine</div>
@@ -224,7 +224,7 @@ async function fetchWasm(){
   for (const f of M.FS.readdir('/')) known.add(f);
   refreshSaveState();
   document.getElementById('status').textContent = 'ready';
-  if (Module._tea_web_set_style) Module._tea_web_set_style(1);  // xterm.js renders SGR natively
+  if (M._tea_web_set_style) M._tea_web_set_style(1);  // xterm.js renders SGR natively
 
   /* banner */
   const A = '\x1b[38;5;24m', D = '\x1b[2m', R = '\x1b[0m';
