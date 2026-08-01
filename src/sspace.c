@@ -35,10 +35,12 @@ typedef enum { UCM_NTREND, UCM_LLEVEL, UCM_LLTREND, UCM_RWALK, UCM_RWDRIFT } Ucm
 typedef struct {
     UcmModel model;
     int      s;             /* seasonal period, 0 = none */
+    int      cyc;           /* 1: one first-order stochastic cycle */
     /* dimensions */
-    int m, r, ntheta;
+    int m, r, ntheta, cyc0; /* cyc0: index of first cycle state */
     /* parameter slots: index into theta or -1 */
     int i_eps, i_level, i_slope, i_seas;
+    int i_crho, i_clam, i_cvar;      /* cycle: damping, frequency, variance */
     /* workspace matrices (owned) */
     double *Z, *T, *R, *Q, *a1, *Pstar, *Pinf, Hdiag[1];
 } UcmSpec;
@@ -57,8 +59,9 @@ static int ucm_build(UcmSpec *u){
     }
     int m_seas = u->s>1 ? u->s-1 : 0;
     int r_seas = m_seas ? 1 : 0;
-    u->m = m_trend + m_seas;
-    u->r = r_trend + r_seas;
+    int m_cyc = u->cyc ? 2 : 0;
+    u->m = m_trend + m_seas + m_cyc;
+    u->r = r_trend + r_seas + (u->cyc ? 2 : 0);
     if(u->m == 0 && !has_eps){ return 1; }
     if(u->m == 0){
         /* pure noise: give it a degenerate 1-state zero system so the
@@ -100,12 +103,23 @@ static int ucm_build(UcmSpec *u){
         u->R[(size_t)rq*m + st] = 1.0; rq++;
         st += m_seas;
     }
+    /* cycle block: Z picks first state; R selects both; T and Pstar
+     * are parameter-dependent and filled in ucm_model */
+    if(u->cyc){
+        u->cyc0 = st;
+        u->Z[st] = 1.0;
+        u->R[(size_t)rq*m + st] = 1.0; rq++;
+        u->R[(size_t)rq*m + st+1] = 1.0; rq++;
+        st += 2;
+    }
     /* theta layout */
     int k=0;
     u->i_eps   = has_eps ? k++ : -1;
     u->i_level = has_level_var ? k++ : -1;
     u->i_slope = has_slope_var ? k++ : -1;
     u->i_seas  = m_seas ? k++ : -1;
+    u->i_crho = u->i_clam = u->i_cvar = -1;
+    if(u->cyc){ u->i_crho = k++; u->i_clam = k++; u->i_cvar = k++; }
     u->ntheta = k;
     return 0;
 }
@@ -122,6 +136,22 @@ static SSModel ucm_model(UcmSpec *u, const double *theta){
     if(u->i_level>=0) u->Q[(size_t)rq*u->r + rq] = exp(2.0*theta[u->i_level]), rq++;
     if(u->i_slope>=0) u->Q[(size_t)rq*u->r + rq] = exp(2.0*theta[u->i_slope]), rq++;
     if(u->i_seas>=0)  u->Q[(size_t)rq*u->r + rq] = exp(2.0*theta[u->i_seas]),  rq++;
+    if(u->cyc){
+        int m = u->m, c0 = u->cyc0;
+        double rho = 1.0/(1.0 + exp(-theta[u->i_crho]));
+        double lam = M_PI/(1.0 + exp(-theta[u->i_clam]));
+        double s2c = exp(2.0*theta[u->i_cvar]);
+        u->T[(size_t)c0*m + c0]       =  rho*cos(lam);
+        u->T[(size_t)(c0+1)*m + c0]   =  rho*sin(lam);
+        u->T[(size_t)c0*m + c0+1]     = -rho*sin(lam);
+        u->T[(size_t)(c0+1)*m + c0+1] =  rho*cos(lam);
+        u->Q[(size_t)rq*u->r + rq] = s2c; rq++;
+        u->Q[(size_t)rq*u->r + rq] = s2c; rq++;
+        /* stationary cycle block: unconditional var s2c/(1-rho^2) I2 */
+        double pv = s2c/(1.0 - rho*rho);
+        u->Pstar[(size_t)c0*m + c0]     = pv;
+        u->Pstar[(size_t)(c0+1)*m + c0+1] = pv;
+    }
     u->Hdiag[0] = u->i_eps>=0 ? exp(2.0*theta[u->i_eps]) : 0.0;
     SSModel M = { u->m, 1, u->r, u->Z, u->Hdiag, u->T, u->R, u->Q,
                   u->a1, u->Pstar, u->Pinf };
@@ -176,11 +206,12 @@ int do_ucm(Cmd *c){
     else if(!strcmp(mdl,"rwalk")) u.model=UCM_RWALK;
     else if(!strcmp(mdl,"rwdrift")) u.model=UCM_RWDRIFT;
     else { tea_err("ucm: unknown model %s\n", mdl); tsop_drop_temps(c->f,ntp); return 198; }
+    u.cyc = opt_present(c->options,"cycle") ? 1 : 0;
     char sb[16]="";
     u.s = opt_value(c->options,"seasonal",sb,sizeof sb)? atoi(sb) : 0;
     if(u.s==1 || u.s<0 || u.s>24){ tea_err("ucm: seasonal(#) out of range\n");
         tsop_drop_temps(c->f,ntp); return 198; }
-    if(u.model==UCM_NTREND && u.s<2){
+    if(u.model==UCM_NTREND && u.s<2 && !u.cyc){
         tea_err("ucm: model(ntrend) needs seasonal(#) to have any component\n");
         tsop_drop_temps(c->f,ntp); return 198; }
     if(ucm_build(&u)){ tea_err("ucm: empty model\n"); tsop_drop_temps(c->f,ntp); return 198; }
@@ -227,6 +258,11 @@ int do_ucm(Cmd *c){
     if(u.i_level>=0) th0[u.i_level]=log(sdd>0? sdd*0.5 : 1.0);
     if(u.i_slope>=0) th0[u.i_slope]=log(sdd>0? sdd*0.1 : 1.0);
     if(u.i_seas>=0)  th0[u.i_seas]=log(sdd>0? sdd*0.1 : 1.0);
+    if(u.cyc){
+        th0[u.i_crho]=2.0;                       /* rho ~ .88 */
+        th0[u.i_clam]=-1.5;                      /* lam ~ .58 (period ~11) */
+        th0[u.i_cvar]=log(sdd>0? sdd*0.3 : 1.0);
+    }
     /* BFGS2 with central-difference gradients (Decision 6), from a
      * fixed set of deterministic starting points — flat UC likelihoods
      * (airline!) have boundary-swapped local optima, and multiple
@@ -297,8 +333,9 @@ int do_ucm(Cmd *c){
                                    "Random walk","Random walk with drift"};
     if(!c->quiet){
         printf("Unobserved-components model\n");
-        printf("Components: %s%s\n", mnames[u.model],
-               u.s>1? " + seasonal (dummy)":"");
+        printf("Components: %s%s%s\n", mnames[u.model],
+               u.s>1? " + seasonal (dummy)":"",
+               u.cyc? " + cycle (stochastic, order 1)":"");
         printf("\nSample: %ld obs (%ld missing inside range)      Number of obs   = %8ld\n",
                Tn, Tn-nobs, nobs);
         printf("Log likelihood = %.5f                     Diffuse steps   = %8ld\n", ll, d);
@@ -308,25 +345,33 @@ int do_ucm(Cmd *c){
         printf("-------------+----------------------------------------------------------------\n");
     }
     double zc = gsl_cdf_ugaussian_Pinv(0.975);
-    const char *labs[4]; const char *enames[4]; int idxs[4]; int nrow=0;
-    /* table labels are Stata's var(...); posted _b names are paren-free
-     * so the expression parser can address them (_b[var_level]) */
-    if(u.i_level>=0){ labs[nrow]="var(level)"; enames[nrow]="var_level"; idxs[nrow++]=u.i_level; }
-    if(u.i_slope>=0){ labs[nrow]="var(slope)"; enames[nrow]="var_slope"; idxs[nrow++]=u.i_slope; }
-    if(u.i_seas>=0){  labs[nrow]="var(seas)";  enames[nrow]="var_seas";  idxs[nrow++]=u.i_seas; }
-    if(u.i_eps>=0){   labs[nrow]="var(e)";     enames[nrow]="var_e";     idxs[nrow++]=u.i_eps; }
-    double bpost[4], Vpost[16]; memset(Vpost,0,sizeof Vpost);
-    char xn[4][33];
+    /* table labels are Stata's; posted _b names are paren-free.
+     * kind 0 = variance (exp(2 psi)), 1 = logit(0,1), 2 = logit(0,pi) */
+    const char *labs[8]; const char *enames[8]; int idxs[8], kind[8]; int nrow=0;
+    if(u.cyc){
+        labs[nrow]="damping";   enames[nrow]="cycle_rho";  kind[nrow]=1; idxs[nrow++]=u.i_crho;
+        labs[nrow]="frequency"; enames[nrow]="cycle_freq"; kind[nrow]=2; idxs[nrow++]=u.i_clam;
+    }
+    if(u.i_level>=0){ labs[nrow]="var(level)"; enames[nrow]="var_level"; kind[nrow]=0; idxs[nrow++]=u.i_level; }
+    if(u.i_slope>=0){ labs[nrow]="var(slope)"; enames[nrow]="var_slope"; kind[nrow]=0; idxs[nrow++]=u.i_slope; }
+    if(u.i_seas>=0){  labs[nrow]="var(seas)";  enames[nrow]="var_seas";  kind[nrow]=0; idxs[nrow++]=u.i_seas; }
+    if(u.cyc){        labs[nrow]="var(cycle)"; enames[nrow]="var_cycle"; kind[nrow]=0; idxs[nrow++]=u.i_cvar; }
+    if(u.i_eps>=0){   labs[nrow]="var(e)";     enames[nrow]="var_e";     kind[nrow]=0; idxs[nrow++]=u.i_eps; }
+    double bpost[8], Vpost[64]; memset(Vpost,0,sizeof Vpost);
+    char xn[8][33];
     for(int rw=0;rw<nrow;rw++){
         int i0=idxs[rw];
-        double s2 = exp(2.0*th[i0]);
-        double se = 2.0*s2*sqrt(H[(size_t)i0*u.ntheta+i0]);   /* delta method */
-        double z = s2/se;
+        double val, dder;
+        if(kind[rw]==0){ val = exp(2.0*th[i0]); dder = 2.0*val; }
+        else if(kind[rw]==1){ val = 1.0/(1.0+exp(-th[i0])); dder = val*(1.0-val); }
+        else { val = M_PI/(1.0+exp(-th[i0])); dder = val*(1.0-val/M_PI); }
+        double se = fabs(dder)*sqrt(H[(size_t)i0*u.ntheta+i0]);
+        double z = se>0 ? val/se : 0;
         if(!c->quiet)
             printf("%12.12s | %10.6g  %10.6g %7.2f %6.3f    %10.6g  %10.6g\n",
-                   labs[rw], s2, se, z, 2.0*(1.0-gsl_cdf_ugaussian_P(fabs(z))),
-                   s2-zc*se, s2+zc*se);
-        bpost[rw]=s2; Vpost[(size_t)rw*nrow+rw]=se*se;
+                   labs[rw], val, se, z, se>0?2.0*(1.0-gsl_cdf_ugaussian_P(fabs(z))):1.0,
+                   val-zc*se, val+zc*se);
+        bpost[rw]=val; Vpost[(size_t)rw*nrow+rw]=se*se;
         snprintf(xn[rw],33,"%s",enames[rw]);
     }
     if(!c->quiet){
@@ -370,6 +415,9 @@ int do_ucm(Cmd *c){
         est_free(c->ws->last_est);
         c->ws->last_est=ee;
         store_coef_macros(ee, &c->ip->rret);
+        char bb[32];
+        snprintf(bb, sizeof bb, "%.10g", ll);
+        mac_set(&c->ip->rret, "e(ll)", bb);
     }
     free(y); ucm_free(&u); tsop_drop_temps(c->f,ntp);
     return 0;

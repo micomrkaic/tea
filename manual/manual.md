@@ -28,9 +28,13 @@ tier (`ucm`; exact-ML `arima` since v1.6.37).  Since v1.6.39 it has dfactor
 (multi-factor dynamic-factor models) and Stata's constraint language,
 and since v1.6.40 the sspace command for general stationary
 state-space models.
-Still not implemented: seasonal ARIMA, GARCH, mixed-effects models,
-survival analysis, structural breaks, VEC estimation, Bayesian
-inference, or machine learning. It also does not
+Since v1.6.41 arima supports
+multiplicative seasonal models (sarima), ucm supports stochastic
+cycles, dfactor supports AR(1) idiosyncratic errors, and sspace
+supports diffuse initialization for nonstationary models.  Still not
+implemented: GARCH, mixed-effects models, survival analysis,
+structural breaks, VEC estimation, Bayesian inference, or machine
+learning. It also does not
 implement Stata’s full programming language — `tea` has macros, loops,
 and `capture`, but no `program define`, no `syntax` parser, no Mata.
 

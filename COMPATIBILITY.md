@@ -254,3 +254,24 @@ Documented graphics deviations from Stata:
   too.  No shipped golden depended on the buggy behavior (all
   mid-file re-seeds in the suite happened to sit at even draw
   parity), so no golden changed.
+
+## State-space extensions (v1.6.41)
+
+- sspace gains the diffuse option (Pinf = I, no stationarity
+  requirement): the local level written as sspace reproduces ucm
+  llevel exactly.  dfactor gains observation-equation ar(1)
+  (idiosyncratic AR errors move into the state; verified against
+  statsmodels error_order=1 to 5 decimals).  arima gains
+  sarima(P D Q s) multiplicative seasonal terms (airline
+  (0,1,1)(0,1,1)12 matches statsmodels/Stata's canonical fit; note
+  tea, like Stata, includes a constant unless noconstant, while
+  statsmodels SARIMAX defaults to no trend).  ucm gains cycle (one
+  first-order damped stochastic cycle; damping and frequency
+  reported with delta-method SEs).
+- Discrepancy found and documented in tea's favor: on a mixed
+  initialization (diffuse level + stationary cycle),
+  statsmodels' use_exact_diffuse log-likelihood differs from the
+  large-kappa limit of the diffuse likelihood by ~2.09 on our test
+  problem, while tea's exact-diffuse value equals the kappa-limit to
+  5 decimals at kappa = 1e6, 1e8, and 1e10.  The kappa-limit is the
+  definition; tea matches it.

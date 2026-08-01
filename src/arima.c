@@ -194,21 +194,61 @@ typedef struct {
     const double *X;      /* exog, col-major n x K_ex */
     long n;
     int K_ex, hc, p, q;
+    int P, Q2, s2;        /* seasonal orders and period (0 if none) */
 } ExactCtx;
+
+/* expand phi(L)*PHI(L^s) into a plus-convention coefficient array of
+ * length p + P*s (same for the MA side with plus signs throughout) */
+static void seas_expand_ar(const double *phi, int p, const double *PHI, int P,
+                           int s, double *out, int *len)
+{
+    int L = p + P*s;
+    for(int i = 0; i < L; i++) out[i] = 0;
+    for(int i = 0; i < p; i++) out[i] += phi[i];
+    for(int j = 0; j < P; j++) out[(j+1)*s - 1] += PHI[j];
+    for(int i = 0; i < p; i++) for(int j = 0; j < P; j++)
+        out[i + (j+1)*s] -= phi[i]*PHI[j];
+    *len = L;
+}
+static void seas_expand_ma(const double *th, int q, const double *TH, int Q,
+                           int s, double *out, int *len)
+{
+    int L = q + Q*s;
+    for(int i = 0; i < L; i++) out[i] = 0;
+    for(int i = 0; i < q; i++) out[i] += th[i];
+    for(int j = 0; j < Q; j++) out[(j+1)*s - 1] += TH[j];
+    for(int i = 0; i < q; i++) for(int j = 0; j < Q; j++)
+        out[i + (j+1)*s] += th[i]*TH[j];
+    *len = L;
+}
 
 /* psi layout: [mu (if hc), beta (K_ex), zAR (p), zMA (q), log sigma] */
 static double exact_negll(const gsl_vector *x, void *params)
 {
     ExactCtx *e = params;
-    int p = e->p, q = e->q, m = (p > q+1) ? p : q+1;
+    int p = e->p, q = e->q;
     double psi[40];
     for(size_t i = 0; i < x->size; i++) psi[i] = gsl_vector_get(x, i);
     double mu = e->hc ? psi[0] : 0.0;
     const double *beta = psi + e->hc;
+    double phi0[16] = {0}, thq0[16] = {0}, PHI0[16] = {0}, THQ0[16] = {0};
+    int off = e->hc + e->K_ex;
+    if(p) z_to_coef(psi + off, p, phi0);
+    if(e->P) z_to_coef(psi + off + p, e->P, PHI0);
+    if(q) z_to_coef(psi + off + p + e->P, q, thq0);
+    if(e->Q2) z_to_coef(psi + off + p + e->P + q, e->Q2, THQ0);
     double phi[16] = {0}, thq[16] = {0};
-    if(p) z_to_coef(psi + e->hc + e->K_ex, p, phi);
-    if(q) z_to_coef(psi + e->hc + e->K_ex + p, q, thq);
-    double s2 = exp(2.0*psi[e->hc + e->K_ex + p + q]);
+    int pT = p, qT = q;
+    if(e->s2){
+        seas_expand_ar(phi0, p, PHI0, e->P, e->s2, phi, &pT);
+        seas_expand_ma(thq0, q, THQ0, e->Q2, e->s2, thq, &qT);
+    } else {
+        memcpy(phi, phi0, sizeof phi0);
+        memcpy(thq, thq0, sizeof thq0);
+    }
+    p = pT; q = qT;
+    int m = (p > q+1) ? p : q+1;
+    double s2 = exp(2.0*psi[off + e->p + e->P + e->q + e->Q2]);
     /* Harvey-form ARMA state space */
     double Z[16] = {0}, T[256] = {0}, R[256] = {0}, H[1] = {0};
     double a1[16] = {0}, Pst[256], Pinf[256] = {0}, RQR[256] = {0};
@@ -258,14 +298,18 @@ static void exact_negll_fdf(const gsl_vector *x, void *params, double *f, gsl_ve
 /* untransformed coefficient vector [mu, beta, phi, thq] from psi */
 static void psi_to_theta(const ExactCtx *e, const double *psi, double *theta)
 {
-    int idx = 0;
+    int idx = 0, off = e->hc + e->K_ex;
     if(e->hc) theta[idx++] = psi[0];
     for(int k = 0; k < e->K_ex; k++) theta[idx++] = psi[e->hc + k];
     double tmp[16];
-    if(e->p){ z_to_coef(psi + e->hc + e->K_ex, e->p, tmp);
+    if(e->p){ z_to_coef(psi + off, e->p, tmp);
               for(int k = 0; k < e->p; k++) theta[idx++] = tmp[k]; }
-    if(e->q){ z_to_coef(psi + e->hc + e->K_ex + e->p, e->q, tmp);
+    if(e->P){ z_to_coef(psi + off + e->p, e->P, tmp);
+              for(int k = 0; k < e->P; k++) theta[idx++] = tmp[k]; }
+    if(e->q){ z_to_coef(psi + off + e->p + e->P, e->q, tmp);
               for(int k = 0; k < e->q; k++) theta[idx++] = tmp[k]; }
+    if(e->Q2){ z_to_coef(psi + off + e->p + e->P + e->q, e->Q2, tmp);
+               for(int k = 0; k < e->Q2; k++) theta[idx++] = tmp[k]; }
 }
 
 static int parse_pdq(const char *spec, int *p, int *d, int *q)
@@ -310,6 +354,23 @@ int do_arima(Cmd *c)
     if(p == 0 && q == 0 && d == 0){
         fprintf(stderr,"arima: arima(0 0 0) is just a constant — use regress\n");
         return 198;
+    }
+    int P = 0, D2 = 0, Q2 = 0, s2 = 0;
+    char sar[64] = "";
+    if(opt_value(c->options, "sarima", sar, sizeof sar) && sar[0]){
+        char sb[64]; snprintf(sb, sizeof sb, "%s", sar);
+        char *sp2 = NULL; int nn2 = 0; int vals[4] = {0,0,0,0};
+        for(char *t = strtok_r(sb, " ,", &sp2); t && nn2 < 4; t = strtok_r(NULL, " ,", &sp2))
+            vals[nn2++] = atoi(t);
+        if(nn2 < 4 || vals[3] < 2){
+            fprintf(stderr,"arima: sarima(P D Q s) needs four integers with s >= 2\n");
+            return 198;
+        }
+        P = vals[0]; D2 = vals[1]; Q2 = vals[2]; s2 = vals[3];
+        if(p + P*s2 > 15 || q + Q2*s2 > 15 || D2 < 0 || D2 > 2){
+            fprintf(stderr,"arima: seasonal model too large (p+P*s and q+Q*s must be <= 15)\n");
+            return 198;
+        }
     }
     bool noconst = opt_present(c->options, "noconstant") || opt_present(c->options, "nocons");
     bool has_cons = !noconst;
@@ -396,11 +457,18 @@ int do_arima(Cmd *c)
      * the differenced model directly.  Users who want exog differenced
      * should pre-difference using gen. */
     long n_d = difference_series(y, n, d);
-    /* For exog: just drop the first d observations to align. */
-    if(K_ex && d > 0){
+    /* Seasonal differencing (sarima): D applications of (1 - L^s). */
+    for(int k2 = 0; k2 < D2; k2++){
+        for(long t = n_d - 1; t >= s2; t--) y[t] = y[t] - y[t - s2];
+        for(long t = 0; t < n_d - s2; t++) y[t] = y[t + s2];
+        n_d -= s2;
+    }
+    /* For exog: just drop the first d (+ D*s) observations to align. */
+    if(K_ex && (d > 0 || D2 > 0)){
+        long drop = (n - (d > 0 ? 0 : 0)) - n_d;   /* total dropped */
         for(int k = 0; k < K_ex; k++){
-            for(long t = 0; t < n - d; t++)
-                X[(size_t)k * n + t] = X[(size_t)k * n + t + d];
+            for(long t = 0; t < n - drop; t++)
+                X[(size_t)k * n + t] = X[(size_t)k * n + t + drop];
         }
     }
     /* Effective sample for the estimator: n_d. */
@@ -427,7 +495,7 @@ int do_arima(Cmd *c)
     ctx.n = n_d;
     ctx.y = y;
     ctx.X = X_use;
-    int K = K_total(&ctx);
+    int K = K_total(&ctx) + P + Q2;
 
     /* Starting values.
      *
@@ -468,7 +536,7 @@ int do_arima(Cmd *c)
     /* Exact ML via the state-space engine (BFGS2 on transformed
      * parameters, central-difference gradients, deterministic
      * multistart — the ucm pattern; DESIGN_SSPACE.md Decisions 6/7). */
-    ExactCtx ectx = { y, ctx.X, n_d, K_ex, has_cons, p, q };
+    ExactCtx ectx = { y, ctx.X, n_d, K_ex, has_cons, p, q, P, Q2, s2 };
     int Kp = K + 1;                       /* + log sigma */
     double psi0[40] = {0};
     {
@@ -480,10 +548,20 @@ int do_arima(Cmd *c)
             coef_to_z(theta + has_cons + K_ex, p, zar);
             for(int k = 0; k < p; k++) psi0[idx++] = zar[k];
         }
+        for(int k = 0; k < P; k++) psi0[idx++] = 0.0;
         for(int k = 0; k < q; k++) psi0[idx++] = 0.0;
-        /* sigma start from the conditional-SSR at the starting values */
-        double ssr0 = arima_ssr(&ctx, theta, NULL);
-        psi0[idx] = 0.5*log((isfinite(ssr0) && ssr0 > 0 ? ssr0 : 1.0)/n_d);
+        for(int k = 0; k < Q2; k++) psi0[idx++] = 0.0;
+        /* sigma start: conditional SSR without seasonal terms, else the
+         * sample variance of the (fully differenced) series */
+        if(s2 == 0){
+            double ssr0 = arima_ssr(&ctx, theta, NULL);
+            psi0[idx] = 0.5*log((isfinite(ssr0) && ssr0 > 0 ? ssr0 : 1.0)/n_d);
+        } else {
+            double sy = 0, syy = 0;
+            for(long t2 = 0; t2 < n_d; t2++){ sy += y[t2]; syy += y[t2]*y[t2]; }
+            double vv = (syy - sy*sy/n_d)/(n_d > 1 ? n_d - 1 : 1);
+            psi0[idx] = 0.5*log(vv > 0 ? vv : 1.0);
+        }
     }
     double psi[40]; double ll = -1e300; int iter = 0;
     {
@@ -492,7 +570,7 @@ int do_arima(Cmd *c)
         memcpy(starts[0], psi0, sizeof psi0);
         memcpy(starts[1], psi0, sizeof psi0);
         memcpy(starts[2], psi0, sizeof psi0);
-        for(int k = 0; k < p + q; k++){
+        for(int k = 0; k < p + P + q + Q2; k++){
             starts[1][has_cons + K_ex + k] =  0.75;   /* partials ~ +0.6 */
             starts[2][has_cons + K_ex + k] = -0.75;
         }
@@ -594,7 +672,9 @@ int do_arima(Cmd *c)
         snprintf(xnames[idx++], 33, "%s", c->f->vars[exi[k]].name);
     }
     for(int k = 0; k < p; k++) snprintf(xnames[idx++], 33, "ar%d", k+1);
+    for(int k = 0; k < P; k++) snprintf(xnames[idx++], 33, "sar%d", k+1);
     for(int k = 0; k < q; k++) snprintf(xnames[idx++], 33, "ma%d", k+1);
+    for(int k = 0; k < Q2; k++) snprintf(xnames[idx++], 33, "sma%d", k+1);
 
     /* Print Stata-style header + coefficient table. */
     if(!c->quiet){
@@ -622,10 +702,11 @@ int do_arima(Cmd *c)
                 printf("%12s | %10s  %10s %7.2f %5.3f   %10s  %10s\n", xnames[ki], gfit(theta[ki],9), gfit(se,9), z, pv, gfit(lo,9), gfit(hi,9));
             }
         }
-        if(p > 0){
-            printf("%-12s |\n", "AR");
+        if(p + P > 0){
             double zcrit = tea_invnormal(0.975);
-            for(int k = 0; k < p; k++){
+            for(int k = 0; k < p + P; k++){
+                if(k == 0 && p > 0) printf("%-12s |\n", "AR");
+                if(k == p) printf("%-12s |\n", "AR seasonal");
                 int ki = hc + K_ex + k;
                 double v = V[(size_t)ki*K + ki];
                 double se = v > 0 ? sqrt(v) : 0;
@@ -636,11 +717,12 @@ int do_arima(Cmd *c)
                 printf("%12s | %10s  %10s %7.2f %5.3f   %10s  %10s\n", xnames[ki], gfit(theta[ki],9), gfit(se,9), z, pv, gfit(lo,9), gfit(hi,9));
             }
         }
-        if(q > 0){
-            printf("%-12s |\n", "MA");
+        if(q + Q2 > 0){
             double zcrit = tea_invnormal(0.975);
-            for(int k = 0; k < q; k++){
-                int ki = hc + K_ex + p + k;
+            for(int k = 0; k < q + Q2; k++){
+                if(k == 0 && q > 0) printf("%-12s |\n", "MA");
+                if(k == q) printf("%-12s |\n", "MA seasonal");
+                int ki = hc + K_ex + p + P + k;
                 double v = V[(size_t)ki*K + ki];
                 double se = v > 0 ? sqrt(v) : 0;
                 double z = se > 0 ? theta[ki]/se : 0;

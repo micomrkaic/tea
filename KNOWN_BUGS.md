@@ -1645,3 +1645,23 @@ used in `egen`.
   is file-scope state reset by tea_srand.  Every mid-file re-seed in
   the shipped suite sat at even parity, so no golden moved; the fix
   is pure correctness.
+
+## v1.6.41 — sspace diffuse, dfactor idio AR, seasonal arima, ucm cycles
+
+- Four staged items land in one release: sspace diffuse
+  initialization (nonstationary user models; local level via sspace
+  == ucm llevel EXACTLY, the third internal-exactness proof);
+  dfactor observation-equation ar(1) (idiosyncratic AR(1) states;
+  ll matches statsmodels error_order=1 to 5 decimals, -969.47356
+  both); arima sarima(P D Q s) (multiplicative seasonal polynomials
+  expanded onto the engine; the canonical airline model matches to
+  reported precision, ll 244.6965); and ucm cycle (Harvey damped
+  stochastic cycle, logit-bounded damping/frequency, mixed
+  diffuse-trend + stationary-cycle initialization).
+- Two findings for the record: (1) statsmodels' exact-diffuse
+  log-likelihood disagrees with the large-kappa limit by ~2.09 on
+  the mixed-initialization cycle model while tea equals the limit to
+  5 decimals at three kappa magnitudes — and statsmodels' optimizer
+  also failed the cycle problem outright (69 ll units below tea's
+  optimum, collapsing the cycle); (2) ucm did not post e(ll)
+  (masked until test 75 asserted on it) — fixed.

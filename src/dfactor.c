@@ -54,7 +54,7 @@ static void tea_err(const char *fmt, ...){
 #define DF_MAXPAR 160
 
 typedef struct {
-    int n, k, p, Kx, hc;             /* observables, factors, lags, exog, cons */
+    int n, k, p, Kx, hc, idio_ar;    /* observables, factors, lags, exog, cons, idio AR(1) */
     int yi[DF_MAXN], xi[DF_MAXX];
     char fnames[DF_MAXK][33];
     /* mean-parameter layout (constrainable):
@@ -75,12 +75,15 @@ static int df_il(const DfSpec *d, int i, int g){
     return d->hc*d->n + d->Kx*d->n + g*d->n + i; }
 static int df_ia(const DfSpec *d, int l, int g, int h){
     return d->hc*d->n + d->Kx*d->n + d->k*d->n + ((l*d->k + h)*d->k + g); }
+static int df_ir(const DfSpec *d, int i){                       /* idio rho */
+    return d->hc*d->n + d->Kx*d->n + d->k*d->n + d->p*d->k*d->k + i; }
 
 /* full-psi -> negative loglik.  psi = [psi_mean (nfree) | lsig (n)] */
 static double df_negll(const gsl_vector *x, void *params)
 {
     DfSpec *d = params;
-    int n = d->n, k = d->k, p = d->p, m = k*p;
+    int n = d->n, k = d->k, p = d->p;
+    int mf = k*p, m = mf + (d->idio_ar ? n : 0);
     double th[DF_MAXPAR];
     /* mean block */
     for(int i = 0; i < d->Km; i++) th[i] = d->tp[i];
@@ -88,21 +91,32 @@ static double df_negll(const gsl_vector *x, void *params)
         double pj = gsl_vector_get(x, j);
         for(int i = 0; i < d->Km; i++) th[i] += d->Nb[(size_t)j*d->Km + i]*pj;
     }
-    double Hd[DF_MAXN];
-    for(int i = 0; i < n; i++)
-        Hd[i] = exp(2.0*gsl_vector_get(x, d->nfree + i));
-    /* state space */
-    double Z[DF_MAXN*DF_MAXK*DF_MAXP];  memset(Z, 0, sizeof Z);
-    double T[16*16] = {0}, R[16*DF_MAXK] = {0}, Q[DF_MAXK*DF_MAXK] = {0};
-    double a1[16] = {0}, Pst[16*16], Pinf[16*16] = {0}, RQR[16*16] = {0};
+    double sg2[DF_MAXN], Hd[DF_MAXN];
+    for(int i = 0; i < n; i++){
+        sg2[i] = exp(2.0*gsl_vector_get(x, d->nfree + i));
+        Hd[i] = d->idio_ar ? 0.0 : sg2[i];
+    }
+    /* state space: factor companion block, then (optionally) the
+     * idiosyncratic AR(1) block */
+    int rdim = k + (d->idio_ar ? n : 0);
+    double Z[24*24];  memset(Z, 0, sizeof Z);
+    double T[24*24] = {0}, R[24*24] = {0}, Q[24*24] = {0};
+    double a1[24] = {0}, Pst[24*24], Pinf[24*24] = {0}, RQR[24*24] = {0};
     for(int i = 0; i < n; i++) for(int g = 0; g < k; g++)
         Z[(size_t)g*n + i] = th[df_il(d, i, g)];
     for(int l = 0; l < p; l++)
         for(int g = 0; g < k; g++) for(int h = 0; h < k; h++)
             T[(size_t)(l*k + h)*m + g] = th[df_ia(d, l, g, h)];
-    for(int j = 0; j < m - k; j++) T[(size_t)j*m + (k + j)] = 1.0;
-    for(int g = 0; g < k; g++){ R[(size_t)g*m + g] = 1.0; Q[(size_t)g*k + g] = 1.0; }
-    for(int g = 0; g < k; g++) RQR[(size_t)g*m + g] = 1.0;
+    for(int j = 0; j < mf - k; j++) T[(size_t)j*m + (k + j)] = 1.0;
+    for(int g = 0; g < k; g++){ R[(size_t)g*m + g] = 1.0; Q[(size_t)g*rdim + g] = 1.0;
+                                RQR[(size_t)g*m + g] = 1.0; }
+    if(d->idio_ar) for(int i = 0; i < n; i++){
+        Z[(size_t)(mf + i)*n + i] = 1.0;
+        T[(size_t)(mf + i)*m + (mf + i)] = th[df_ir(d, i)];
+        R[(size_t)(k + i)*m + (mf + i)] = 1.0;
+        Q[(size_t)(k + i)*rdim + (k + i)] = sg2[i];
+        RQR[(size_t)(mf + i)*m + (mf + i)] = sg2[i];
+    }
     if(ss_lyapunov(T, RQR, m, Pst)) return 1e30;
     for(int i = 0; i < m*m; i++) if(!isfinite(Pst[i]) || fabs(Pst[i]) > 1e12) return 1e30;
     /* A nonstationary T can still yield an algebraic Lyapunov "solution"
@@ -114,7 +128,7 @@ static double df_negll(const gsl_vector *x, void *params)
         for(int i = 0; i < m; i++) Pchk[(size_t)i*m + i] += 1e-10;
         if(LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'U', m, Pchk, m) != 0) return 1e30;
     }
-    SSModel M = { m, n, k, Z, Hd, T, R, Q, a1, Pst, Pinf };
+    SSModel M = { m, n, rdim, Z, Hd, T, R, Q, a1, Pst, Pinf };
     /* mean-adjusted data */
     long Tn = d->Tn;
     double *w = malloc((size_t)n*Tn*sizeof(double));
@@ -194,6 +208,14 @@ int do_dfactor(Cmd *c)
         char *comma = strchr(eq1, ',');
         if(comma){
             if(strstr(comma+1, "nocons")) d.hc = 0;
+            char *arp = strstr(comma+1, "ar(");
+            if(arp){
+                int ao = 0;
+                sscanf(arp, "ar(%d)", &ao);
+                if(ao != 1){ tea_err("dfactor: observation ar(1) only in this release\n");
+                             return 198; }
+                d.idio_ar = 1;
+            }
             *comma = 0;
         }
         char *eqs = strchr(eq1, '=');
@@ -273,7 +295,7 @@ int do_dfactor(Cmd *c)
     }
     d.y = y; d.X = X; d.Tn = Tn;
     /* ---- parameter names ---- */
-    d.Km = d.hc*d.n + d.Kx*d.n + d.k*d.n + d.p*d.k*d.k;
+    d.Km = d.hc*d.n + d.Kx*d.n + d.k*d.n + d.p*d.k*d.k + (d.idio_ar ? d.n : 0);
     d.Kall = d.Km + d.n;
     if(d.Km > DF_MAXPAR - DF_MAXN){ tea_err("dfactor: model too large\n");
         free(y); free(X); return 198; }
@@ -293,6 +315,10 @@ int do_dfactor(Cmd *c)
             else snprintf(mnames[df_ia(&d, l, g, h)], 33, "[%s]L%d.%s",
                           d.fnames[g], l+1, d.fnames[h]);
         }
+    if(d.idio_ar)
+        for(int i = 0; i < d.n; i++)
+            snprintf(mnames[df_ir(&d, i)], 33, "[e.%s]L.e",
+                     c->f->vars[d.yi[i]].name);
     /* ---- constraints ---- */
     char cnl[256] = "";
     d.ncns = 0;
@@ -352,6 +378,7 @@ int do_dfactor(Cmd *c)
             lsig0[i] = 0.5*log(resid > 1e-8 ? resid : 1e-8);
         }
         for(int g = 0; g < d.k; g++) th0[df_ia(&d, 0, g, g)] = 0.5;
+        if(d.idio_ar) for(int i = 0; i < d.n; i++) th0[df_ir(&d, i)] = 0.3;
     }
     /* ---- BFGS2 multistart on psi ---- */
     double psi[DF_MAXPAR]; double ll = -1e300;
@@ -488,6 +515,7 @@ int do_dfactor(Cmd *c)
             for(int g = 0; g < d.k; g++) order[no++] = df_il(&d, i, g);
             for(int j = 0; j < d.Kx; j++) order[no++] = df_ib(&d, i, j);
             if(d.hc) order[no++] = df_im(&d, i);
+            if(d.idio_ar) order[no++] = df_ir(&d, i);
         }
         for(int g = 0; g < d.k; g++)
             for(int l = 0; l < d.p; l++)
@@ -537,22 +565,31 @@ int do_dfactor(Cmd *c)
     /* ---- smfactor(stub): smoothed factors ---- */
     char stub[33] = "";
     if(opt_value(c->options, "smfactor", stub, sizeof stub) && stub[0]){
-        int m = d.k*d.p, n = d.n;
-        double Z[DF_MAXN*DF_MAXK*DF_MAXP]; memset(Z, 0, sizeof Z);
-        double T[16*16] = {0}, R[16*DF_MAXK] = {0}, Q[DF_MAXK*DF_MAXK] = {0};
-        double a1[16] = {0}, Pst[16*16], Pinf[16*16] = {0}, RQR[16*16] = {0};
+        int mf = d.k*d.p, n = d.n;
+        int m = mf + (d.idio_ar ? n : 0);
+        int rdim = d.k + (d.idio_ar ? n : 0);
+        double Z[24*24]; memset(Z, 0, sizeof Z);
+        double T[24*24] = {0}, R[24*24] = {0}, Q[24*24] = {0};
+        double a1[24] = {0}, Pst[24*24], Pinf[24*24] = {0}, RQR[24*24] = {0};
         double Hd[DF_MAXN];
-        for(int i = 0; i < n; i++) Hd[i] = sig2[i];
+        for(int i = 0; i < n; i++) Hd[i] = d.idio_ar ? 0.0 : sig2[i];
         for(int i = 0; i < n; i++) for(int g = 0; g < d.k; g++)
             Z[(size_t)g*n + i] = th[df_il(&d, i, g)];
         for(int l = 0; l < d.p; l++)
             for(int g = 0; g < d.k; g++) for(int h = 0; h < d.k; h++)
                 T[(size_t)(l*d.k + h)*m + g] = th[df_ia(&d, l, g, h)];
-        for(int j = 0; j < m - d.k; j++) T[(size_t)j*m + (d.k + j)] = 1.0;
-        for(int g = 0; g < d.k; g++){ R[(size_t)g*m + g] = 1.0; Q[(size_t)g*d.k + g] = 1.0;
+        for(int j = 0; j < mf - d.k; j++) T[(size_t)j*m + (d.k + j)] = 1.0;
+        for(int g = 0; g < d.k; g++){ R[(size_t)g*m + g] = 1.0; Q[(size_t)g*rdim + g] = 1.0;
                                       RQR[(size_t)g*m + g] = 1.0; }
+        if(d.idio_ar) for(int i = 0; i < n; i++){
+            Z[(size_t)(mf + i)*n + i] = 1.0;
+            T[(size_t)(mf + i)*m + (mf + i)] = th[df_ir(&d, i)];
+            R[(size_t)(d.k + i)*m + (mf + i)] = 1.0;
+            Q[(size_t)(d.k + i)*rdim + (d.k + i)] = sig2[i];
+            RQR[(size_t)(mf + i)*m + (mf + i)] = sig2[i];
+        }
         if(!ss_lyapunov(T, RQR, m, Pst)){
-            SSModel M = { m, n, d.k, Z, Hd, T, R, Q, a1, Pst, Pinf };
+            SSModel M = { m, n, rdim, Z, Hd, T, R, Q, a1, Pst, Pinf };
             double *w = malloc((size_t)n*Tn*sizeof(double));
             for(int i = 0; i < n; i++){
                 double mu = d.hc ? th[df_im(&d, i)] : 0.0;

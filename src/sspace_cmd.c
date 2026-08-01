@@ -54,6 +54,7 @@ typedef struct {
     int  nld[SP_MAXY];                  /* # states in obs eq */
     int  ld[SP_MAXY][SP_MAXS];
     int  covstate_diag;                 /* 0 identity (default), 1 diagonal */
+    int  diffuse;                       /* 1: Pinf=I, no stationarity req */
     /* parameter layout (mean/constrainable first):
      * obs-eq state coefs | obs constants | state transition coefs
      * then variances: state (if diag & err) then obs (if err) */
@@ -118,9 +119,12 @@ static double sp_negll(const gsl_vector *x, void *params)
     for(int e = 0; e < ny; e++)
         Hd[e] = sp->yerr[e]
               ? exp(2.0*gsl_vector_get(x, sp->nfree + sp->v_y[e])) : 0.0;
-    if(ss_lyapunov(T, RQR, m, Pst)) return 1e30;
-    for(int i = 0; i < m*m; i++) if(!isfinite(Pst[i]) || fabs(Pst[i]) > 1e12) return 1e30;
-    {
+    if(sp->diffuse){
+        memset(Pst, 0, (size_t)m*m*sizeof(double));
+        for(int i = 0; i < m; i++) Pinf[(size_t)i*m + i] = 1.0;
+    } else {
+        if(ss_lyapunov(T, RQR, m, Pst)) return 1e30;
+        for(int i = 0; i < m*m; i++) if(!isfinite(Pst[i]) || fabs(Pst[i]) > 1e12) return 1e30;
         double Pchk[SP_MAXS*SP_MAXS];
         memcpy(Pchk, Pst, (size_t)m*m*sizeof(double));
         for(int i = 0; i < m; i++) Pchk[(size_t)i*m + i] += 1e-10;
@@ -258,7 +262,8 @@ int do_sspace(Cmd *c)
             tea_err("sspace: covstate(identity|diagonal) only\n"); return 198;
         }
     }
-    char cvo[16] = "";
+    sp.diffuse = opt_present(c->options, "diffuse") ? 1 : 0;
+        char cvo[16] = "";
     if(opt_value(c->options, "covobs", cvo, sizeof cvo) && strcmp(cvo, "diagonal")){
         tea_err("sspace: covobs(diagonal) only (H must be diagonal; DESIGN_SSPACE.md §1)\n");
         return 198;
@@ -545,7 +550,12 @@ int do_sspace(Cmd *c)
         }
         for(int e = 0; e < ny; e++)
             Hd[e] = sp.v_y[e] >= 0 ? var_out[sp.v_y[e]] : 0.0;
-        if(!ss_lyapunov(T, RQR, m, Pst)){
+        int init_ok = 1;
+        if(sp.diffuse){
+            memset(Pst, 0, (size_t)m*m*sizeof(double));
+            for(int i2 = 0; i2 < m; i2++) Pinf[(size_t)i2*m + i2] = 1.0;
+        } else init_ok = !ss_lyapunov(T, RQR, m, Pst);
+        if(init_ok){
             SSModel M = { m, ny, r3 > 0 ? r3 : 1, Z, Hd, T, R, Q, a1, Pst, Pinf };
             double *w = malloc((size_t)ny*Tn*sizeof(double));
             for(int e = 0; e < ny; e++){
