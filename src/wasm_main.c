@@ -29,6 +29,7 @@
 #include <emscripten.h>
 #include <stdio.h>
 #include <string.h>
+#include "tea_version.h"
 #include "interp.h"
 #include "dataset.h"
 #include "dta.h"

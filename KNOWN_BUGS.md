@@ -1729,3 +1729,34 @@ used in `egen`.
   tea_web_set_style(1) after boot.  The 77 goldens double as the
   regression test for this cleanliness: any leaked escape anywhere
   diffs loudly.
+
+## v1.6.45 — build-system hygiene: exact incrementality, and a latent bug
+
+- Mico observed the build "recompiles everything".  The audit: the
+  native build was properly incremental all along, but `make wasm`
+  was a single monolithic emcc rule (any trigger recompiled every
+  source, and VERSION was not a prerequisite — the staleness footgun
+  that forced wasm-clean into the release gate), `make dist` deleted
+  the object tree to keep artifacts out of the tarball (forcing a
+  full rebuild after every release), and `make debug` is a
+  whole-program build by design.  Underneath sat a latent
+  under-compilation bug: TEA_VERSION arrived as a -D flag, which
+  make cannot track, so `echo new > VERSION; make` rebuilt nothing
+  and shipped a binary reporting the old version — masked for its
+  whole life by the clean-build release discipline.
+- The fix is one mechanism: src/tea_version.h is generated from
+  VERSION with a content compare (mtime moves only when the version
+  changes), included by exactly the three units that print the
+  version; -MMD does the rest.  A version bump now recompiles three
+  units and links — measured, and the stale-version repro now
+  produces the right answer without a clean.  The wasm build is
+  per-object with emcc's own -MMD tracking (touch one source: one
+  recompile plus link), which retires wasm-clean as a correctness
+  crutch.  dist now uses tar excludes instead of rm, so releasing no
+  longer destroys the build tree.  The release gate keeps its clean
+  builds as deliberate policy — belt and braces for shipped
+  artifacts — but day-to-day iteration is exact.
+- Noted, pre-existing, wasm-only: a -Wconstant-conversion warning in
+  a string-hash constant (unsigned long is 32-bit under wasm32);
+  functionally harmless truncation, surfaced only now that per-object
+  logs are readable.  Left as-is deliberately.

@@ -1,4 +1,12 @@
 VER := $(strip $(shell cat VERSION))
+.DEFAULT_GOAL := tea
+# src/tea_version.h is generated from VERSION with a content compare, so
+# its mtime moves only when the version actually changes.  The three
+# translation units that print the version include it (before interp.h,
+# whose fallback yields); -MMD then makes VERSION-bump rebuilds exact:
+# those units and the links, nothing else.  This replaced a -D flag that
+# make could not track — `echo new > VERSION; make` used to rebuild
+# nothing and ship a binary reporting the old version.
 # tea — tiny econometric assistant
 # Build configuration with strict warnings and per-platform paths.
 #
@@ -71,7 +79,7 @@ WARNINGS = -Wall -Wextra -Werror \
 HARDEN_BASE    = -fstack-protector-strong
 HARDEN_RELEASE = -D_FORTIFY_SOURCE=2
 
-BASE_CFLAGS = -std=c17 -DTEA_VERSION_FROM_FILE='"$(VER)"' -O2 $(WARNINGS) $(HARDEN_BASE) $(HARDEN_RELEASE)
+BASE_CFLAGS = -std=c17 -O2 $(WARNINGS) $(HARDEN_BASE) $(HARDEN_RELEASE)
 
 # -MMD -MP: header-dependency tracking so editing a header rebuilds every
 #   TU that includes it (avoids stale-object ABI mismatches).
@@ -142,6 +150,12 @@ LDFLAGS = $(VENDOR_RS_LD) $(PLATFORM_LDFLAGS) -llapacke -lopenblas -lgsl -lreadl
 SRC     = $(wildcard src/*.c)
 OBJ     = $(SRC:.c=.o)
 DEP     = $(OBJ:.o=.d)
+
+src/tea_version.h: VERSION
+	@printf '#define TEA_VERSION_FROM_FILE "%s"\n' "$(VER)" > $@.tmp
+	@cmp -s $@.tmp $@ 2>/dev/null && rm -f $@.tmp || mv $@.tmp $@
+
+$(OBJ): | src/tea_version.h
 BIN     = tea
 
 $(BIN): $(OBJ)
@@ -155,7 +169,7 @@ src/%.o: src/%.c
 # ---- debug target: ASan + UBSan, no optimisation -------------------------
 # Builds a separate binary at tea-debug so the release tea/ stays unaffected.
 # Use this for any reproducer that might hint at memory corruption.
-DEBUG_CFLAGS  = -std=c17 -DTEA_VERSION_FROM_FILE='"$(VER)"' -O0 -g3 -fno-omit-frame-pointer \
+DEBUG_CFLAGS  = -std=c17 -O0 -g3 -fno-omit-frame-pointer \
                 $(WARNINGS) $(HARDEN_BASE) \
                 -fsanitize=address,undefined \
                 $(PLATFORM_CFLAGS)
@@ -228,9 +242,25 @@ WASM_SRC  = $(filter-out src/main.c,$(SRC))
 
 wasm: web/tea.js
 
-web/tea.js: $(WASM_SRC)
+# per-object compilation with emcc's own -MMD dep tracking, so the wasm
+# build is as incremental as the native one and a VERSION bump rebuilds
+# exactly the units that include tea_version.h.  This retires the
+# wasm-clean-before-wasm crutch (the old monolithic rule neither tracked
+# VERSION nor cached objects: it under-compiled on version bumps and
+# over-compiled on everything else).
+WASM_OBJDIR = web/obj
+WASM_OBJ = $(patsubst src/%.c,$(WASM_OBJDIR)/%.o,$(WASM_SRC))
+WASM_DEP = $(WASM_OBJ:.o=.d)
+
+$(WASM_OBJDIR)/%.o: src/%.c | src/tea_version.h
+	@mkdir -p $(WASM_OBJDIR)
+	emcc -std=c17 -O2 $(WASM_INC) -MMD -MP -c $< -o $@
+
+-include $(WASM_DEP)
+
+web/tea.js: $(WASM_OBJ)
 	@mkdir -p web
-	emcc -std=c17 -DTEA_VERSION_FROM_FILE='"$(VER)"' -O2 $(WASM_INC) $(WASM_SRC) \
+	emcc -O2 $(WASM_OBJ) \
 	  $(WASM_LIBS)/liblapack.a $(WASM_LIBS)/libblas.a $(WASM_LIBS)/libf2c.a \
 	  $(WASM_LIBS)/libgsl.a $(WASM_LIBS)/libreadstat.a $(WASM_LIBS)/libz.a \
 	  -sEXPORTED_FUNCTIONS=_tea_web_init,_tea_web_exec,_tea_web_version,_tea_web_save_memory,_tea_web_data_hash,_tea_web_run_dofile,_tea_web_complete,_malloc,_free \
@@ -254,6 +284,7 @@ vendor/readstat/include/readstat.h:
 
 wasm-clean:
 	rm -rf web/tea.js web/tea.wasm
+	rm -rf $(WASM_OBJDIR)
 
 # ---- manual ----------------------------------------------------------------
 # Master source: manual/manual.md (guide) + manual/reference.md (generated
@@ -275,9 +306,13 @@ sync-web-version:
 
 # release tarball: test-gated, named from VERSION, invariant tea/ top level
 dist: test
-	rm -f src/*.o src/*.d tea tea-debug
+	@# artifacts are excluded from the tarball rather than deleted, so
+	@# dist no longer destroys the build tree (the old rm forced a full
+	@# recompile after every release)
 	tar czf /tmp/tea-v$(VER).tar.gz --exclude='.git' --exclude='tea/vendor' --exclude='*.o' \
-	  --exclude='*.d' --exclude='tea/*.tar.gz' -C .. tea
+	  --exclude='*.d' --exclude='*.o' --exclude='tea/tea' \
+	  --exclude='tea/tea-debug' --exclude='tea/web/obj' \
+	  --exclude='tea/src/tea_version.h' --exclude='tea/*.tar.gz' -C .. tea
 	mv /tmp/tea-v$(VER).tar.gz .
 	@echo "dist: tea-v$(VER).tar.gz"
 

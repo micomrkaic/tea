@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+#include "tea_version.h"
 #include "interp.h"
 #include "dataset.h"
 #include "cmd.h"

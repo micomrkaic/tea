@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 #include "cmd.h"
+#include "tea_version.h"
 #include "interp.h"
 #include "value.h"
 #include "expr.h"
