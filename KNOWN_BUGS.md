@@ -1682,3 +1682,30 @@ used in `egen`.
   address them, while table labels keep Stata's L./D. dress — the
   sspace paren-free lesson, applied on arrival rather than after a
   bug report.
+
+## v1.6.43 — manual refresh and thematic help
+
+- The manual catches up with five releases of estimation commands:
+  a new State-space models chapter (ucm with cycles, sspace with
+  diffuse, dfactor with idiosyncratic AR, the constraint subsystem,
+  and the engine/verification story), a filled-out time-series
+  chapter (sarima, newey, unit roots, tsfilter, VARs/IRFs/lpirf,
+  vecrank), panel-tier sections (areg, xtivreg fe, xtabond with its
+  staged-features caveats), correlate/pwcorr/ttest under Exploring
+  data, and a cleaned-up intro.  Three stale claims excised: "no
+  xtabond", "no VAR/VECM", and a commands-that-don't-exist list that
+  still included graphics, var, and dfuller — all shipped releases
+  ago.
+- help is now thematic: `help` prints eleven themed groups, `help
+  TOPIC` (data, create, explore, reshape, graphics, estimation,
+  panel, timeseries, statespace, postest, files) lists one theme
+  with each command's one-line syntax, and `help CMD` is unchanged.
+  Two machine-facing subcommands: `help _list` (one name per line)
+  now feeds tools/gen_cmdref.sh, making the generated manual
+  reference independent of the human-facing grid format; and `help
+  _check` prints any command missing from every theme and fails
+  rc 9 — test 77 goldens it, so registering a command without
+  categorizing it breaks the suite (the silent-failure doctrine
+  applied to documentation).  Four stale one-liners refreshed along
+  the way (arima still said "conditional ML"; ucm/sspace/dfactor
+  lacked their v1.6.41 options).

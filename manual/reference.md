@@ -240,8 +240,9 @@ any change keeps the manual and the implementation in agreement.*
 ## `arima`
 
 ```
-  arima y [exog] [if] [in], arima(p d q) [noconstant]   ARIMA(p,d,q) via conditional ML
-      e.g.  arima gdp, arima(1 1 1)              ARIMA(1,1,1) on gdp
+  arima y [exog] [if] [in], arima(p d q) [sarima(P D Q s) noconstant]
+      exact-ML ARIMA/ARMAX; sarima() = multiplicative seasonal terms
+      e.g.  arima gdp, arima(1 1 1)   arima lp, arima(0 1 1) sarima(0 1 1 12)
             arima cpi unemp, arima(2 0 1)        ARMAX(2,1) with exog regressor
 ```
 
@@ -296,9 +297,13 @@ any change keeps the manual and the implementation in agreement.*
 ## `reshape`
 
 ```
+Sort, reshape & combine
+  sort varlist                                 ascending stable sort
+  gsort [+-]var [+-]var ...                    sort with per-key direction
   reshape long|wide stubs , i(idvars) j(jvar)  pivot wide<->long (in-place)
-      e.g.  reshape long v, i(country) j(year)
-            takes v1980 v1981 ... v2031 -> rows of (country, year, v)
+  merge 1:1|m:1|1:m keyvars using FILE [, ...] join master with using file
+  collapse (stat) v1 v2 ... , by(g) [weight]   aggregate to groups
+'help CMD' shows a command's full syntax line(s).
 ```
 
 ## `recode`
@@ -416,7 +421,8 @@ import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) cas
 ## `dfactor`
 
 ```
-  dfactor (y1 y2 ... [= exog][, noconstant]) (f1 [f2..] = , ar(#))  dynamic factors
+  dfactor (y1 y2 ... [= exog][, noconstant ar(1)]) (f1 [f2..] = , ar(#))
+      dynamic factors; obs-eq ar(1) = idiosyncratic AR errors; smfactor(stub)
 ```
 
 ## `areg`
@@ -440,13 +446,16 @@ import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) cas
 ## `sspace`
 
 ```
-  sspace (s L.s.., state [noerror]).. (y s.. [, noerror nocons]).. , constraints(#)  state space
+  sspace (s L.s.., state [noerror]).. (y s.. [, noerror nocons])..
+      , constraints(#) covstate(identity|diagonal) [diffuse smstates(stub)]
+      linear state-space models; diffuse = nonstationary initialization
 ```
 
 ## `ucm`
 
 ```
-  ucm Y, model(llevel|lltrend|rwalk|rwdrift|ntrend) [seasonal(#) smstate(NEW)]  unobserved components
+  ucm Y, model(llevel|lltrend|rwalk|rwdrift|ntrend) [seasonal(#) cycle smstate(NEW)]
+      unobserved components; cycle = damped stochastic cycle (damping+frequency)
 ```
 
 ## `var`
@@ -653,19 +662,6 @@ import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) cas
 
 ```
   dir [pattern]                                list files in current directory
-```
-
-## `dir`
-
-```
-  dir [pattern]                                list files in current directory
-```
-
-## `ls`
-
-```
-  dir [pattern]                                list files in current directory
-  (alias for 'dir')
 ```
 
 ## `rmdir`

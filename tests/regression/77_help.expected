@@ -1,0 +1,22 @@
+ok: all commands categorized
+
+State-space models
+  ucm Y, model(llevel|lltrend|rwalk|rwdrift|ntrend) [seasonal(#) cycle smstate(NEW)]
+  sspace (s L.s.., state [noerror]).. (y s.. [, noerror nocons])..
+  dfactor (y1 y2 ... [= exog][, noconstant ar(1)]) (f1 [f2..] = , ar(#))
+  constraint [define] # expr = expr | list | drop #|_all      linear constraints
+
+'help CMD' shows a command's full syntax line(s).
+
+Panel data
+  xtset panelvar timevar                       declare panel (gap-aware L./F./D./S.)
+  xtdescribe                                   summarize panel structure
+  xtreg y x1 x2 ... [if] [in], fe [vce(robust|cluster v)]   panel FE OLS
+  xtivreg y [x..] (endo = inst..), fe [robust]        panel IV (within)
+  xtabond y [x..], lags(1) [twostep robust maxldep(#)] Arellano-Bond GMM
+  hausman                                       FE vs RE specification test
+
+'help CMD' shows a command's full syntax line(s).
+help rc: 0
+topic rc: 0
+unknown is not a topic, falls through to unknown-cmd rc: 111

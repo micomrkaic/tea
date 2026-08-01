@@ -13,11 +13,9 @@ mkdir -p manual
 
 [ -x "$TEA" ] || { echo "build tea first (make)" >&2; exit 1; }
 
-# command list: the two-column index from `help`, flattened
-CMDS=$(printf 'help\n' | "$TEA" -q - 2>/dev/null \
-       | sed -n '/available commands:/,/native statements/p' \
-       | grep -v 'available commands\|native statements' \
-       | tr -s ' ' '\n' | grep -v '^$')
+# command list: the machine-readable index (one name per line), so the
+# extraction is independent of how the human-facing grid is formatted
+CMDS=$(printf 'help _list\n' | "$TEA" -q - 2>/dev/null)
 
 {
   echo '# Command reference'

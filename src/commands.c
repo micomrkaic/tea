@@ -4970,21 +4970,109 @@ static int do_help(Cmd *c){
         {"quietly", "quietly CMD  |  qui CMD                       suppress output of one command"},
         {NULL,NULL}
     };
+    /* thematic organization: every with-help command lives in exactly
+     * one category; anything left over prints loudly under
+     * "uncategorized" so the grid cannot silently rot as commands are
+     * added (and test 77 asserts the leftover set is empty). */
+    static const struct { const char *key, *title, *names; } CATS[] = {
+        {"data",       "Data in & out",
+         "use save sysuse import export clear preserve restore frame compress"},
+        {"create",     "Create & modify variables",
+         "generate replace egen drop keep rename order aorder recode encode "
+         "decode destring tostring label format"},
+        {"explore",    "Explore & summarize",
+         "describe list summarize tabstat tabulate codebook count correlate "
+         "corr pwcorr ttest isid duplicates"},
+        {"reshape",    "Sort, reshape & combine",
+         "sort gsort reshape merge collapse"},
+        {"graphics",   "Graphics",
+         "twoway graph scatter line histogram"},
+        {"estimation", "Regression & ML estimators",
+         "regress ivregress logit probit poisson areg"},
+        {"panel",      "Panel data",
+         "xtset xtdescribe xtreg xtivreg xtabond hausman"},
+        {"timeseries", "Time series",
+         "tsset arima newey dfuller pperron tsfilter var vargranger irf "
+         "lpirf vecrank"},
+        {"statespace", "State-space models",
+         "ucm sspace dfactor constraint"},
+        {"postest",    "Post-estimation",
+         "predict margins test lincom estimates est estout outreg2"},
+        {"files",      "Session, files & programming",
+         "help pwd cd mkdir dir ls rmdir erase copy do log history version "
+         "exit which ssc file confirm tempfile tempname error status"},
+        {NULL,NULL,NULL}
+    };
+    /* does a space-separated names string contain nm? */
+    #define CAT_HAS(str,nm) ({ int hit=0; const char *p=(str); size_t L=strlen(nm); \
+        while((p=strstr(p,(nm)))){ \
+            if((p==(str)||p[-1]==' ') && (p[L]==0||p[L]==' ')){ hit=1; break; } p++; } hit; })
     char what[64]=""; sscanf(c->args,"%63s",what);
-    if(!what[0]){
-        printf("\ntea %s — tiny econometric assistant\n",TEA_VERSION);
-        printf("type 'help CMD' for one command's syntax.  available commands:\n\n");
-        int col=0;
+    if(!strcmp(what,"_list")){
+        /* machine-readable: one with-help command per line (consumed by
+         * tools/gen_cmdref.sh so the manual reference cannot drift) */
         for(Disp *d=TABLE;d->name;d++){
             if(!d->help) continue;
-            printf("  %-12s",d->name);
-            if(++col==5){ putchar('\n'); col=0; }
+            int dup=0;
+            for(Disp *e=TABLE;e<d;e++) if(!strcmp(e->name,d->name)){ dup=1; break; }
+            if(!dup) printf("%s\n",d->name);
         }
-        if(col) putchar('\n');
-        printf("\nnative statements: assert shell ! #delimit display local global\n");
-        printf("                   foreach forvalues if capture quietly\n");
-        printf("\nqualifiers usable on most commands:\n");
+        return 0;
+    }
+    if(!strcmp(what,"_check")){
+        int stray=0;
+        for(Disp *d=TABLE;d->name;d++){
+            if(!d->help) continue;
+            int found=0;
+            for(int t=0;CATS[t].key;t++) if(CAT_HAS(CATS[t].names,d->name)){ found=1; break; }
+            if(!found){ printf("uncategorized: %s\n",d->name); stray++; }
+        }
+        if(!stray) printf("ok: all commands categorized\n");
+        return stray? 9 : 0;
+    }
+    if(!what[0]){
+        printf("\ntea %s — tiny econometric assistant\n",TEA_VERSION);
+        printf("Commands by theme.  'help TOPIC' lists one theme with descriptions\n");
+        printf("(e.g. help timeseries); 'help CMD' shows one command's syntax.\n");
+        for(int t=0;CATS[t].key;t++){
+            printf("\n%s   (help %s)\n",CATS[t].title,CATS[t].key);
+            char buf[512]; snprintf(buf,sizeof buf,"%s",CATS[t].names);
+            int col=0;
+            for(char *tok=strtok(buf," ");tok;tok=strtok(NULL," ")){
+                printf("  %-12s",tok);
+                if(++col==5){ putchar('\n'); col=0; }
+            }
+            if(col) putchar('\n');
+        }
+        /* loud drift guard: with-help commands missing from every theme */
+        int strayhdr=0;
+        for(Disp *d=TABLE;d->name;d++){
+            if(!d->help) continue;
+            int found=0;
+            for(int t=0;CATS[t].key;t++) if(CAT_HAS(CATS[t].names,d->name)){ found=1; break; }
+            if(!found){
+                if(!strayhdr){ printf("\nUncategorized (fix HELP CATS):\n"); strayhdr=1; }
+                printf("  %-12s\n",d->name);
+            }
+        }
+        printf("\nNative statements: assert shell ! #delimit display local global\n");
+        printf("                   foreach forvalues while if capture quietly\n");
+        printf("Qualifiers usable on most commands:\n");
         printf("  [by[sort] g (s):]  if exp   in range   [weight=exp]   , options\n");
+        return 0;
+    }
+    for(int t=0;CATS[t].key;t++) if(!strcmp(what,CATS[t].key)){
+        printf("\n%s\n",CATS[t].title);
+        char buf[512]; snprintf(buf,sizeof buf,"%s",CATS[t].names);
+        for(char *tok=strtok(buf," ");tok;tok=strtok(NULL," ")){
+            const char *h=NULL;
+            for(Disp *d=TABLE;d->name;d++)
+                if(!strcmp(d->name,tok) && d->help){ h=d->help; break; }
+            if(!h) continue;
+            const char *nl=strchr(h,'\n');
+            printf("  %.*s\n",nl?(int)(nl-h):(int)strlen(h),h);
+        }
+        printf("\n'help CMD' shows a command's full syntax line(s).\n");
         return 0;
     }
     for(int i=0;NATIVE[i].name;i++) if(!strcmp(NATIVE[i].name,what)){
@@ -5410,8 +5498,9 @@ Disp TABLE[]={
         "poisson y x1 x2 ... [if] [in] [weight] [, vce(robust|cluster v)]   poisson regression\n"
         "      e.g.  poisson accidents speed_limit population, vce(cluster state)"},
     {"arima",do_arima,1,
-        "arima y [exog] [if] [in], arima(p d q) [noconstant]   ARIMA(p,d,q) via conditional ML\n"
-        "      e.g.  arima gdp, arima(1 1 1)              ARIMA(1,1,1) on gdp\n"
+        "arima y [exog] [if] [in], arima(p d q) [sarima(P D Q s) noconstant]\n"
+        "      exact-ML ARIMA/ARMAX; sarima() = multiplicative seasonal terms\n"
+        "      e.g.  arima gdp, arima(1 1 1)   arima lp, arima(0 1 1) sarima(0 1 1 12)\n"
         "            arima cpi unemp, arima(2 0 1)        ARMAX(2,1) with exog regressor"},
     {"margins",do_margins,1,
         "margins , dydx(*|varlist) [atmeans]            average marginal effects\n"
@@ -5485,7 +5574,7 @@ Disp TABLE[]={
     {"constraint",do_constraint,0,
         "constraint [define] # expr = expr | list | drop #|_all      linear constraints"},
     {"dfactor",do_dfactor,1,
-        "dfactor (y1 y2 ... [= exog][, noconstant]) (f1 [f2..] = , ar(#))  dynamic factors"},
+        "dfactor (y1 y2 ... [= exog][, noconstant ar(1)]) (f1 [f2..] = , ar(#))\n      dynamic factors; obs-eq ar(1) = idiosyncratic AR errors; smfactor(stub)"},
     {"areg",do_areg,1,
         "areg y x.., absorb(v) [robust cluster(v)]           absorbed fixed effects"},
     {"xtabond",do_xtabond,1,
@@ -5493,9 +5582,12 @@ Disp TABLE[]={
     {"xtivreg",do_xtivreg,1,
         "xtivreg y [x..] (endo = inst..), fe [robust]        panel IV (within)"},
     {"sspace",do_sspace,1,
-        "sspace (s L.s.., state [noerror]).. (y s.. [, noerror nocons]).. , constraints(#)  state space"},
+        "sspace (s L.s.., state [noerror]).. (y s.. [, noerror nocons])..\n"
+        "      , constraints(#) covstate(identity|diagonal) [diffuse smstates(stub)]\n"
+        "      linear state-space models; diffuse = nonstationary initialization"},
     {"ucm",do_ucm,1,
-        "ucm Y, model(llevel|lltrend|rwalk|rwdrift|ntrend) [seasonal(#) smstate(NEW)]  unobserved components"},
+        "ucm Y, model(llevel|lltrend|rwalk|rwdrift|ntrend) [seasonal(#) cycle smstate(NEW)]\n"
+        "      unobserved components; cycle = damped stochastic cycle (damping+frequency)"},
     {"var",do_var,1,
         "var Y1 Y2 ...[, lags(1/p)]                  reduced-form VAR"},
     {"vargranger",do_vargranger,0,

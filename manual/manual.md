@@ -24,18 +24,17 @@ even if you eventually move to Stata or R for the final analysis.
 and `graph combine`, all on a dependency-free SVG engine.  Since v1.6.35 it has a
 macro time-series inference tier (`newey`, unit-root tests, filters,
 `var`, `vecrank`, impulse responses), and since v1.6.36 a state-space
-tier (`ucm`; exact-ML `arima` since v1.6.37).  Since v1.6.39 it has dfactor
-(multi-factor dynamic-factor models) and Stata's constraint language,
-and since v1.6.40 the sspace command for general stationary
-state-space models.
-Since v1.6.41 arima supports
-multiplicative seasonal models (sarima), ucm supports stochastic
-cycles, dfactor supports AR(1) idiosyncratic errors, and sspace
-supports diffuse initialization for nonstationary models.  Since v1.6.42 the panel tier includes areg (absorbed fixed
-effects), xtivreg fe (panel IV), and xtabond (Arellano-Bond dynamic
-panel GMM).  Still not implemented: GARCH, mixed-effects models,
-survival analysis, structural breaks, VEC estimation, Bayesian
-inference, or machine learning. It also does not
+tier: `ucm` (unobserved components, including damped stochastic
+cycles), exact-ML `arima` (including multiplicative seasonal models
+via `sarima()`), `dfactor` (multi-factor dynamic-factor models with
+optional AR(1) idiosyncratic errors), `sspace` (general linear
+state-space models with stationary or diffuse initialization), and
+Stata's `constraint` language.  The panel tier includes `areg`
+(absorbed fixed effects), `xtivreg, fe` (panel IV), and `xtabond`
+(Arellano-Bond dynamic panel GMM).  Still not implemented: GARCH,
+mixed-effects models, survival analysis, structural breaks, VEC
+estimation (beyond `vecrank`), Bayesian inference, or machine
+learning. It also does not
 implement Stata’s full programming language — `tea` has macros, loops,
 and `capture`, but no `program define`, no `syntax` parser, no Mata.
 
@@ -143,7 +142,9 @@ History is persistent at `~/.tea_history` (capped at 2000 lines).
 Readline editing is available throughout: arrow keys, Ctrl-A/E/K/U/W,
 Ctrl-L to clear, Up/Down history.  Tab completes command names at the
 start of a line, dataset names after `sysuse`, and variable names
-elsewhere.  `help` lists commands, `help CMD` shows the syntax for one.
+elsewhere.  `help` lists commands grouped by theme, `help TOPIC` (e.g.
+`help timeseries`) shows one theme with descriptions, and `help CMD`
+shows the syntax for one command.
 Start with `tea -q` to suppress the banner; the browser edition offers
 the same editing and completion.
 
@@ -504,6 +505,24 @@ After `summarize`, the following `r()` macros are set: `r(N)`,
     tabulate region year, row column cell           // two-way + percentages
     tabulate region, summarize(gdp) means           // means of gdp by region
 
+## `correlate` and `pwcorr`
+
+    correlate v1 v2 v3 [, means covariance]
+    pwcorr v1 v2 v3 [, sig obs]
+
+`correlate` uses listwise deletion (one common sample for the whole
+matrix, Stata's behavior); `pwcorr` computes each pair on its own
+maximal sample.  `means` prefixes the summary block; `covariance`
+prints the covariance matrix instead.
+
+## `ttest`
+
+    ttest v == 3            // one-sample
+    ttest v1 == v2          // paired
+    ttest v, by(group)      // two-sample (pooled; add unequal for Welch)
+
+Full Stata table layout, including the three-alternative footer.
+
 ## `codebook`
 
     codebook                          // all variables
@@ -818,6 +837,47 @@ Order of `xtreg fe` and `xtreg re` doesn’t matter; `tea` keeps both in
 dedicated workspace slots and the `hausman` command (no arguments
 needed) tests their coefficient difference.
 
+## `areg`: absorbed fixed effects
+
+    areg y x1 x2, absorb(groupvar) [robust cluster(v)]
+
+The within transform on `absorb()` groups: coefficients are identical
+to including a full set of group indicators (verified in the test
+suite to every printed digit, standard errors included), but the
+indicators are never materialized.  Degrees of freedom are the
+dummy-equivalent `N - K - G`, so classical, robust, and clustered
+standard errors all match the dummy regression's.
+
+## `xtivreg, fe`: panel instrumental variables
+
+    xtivreg y [exog] (endog = instruments), fe [robust]
+
+Within transform (panel demeaning) of every variable, then 2SLS on
+the demeaned system, with `df = N - K - N_g` for the absorbed means.
+`robust` clusters on the panel variable (Stata's convention for
+`xtivreg, fe`).  Only the fe estimator is implemented; `re` is
+staged.
+
+## `xtabond`: Arellano-Bond dynamic panel GMM
+
+    xtabond y [x...], lags(1) [maxldep(#) twostep robust]
+
+Difference GMM for dynamic panels: the model in first differences,
+with GMM-style (non-collapsed) instruments — at time $t$, the levels
+$y_{i1},\dots,y_{i,t-2}$, optionally capped by `maxldep()` — and
+strictly exogenous regressors instrumented by their own differences.
+One-step estimation uses the Arellano-Bond $H$ weight (tridiagonal
+$2,-1$); `twostep` re-weights with the one-step residual moments.
+`robust` gives the panel-clustered sandwich.  The Sargan statistic is
+reported and posted as `e(sargan)`.
+
+Honest caveats, printed where relevant: the Windmeijer correction for
+two-step standard errors is staged (two-step conventional SEs are
+known to be downward biased); the AR(1)/AR(2) autocorrelation tests
+are staged; only `lags(1)` is accepted in this release.  The
+implementation is verified against an independently written GMM
+referee to every reported digit (see `KNOWN_BUGS.md`, v1.6.42).
+
 # Maximum likelihood estimators
 
 `tea` implements logit, probit, and Poisson regression via a shared
@@ -930,7 +990,20 @@ differ from Stata (see COMPATIBILITY.md):
   OPG/BHHH.  Point estimates and log likelihoods are the comparable
   quantities and match exact-ML references to reported precision.
 
-- No seasonal terms yet.
+- Standard errors for constants/exog in ARMAX are asymptotic.
+
+## Seasonal models: `sarima()`
+
+    arima lp, arima(0 1 1) sarima(0 1 1 12)       // the airline model
+
+Multiplicative seasonal ARIMA$(p,d,q)\times(P,D,Q)_s$: the seasonal
+polynomials multiply the regular ones and the product is expanded
+onto the same exact-ML engine; seasonal differencing is applied after
+regular differencing.  Limits: $p+Ps \le 15$ and $q+Qs \le 15$.  The
+canonical airline fit matches the exact-ML references to reported
+precision (test 75).  Note that tea, like Stata, includes a constant
+unless `noconstant`; statsmodels' SARIMAX defaults to no trend, so
+likelihood comparisons should use `noconstant`.
 
 ## Example
 
@@ -941,6 +1014,129 @@ differ from Stata (see COMPATIBILITY.md):
 The output groups coefficients into “ARMA model” (constant + exog), “AR”
 ($\phi_i$), “MA” ($\theta_j$), and `/sigma` (the innovation standard
 deviation).
+
+## `newey`: HAC standard errors
+
+    newey y x1 x2, lag(#)
+
+OLS point estimates with Newey-West (Bartlett kernel) standard
+errors; `lag(0)` reproduces White/robust.
+
+## Unit-root tests
+
+    dfuller y [, lags(#) trend]
+    pperron y [, lags(#) trend]
+
+Augmented Dickey-Fuller and Phillips-Perron.  MacKinnon-style
+critical values are tabulated; the reported approximate p-value uses
+an interpolation that can differ from Stata's in the third decimal
+(documented in COMPATIBILITY.md).
+
+## Filters: `tsfilter`
+
+    tsfilter hp new = y [, smooth(#)]
+    tsfilter bk new = y [, minperiod(#) maxperiod(#)]
+    tsfilter hamilton new = y [, h(#) p(#)]
+
+Hodrick-Prescott, Baxter-King, and Hamilton-regression filters; each
+creates the cyclical component under the new name.
+
+## VARs, Granger causality, and impulse responses
+
+    var y1 y2 [y3 ...], lags(#)
+    vargranger
+    irf create, step(#)
+    irf table [irf|oirf]
+    lpirf y1 y2, step(#) [lags(#)]
+
+`var` estimates a reduced-form VAR by per-equation OLS;
+`vargranger` reports the Granger exclusion Wald tests; `irf`
+computes (orthogonalized) impulse responses from the last VAR; and
+`lpirf` estimates local-projection impulse responses (Jorda) with
+Newey-West bands.  One documented convention difference: tea's
+posted `Sigma` uses the ML divisor $T$ (Stata reports the same
+matrix; see COMPATIBILITY.md for the small-sample discussion).
+
+## Cointegration rank: `vecrank`
+
+    vecrank y1 y2 [y3 ...], lags(#)
+
+Johansen trace statistics with the standard critical-value table.
+Full VECM estimation is not implemented; `vecrank` answers the rank
+question and the "Escape hatches" chapter covers the rest.
+
+# State-space models
+
+Everything in this chapter runs on one engine (`src/kalman.c`): a
+univariate-sequential Kalman filter with exact diffuse initialization
+(Durbin-Koopman), a matching smoother, and exact maximum likelihood
+throughout.  `arima` uses the same engine.  Standard errors are OIM
+(observed information via the numerical Hessian of the exact
+likelihood, delta method for transformed parameters); Stata defaults
+to OPG for some of these commands, so point estimates and log
+likelihoods are the comparable quantities.  Every estimator here is
+verified against independent references in the regression suite
+(tests 72-75) — statsmodels where its optimizer succeeds, and the
+large-kappa limit of the diffuse likelihood where it does not (see
+COMPATIBILITY.md for two documented cases where tea's answer is the
+verifiably correct one).
+
+## `ucm`: unobserved components
+
+    ucm y, model(ntrend|llevel|lltrend|rwalk|rwdrift)
+           [seasonal(#) cycle smstate(NEW)]
+
+Harvey structural models: the trend family, an optional dummy
+seasonal of period `#`, and since v1.6.41 an optional damped
+stochastic cycle (`cycle`), reported as `damping`, `frequency`, and
+`var(cycle)` with delta-method SEs.  `smstate(NEW)` saves the
+smoothed level.  The Nile local level reproduces the Durbin-Koopman
+book values exactly.
+
+## `sspace`: general linear state-space models
+
+    constraint 1 [y]u = 1
+    sspace (u L.u, state) (y u, noerror noconstant),
+           constraints(1) covstate(diagonal) [diffuse smstates(stub)]
+
+State equations (marked `, state`) are linear in lag-1 states;
+observation equations are linear in contemporaneous states, with
+optional constants and per-equation `noerror`.  Identification is
+the user's job through the `constraint` subsystem, exactly as in
+Stata.  `covstate(identity)` (the default) fixes state disturbance
+variances at 1; `covstate(diagonal)` frees them.  Stationary models
+initialize by Lyapunov solve with a positive-definiteness guard;
+`diffuse` switches to exact diffuse initialization and lifts the
+stationarity requirement (a tea extension — Stata's sspace has no
+diffuse option).  Higher lags are written with auxiliary identity
+states.  The AR(1) written as `sspace` reproduces `arima` to every
+reported digit, standard error included.
+
+## `dfactor`: dynamic factor models
+
+    dfactor (y1 y2 y3 = [exog] [, noconstant ar(1)]) (f1 [f2] = , ar(p))
+
+Up to four factors with full interacting VAR(p) dynamics (p at most
+4), `Var(v) = I` normalization, optional AR(1) idiosyncratic errors
+in the observation equations (`ar(1)` in the observation-equation
+options), and `smfactor(stub)` for smoothed factors.  Sign
+convention: the first loading on each factor is kept positive.
+Multi-factor models generally need identifying constraints
+(`constraints()`), the reason the constraint subsystem exists.
+
+## `constraint`: linear constraints
+
+    constraint 1 [y]u = 1
+    constraint 2 [f1]L.f2 = [f2]L.f1
+    constraint list
+    constraint drop 1
+
+Stata's constraint language: definitions are stored per session,
+referenced by `constraints(numlist)` in estimation commands, applied
+by reparameterizing onto the null space (so the optimizer never sees
+the constrained directions), and constrained coefficients print
+`(constrained)` in tables.  Variance parameters cannot be
+constrained in this release.
 
 # Post-estimation
 
@@ -1382,9 +1578,13 @@ v1.0 that we may revisit based on testing.
   on unbalanced panels and only in the SEs (point estimates are
   identical).
 
-- **No `xtabond` / system GMM** or other GMM estimators.
+- **`xtabond` is difference GMM only** (v1.6.42): `lags(1)`,
+  no system GMM (`xtdpdsys`), Windmeijer correction and AR tests
+  staged.
 
-- **No VAR / VECM.** Escape to R.
+- **VAR yes, VECM no.** `var`/`vargranger`/`irf`/`lpirf` and the
+  Johansen rank test (`vecrank`) are implemented; full VECM
+  estimation still means escaping to R.
 
 ## Factor variables
 
@@ -1791,11 +1991,10 @@ A quick reference for Stata users adapting to `tea`.
 
 ## Stata commands that don’t exist in tea
 
-- Graphics: `graph`, `twoway`, `histogram`, etc.
+- GMM beyond `xtabond`: `gmm`, `xtdpd`, `xtdpdsys`.
 
-- GMM: `gmm`, `xtabond`, `xtdpd`.
-
-- Time series: `var`, `vec`, `dfgls`, `dfuller`, `xcorr`, `wntestq`.
+- Time series: `vec` (rank via `vecrank` only), `dfgls`, `xcorr`,
+  `wntestq`, `arch`.
 
 - Survival: `stcox`, `streg`, `stset`.
 
