@@ -38,6 +38,12 @@ static Interp     *g_web_ip = NULL;
 static TeaSession *g_web_s  = NULL;
 
 EMSCRIPTEN_KEEPALIVE
+void tea_web_set_style(int on){
+    extern int g_tea_style;
+    g_tea_style = on ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE
 int tea_web_init(void){
     if (g_web_s) return 0;                    /* already initialized */
     g_web_ws = ws_new();

@@ -4950,6 +4950,10 @@ static int do_frame(Cmd *c){
 typedef struct { const char *name; int (*fn)(Cmd*); int needs_data; const char *help; } Disp;
 extern Disp TABLE[];
 
+/* -1: decide from environment (native isatty; wasm off).
+ * The browser page sets 1 via tea_web_set_style once xterm.js is up. */
+int g_tea_style = -1;
+
 static int do_help(Cmd *c){
     extern Disp TABLE[];
     /* native statements (handled in run_line, not dispatch) — listed here
@@ -4970,6 +4974,27 @@ static int do_help(Cmd *c){
         {"quietly", "quietly CMD  |  qui CMD                       suppress output of one command"},
         {NULL,NULL}
     };
+    /* SGR styling for headings: bold only (SGR 1/0 — the VT100-vintage
+     * subset that renders identically everywhere).  Native: only when
+     * stdout is a real terminal, TERM is not dumb, and NO_COLOR is
+     * unset (no-color.org), so pipes, logs, and test goldens stay
+     * byte-clean.  WASM: emscripten reports stdout as a tty even under
+     * the node test harness, so the default there is OFF and the
+     * browser page — the one layer that knows xterm.js is attached —
+     * flips it on through tea_web_set_style(). */
+    extern int g_tea_style;   /* -1 = decide from environment */
+    int sty;
+    if(g_tea_style >= 0) sty = g_tea_style;
+    else {
+#ifdef __EMSCRIPTEN__
+        sty = 0;
+#else
+        const char *tm = getenv("TERM");
+        sty = isatty(1) && (!tm || strcmp(tm,"dumb")) && !getenv("NO_COLOR");
+#endif
+    }
+    const char *B = sty ? "\x1b[1m" : "";
+    const char *E = sty ? "\x1b[0m" : "";
     /* thematic organization: every with-help command lives in exactly
      * one category; anything left over prints loudly under
      * "uncategorized" so the grid cannot silently rot as commands are
@@ -5031,11 +5056,11 @@ static int do_help(Cmd *c){
         return stray? 9 : 0;
     }
     if(!what[0]){
-        printf("\ntea %s — tiny econometric assistant\n",TEA_VERSION);
+        printf("\n%stea %s — tiny econometric assistant%s\n",B,TEA_VERSION,E);
         printf("Commands by theme.  'help TOPIC' lists one theme with descriptions\n");
         printf("(e.g. help timeseries); 'help CMD' shows one command's syntax.\n");
         for(int t=0;CATS[t].key;t++){
-            printf("\n%s   (help %s)\n",CATS[t].title,CATS[t].key);
+            printf("\n%s%s%s   (help %s)\n",B,CATS[t].title,E,CATS[t].key);
             char buf[512]; snprintf(buf,sizeof buf,"%s",CATS[t].names);
             int col=0;
             for(char *tok=strtok(buf," ");tok;tok=strtok(NULL," ")){
@@ -5055,14 +5080,14 @@ static int do_help(Cmd *c){
                 printf("  %-12s\n",d->name);
             }
         }
-        printf("\nNative statements: assert shell ! #delimit display local global\n");
+        printf("\n%sNative statements:%s assert shell ! #delimit display local global\n",B,E);
         printf("                   foreach forvalues while if capture quietly\n");
-        printf("Qualifiers usable on most commands:\n");
+        printf("%sQualifiers usable on most commands:%s\n",B,E);
         printf("  [by[sort] g (s):]  if exp   in range   [weight=exp]   , options\n");
         return 0;
     }
     for(int t=0;CATS[t].key;t++) if(!strcmp(what,CATS[t].key)){
-        printf("\n%s\n",CATS[t].title);
+        printf("\n%s%s%s\n",B,CATS[t].title,E);
         char buf[512]; snprintf(buf,sizeof buf,"%s",CATS[t].names);
         for(char *tok=strtok(buf," ");tok;tok=strtok(NULL," ")){
             const char *h=NULL;

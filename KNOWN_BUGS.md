@@ -1709,3 +1709,23 @@ used in `egen`.
   applied to documentation).  Four stale one-liners refreshed along
   the way (arima still said "conditional ML"; ucm/sspace/dfactor
   lacked their v1.6.41 options).
+
+## v1.6.44 — styled help headings, everywhere a human is watching
+
+- Theme headings in help (and the banner and footer mini-headers) are
+  now bold.  The vocabulary is deliberately the VT100-vintage SGR
+  subset (1/0) that renders identically on every terminal in the
+  release matrix and in the browser, whose terminal is xterm.js — a
+  full ANSI emulator that needed no work at all.
+- The analysis that mattered was WHEN to emit, not how: native tea
+  styles only when stdout is a real terminal, TERM is not dumb, and
+  NO_COLOR is unset (the no-color.org convention), so pipes, logs,
+  and test goldens remain byte-clean.  Under Emscripten, stdout
+  claims to be a tty even inside the node test harness, which would
+  have leaked escapes into the WASM golden comparisons and broken
+  the byte-identical promise — so the WASM default is unstyled and
+  the browser page, the one layer that knows a rendering terminal is
+  attached, flips styling on through the exported
+  tea_web_set_style(1) after boot.  The 77 goldens double as the
+  regression test for this cleanliness: any leaked escape anywhere
+  diffs loudly.
