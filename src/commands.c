@@ -4994,7 +4994,12 @@ static int do_help(Cmd *c){
         sty = isatty(1) && (!tm || strcmp(tm,"dumb")) && !getenv("NO_COLOR");
 #endif
     }
-    const char *B = sty ? "\x1b[1m" : "";
+    /* SGR 4 (underline) — same ECMA-48/VT100 vintage as bold, same
+     * rendering path in xterm.js; chosen over bold per Mico's call.
+     * Only stragglers are the bare Linux fbcon (may render underline
+     * as a color shift) and pre-1809 conhost, neither in the release
+     * matrix. */
+    const char *B = sty ? "\x1b[4m" : "";
     const char *E = sty ? "\x1b[0m" : "";
     /* thematic organization: every with-help command lives in exactly
      * one category; anything left over prints loudly under

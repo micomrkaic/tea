@@ -1787,3 +1787,13 @@ used in `egen`.
   Substrate instance nine: the new substrate was the page script
   itself, and the bug it found was the harness's own success
   criterion racing the failure it was built to catch.
+
+## v1.6.47 — help headings: underline instead of bold
+
+- One token: SGR 4 replaces SGR 1, per Mico's preference.  Same
+  ECMA-48/VT100 vintage, same emission rules (tty-gated natively,
+  browser-flagged in wasm), same byte-clean goldens; xterm.js renders
+  it natively so the browser edition needs nothing.  The only
+  terminals where underline is less faithful than bold — the bare
+  Linux framebuffer console and pre-2018 Windows conhost — are not
+  in the release matrix.

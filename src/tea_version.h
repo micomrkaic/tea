@@ -1,1 +1,1 @@
-#define TEA_VERSION_FROM_FILE "1.6.46"
+#define TEA_VERSION_FROM_FILE "1.6.47"
