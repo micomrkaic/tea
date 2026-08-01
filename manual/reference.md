@@ -419,6 +419,24 @@ import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) cas
   dfactor (y1 y2 ... [= exog][, noconstant]) (f1 [f2..] = , ar(#))  dynamic factors
 ```
 
+## `areg`
+
+```
+  areg y x.., absorb(v) [robust cluster(v)]           absorbed fixed effects
+```
+
+## `xtabond`
+
+```
+  xtabond y [x..], lags(1) [twostep robust maxldep(#)] Arellano-Bond GMM
+```
+
+## `xtivreg`
+
+```
+  xtivreg y [x..] (endo = inst..), fe [robust]        panel IV (within)
+```
+
 ## `sspace`
 
 ```

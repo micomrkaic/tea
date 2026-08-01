@@ -1,0 +1,30 @@
+number of observations set to 200
+(200 real changes made)
+(200 real changes made)
+(200 real changes made)
+(200 real changes made)
+(200 real changes made)
+areg b ok: 1
+areg se ok: 1
+areg cluster se ok: 1
+number of observations set to 300
+(300 real changes made)
+(300 real changes made)
+(300 real changes made)
+(300 real changes made)
+(300 real changes made)
+(300 real changes made)
+(300 real changes made)
+xtivreg b ok: 1
+xtivreg se ok: 1
+number of observations set to 1600
+(1600 real changes made)
+(1600 real changes made)
+(1600 real changes made)
+(1600 real changes made)
+(1600 real changes made)
+xtabond b ok: 1
+xtabond se ok: 1
+xtabond sargan ok: 1
+xtabond robust se ok: 1
+xtabond twostep b ok: 1

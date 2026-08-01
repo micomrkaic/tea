@@ -275,3 +275,21 @@ Documented graphics deviations from Stata:
   problem, while tea's exact-diffuse value equals the kappa-limit to
   5 decimals at kappa = 1e6, 1e8, and 1e10.  The kappa-limit is the
   definition; tea matches it.
+
+## Panel depth tier (v1.6.42)
+
+- areg: within transform on absorb() groups; coefficients and
+  classical SEs identical to regress with the dummy set (verified to
+  every printed digit); df = N - K - G; robust/cluster sandwiches use
+  the dummy-equivalent df.  xtivreg: fe only (within transform +
+  2SLS, df = N - K - N_g; re staged); robust clusters on the panel,
+  Stata's convention.  xtabond: lags(1), GMM-style non-collapsed
+  level instruments for the lagged dependent variable (maxldep() to
+  cap), strictly exogenous regressors self-instrumented in
+  differences, one-step H-weight (tridiagonal 2,-1), twostep option;
+  Windmeijer correction STAGED — two-step conventional SEs print a
+  downward-bias note; AR(1)/AR(2) tests staged; Sargan reported.
+- xtabond verified against an independent numpy referee implementing
+  the same Arellano-Bond formulas: coefficients, conventional and
+  robust SEs, and the Sargan statistic identical to every reported
+  digit on a 200x8 panel with 22 instruments.

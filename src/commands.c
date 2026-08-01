@@ -4487,6 +4487,9 @@ static int do_correlate(Cmd *c){
 int do_constraint(Cmd *c);
 int do_dfactor(Cmd *c);
 int do_sspace(Cmd *c);
+int do_areg(Cmd *c);
+int do_xtivreg(Cmd *c);
+int do_xtabond(Cmd *c);
 int do_ucm(Cmd *c);
 int do_var(Cmd *c);
 int do_vargranger(Cmd *c);
@@ -5483,6 +5486,12 @@ Disp TABLE[]={
         "constraint [define] # expr = expr | list | drop #|_all      linear constraints"},
     {"dfactor",do_dfactor,1,
         "dfactor (y1 y2 ... [= exog][, noconstant]) (f1 [f2..] = , ar(#))  dynamic factors"},
+    {"areg",do_areg,1,
+        "areg y x.., absorb(v) [robust cluster(v)]           absorbed fixed effects"},
+    {"xtabond",do_xtabond,1,
+        "xtabond y [x..], lags(1) [twostep robust maxldep(#)] Arellano-Bond GMM"},
+    {"xtivreg",do_xtivreg,1,
+        "xtivreg y [x..] (endo = inst..), fe [robust]        panel IV (within)"},
     {"sspace",do_sspace,1,
         "sspace (s L.s.., state [noerror]).. (y s.. [, noerror nocons]).. , constraints(#)  state space"},
     {"ucm",do_ucm,1,

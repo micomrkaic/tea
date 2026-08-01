@@ -31,10 +31,11 @@ state-space models.
 Since v1.6.41 arima supports
 multiplicative seasonal models (sarima), ucm supports stochastic
 cycles, dfactor supports AR(1) idiosyncratic errors, and sspace
-supports diffuse initialization for nonstationary models.  Still not
-implemented: GARCH, mixed-effects models, survival analysis,
-structural breaks, VEC estimation, Bayesian inference, or machine
-learning. It also does not
+supports diffuse initialization for nonstationary models.  Since v1.6.42 the panel tier includes areg (absorbed fixed
+effects), xtivreg fe (panel IV), and xtabond (Arellano-Bond dynamic
+panel GMM).  Still not implemented: GARCH, mixed-effects models,
+survival analysis, structural breaks, VEC estimation, Bayesian
+inference, or machine learning. It also does not
 implement Stata’s full programming language — `tea` has macros, loops,
 and `capture`, but no `program define`, no `syntax` parser, no Mata.
 
@@ -2226,6 +2227,24 @@ import delimited FILE [, delimiters(...) rowrange(r1[:r2]) colrange(c1[:c2]) cas
 
 ```
   dfactor (y1 y2 ... [= exog][, noconstant]) (f1 [f2..] = , ar(#))  dynamic factors
+```
+
+## `areg`
+
+```
+  areg y x.., absorb(v) [robust cluster(v)]           absorbed fixed effects
+```
+
+## `xtabond`
+
+```
+  xtabond y [x..], lags(1) [twostep robust maxldep(#)] Arellano-Bond GMM
+```
+
+## `xtivreg`
+
+```
+  xtivreg y [x..] (endo = inst..), fe [robust]        panel IV (within)
 ```
 
 ## `sspace`

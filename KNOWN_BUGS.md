@@ -1665,3 +1665,20 @@ used in `egen`.
   also failed the cycle problem outright (69 ll units below tea's
   optimum, collapsing the cycle); (2) ucm did not post e(ll)
   (masked until test 75 asserted on it) — fixed.
+
+## v1.6.42 — the panel depth tier
+
+- areg, xtivreg (fe), xtabond arrive per DESIGN_PANEL.md.  areg is
+  internally exact against regress-with-dummies (coefficients AND
+  classical SEs to every printed digit, df = N - K - G); xtivreg fe
+  matches a numpy within+2SLS referee exactly; xtabond one-step,
+  robust, and two-step match an independent numpy GMM referee
+  implementing the same Arellano-Bond formulas digit-for-digit
+  (L.y .449738, conventional se .061213, panel-robust .036321,
+  Sargan 16.8021 on 20 df, 22 instruments).  Estimated rho .4497 on
+  a true-.5 DGP (T=8, N=200) sits within one SE — the AB estimator
+  behaving as the textbook says it should.
+- Posted coefficient names are dot-free (Ly, Dx1) so _b[]/_se[] can
+  address them, while table labels keep Stata's L./D. dress — the
+  sspace paren-free lesson, applied on arrival rather than after a
+  bug report.
