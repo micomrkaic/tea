@@ -389,7 +389,11 @@ static void print_regress_table(const Estimates *e){
         printf("       Model | %11s %10d %11s  %-15s =  %9.4f\n", gfit(e->mss,10), e->df_m, gfit(e->df_m?e->mss/e->df_m:0.0,10), "Prob > F", e->F_p);
         printf("    Residual | %11s %10d %11s  %-15s =  %9.4f\n", gfit(e->rss,10), e->df_r, gfit(e->sigma2,10), "R-squared", e->r2);
         printf("-------------+----------------------------------   %-15s =  %9.4f\n","Adj R-squared",e->r2_a);
-        printf("       Total | %11s %10ld %11s  %-15s =  %9.4g\n\n", gfit(e->tss,10), e->N-1, gfit(e->tss/(e->N-1>0?e->N-1:1),10), "Root MSE", e->rmse);
+        {
+            long dft = e->has_cons ? e->N-1 : e->N;   /* Stata: N w/o constant */
+            printf("       Total | %11s %10ld %11s  %-15s =  %9.4g\n\n",
+                   gfit(e->tss,10), dft, gfit(e->tss/(dft>0?dft:1),10), "Root MSE", e->rmse);
+        }
     } else {
         { char flbl[24]; snprintf(flbl,sizeof flbl,"F(%d, %d)",e->df_m,e->df_r);
           printf("                                                    %-15s =  %9.2f\n",flbl,e->F); }
@@ -574,6 +578,16 @@ int do_regress(Cmd *c){
         ybar /= D.N;
         for(long i=0;i<D.N;i++){ double dy=D.y[i]-ybar; tss += dy*dy; }
     }
+    /* noconstant: Stata's ANOVA decomposes about ZERO — TSS is the
+     * uncentered sum of squares, df_total = N, and R-squared is
+     * 1 - RSS/sum(y^2).  With the centered TSS a through-origin fit
+     * can have RSS > TSS, printing a negative Model SS and R-squared
+     * (Bug 43: R-squared of -28.7 on a perfectly sensible fit). */
+    if(!D.has_cons){
+        tss = 0;
+        if(D.w) for(long i=0;i<D.N;i++) tss += D.w[i] * D.y[i]*D.y[i];
+        else    for(long i=0;i<D.N;i++) tss += D.y[i]*D.y[i];
+    }
     for(long i=0;i<D.N;i++) rss += resid[i]*resid[i];
     rss = tea_snap_rss(rss, tss);   /* perfect fit: exactly 0 on every backend */
     if(rss == 0){                    /* residuals are mathematically 0 too:  */
@@ -598,8 +612,9 @@ int do_regress(Cmd *c){
     int df_m = Kr - (D.has_cons ? 1 : 0);
     if(df_m < 1) df_m = 1;
     double sigma2 = rss / df_r;
-    double r2 = (D.has_cons && tss > 0) ? 1 - rss/tss : (tss>0? 1 - rss/tss : 0);
-    double r2_a = 1 - (1-r2) * ((Neff - 1) / (double)df_r);
+    double r2 = tss > 0 ? 1 - rss/tss : 0;
+    /* adjusted R2: df_total is N-1 with a constant, N without */
+    double r2_a = 1 - (1-r2) * ((Neff - (D.has_cons?1:0)) / (double)df_r);
 
     double *V = NULL;
     if(se_kind==SE_CLASSICAL){
@@ -1293,7 +1308,9 @@ int do_xtreg(Cmd *c)
         fprintf(stderr,"xtreg: cannot combine ,be and ,re\n");
         return 198;
     }
-    /* fe is the default; if the user wrote ,fe it's a no-op. */
+    /* fe is the default; querying it makes that contract explicit for
+     * the option-consumption audit (a bare comment doesn't consume). */
+    (void)opt_present(c->options,"fe");
 
     SeKind se_kind = SE_CLASSICAL;
     char clvar[33]="";

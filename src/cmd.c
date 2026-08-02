@@ -125,25 +125,77 @@ void cmd_split(Cmd *c){
         c->in_lo=a; c->in_hi=b; }
 }
 
+/* Option-consumption tracking (Bug 42): the dispatcher registers the
+ * current command; every opt_present/opt_value call against that
+ * command's option string records the queried name.  After a handler
+ * succeeds, any option token nobody asked about is an error — Stata's
+ * r(198) — instead of a silent no-op.  Before this, a misspelled
+ * option (robusst, _nocons) silently produced default behavior; the
+ * underscore case even MATCHED, because the old left-boundary test
+ * was !isalnum and '_' is not alnum. */
+static const Cmd *g_opt_cmd = NULL;
+static char g_opt_names[64][33];
+static int  g_opt_n = 0;
+
+void cmd_opt_track_begin(const Cmd *c){ g_opt_cmd = c; g_opt_n = 0; }
+
+static void opt_record(const char *opts, const char *name){
+    if(!g_opt_cmd || opts != g_opt_cmd->options) return;
+    for(int i = 0; i < g_opt_n; i++)
+        if(!strcmp(g_opt_names[i], name)) return;
+    if(g_opt_n < 64) snprintf(g_opt_names[g_opt_n++], 33, "%s", name);
+}
+
+/* boundaries: an option token starts at the string start or after a
+ * space/comma, and ends at end/space/comma/'(' — '_' and other
+ * punctuation are part of the token, never a boundary */
 bool opt_present(const char *opts,const char *name){
+    opt_record(opts, name);
     size_t nl=strlen(name); const char *p=opts;
     while((p=strstr(p,name))){
-        bool lb=(p==opts||!isalnum((unsigned char)p[-1]));
+        bool lb=(p==opts||p[-1]==' '||p[-1]==',');
         char a=p[nl]; bool rb=(a==0||a==' '||a=='('||a==',');
         if(lb&&rb) return true; p+=nl;
     }
     return false;
 }
 bool opt_value(const char *opts,const char *name,char *buf,size_t n){
+    opt_record(opts, name);
     size_t nl=strlen(name); const char *p=opts;
     while((p=strstr(p,name))){
-        bool lb=(p==opts||!isalnum((unsigned char)p[-1]));
+        bool lb=(p==opts||p[-1]==' '||p[-1]==',');
         if(lb&&p[nl]=='('){ const char *q=p+nl+1; int d=1; const char *st=q;
             while(*q&&d){ if(*q=='(')d++; else if(*q==')')d--; if(d)q++; }
             snprintf(buf,n,"%.*s",(int)(q-st),st); return true; }
         p+=nl;
     }
     return false;
+}
+
+/* first option token the handler never queried, or NULL.  Tokens split
+ * on spaces/commas at paren depth 0; the name is the part before '('. */
+const char *cmd_opt_unknown(const Cmd *c){
+    static char tok[33];
+    if(g_opt_cmd != c) return NULL;
+    const char *p = c->options;
+    while(*p){
+        while(*p==' '||*p==',') p++;
+        if(!*p) break;
+        const char *st = p; int d = 0;
+        while(*p && (d>0 || (*p!=' ' && *p!=','))){
+            if(*p=='(') d++;
+            else if(*p==')') d--;
+            p++;
+        }
+        size_t nl = 0;
+        while(st+nl < p && st[nl] != '(' && nl < 32) nl++;
+        snprintf(tok, sizeof tok, "%.*s", (int)nl, st);
+        bool seen = false;
+        for(int i = 0; i < g_opt_n && !seen; i++)
+            if(!strcmp(g_opt_names[i], tok)) seen = true;
+        if(!seen) return tok;
+    }
+    return NULL;
 }
 
 /* ---- physical stable multi-key sort ------------------------------------ */

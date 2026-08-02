@@ -1797,3 +1797,37 @@ used in `egen`.
   terminals where underline is less faithful than bold — the bare
   Linux framebuffer console and pre-2018 Windows conhost — are not
   in the release matrix.
+
+## v1.6.48 — Bugs 42 and 43: the misspelled option and the negative R-squared
+
+- Mico's browser testing produced a regression with R-squared of
+  -28.7 — from a command line that said `, _nocons`.  Two distinct
+  bugs, one deeper than the report.
+- Bug 42: opt_present's left-boundary test was !isalnum, so the
+  underscore in `_nocons` COUNTED as a boundary and matched nocons —
+  while any other unknown option was silently ignored (a misspelled
+  robusst silently delivered classical standard errors).  Fix in two
+  layers: token boundaries are start/space/comma only, and the
+  dispatcher now tracks option consumption — after a handler
+  succeeds, any option token it never queried is r(198), Stata's
+  answer.  Commands that parse their own option syntax (graph
+  family, outreg2, file with its raw write payloads) are exempt by a
+  Disp declaration.
+- The consumption audit then found six silently-ignored options in
+  tea's own test suite, including a real missing safety feature:
+  save DOCUMENTED ,replace but never read it and always overwrote
+  (now enforced, r(602) without replace); xtreg acknowledged ,fe
+  only in a comment; sysuse checked ,clear only when data was in
+  memory; file open's mode words and list's sep() are now consumed
+  for compatibility.  Every one of these was a documented promise
+  the code didn't keep, surfaced the moment the checker existed.
+- Bug 43: with noconstant, regress used the CENTERED total SS, so a
+  through-origin fit could print negative Model SS and R-squared.
+  Stata decomposes about zero: uncentered TSS, df_total = N,
+  adjusted R2 scaled by N/(N-K).  Fixed and verified against
+  statsmodels to every printed digit (airline trend: R2 .8139, F
+  625.46; Mico's month-dummy specification: R2 .9504).  The large
+  dummy coefficients in his output were never a bug: with i.month
+  and no constant the omitted base level makes the dummies levels
+  rather than contrasts — Stata prints the same numbers (cell-means
+  via ibn. factor notation is not yet in tea's grammar; noted).

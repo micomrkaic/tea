@@ -673,6 +673,10 @@ done:
 
 /* ---- list -------------------------------------------------------------- */
 static int do_list(Cmd *c){
+    { char sepb[16];   /* sep(#): accepted for compatibility; tea draws no
+                          separator lines, so the value is not used */
+      (void)opt_value(c->options,"sep",sepb,sizeof sepb);
+      (void)opt_present(c->options,"noobs"); }
     int *vs=NULL,nv;
     int n_temps = 0;
     const char *vlerr = NULL;
@@ -4015,6 +4019,14 @@ static int do_save(Cmd *c){
     char fn[1024]=""; const char *sv = c->varlist; scan_filename(&sv, fn, sizeof fn);
     /* default extension is .dta (Stata-compatible); .tea is opt-in */
     if(!strstr(fn,"."))strcat(fn,".dta");
+    /* Stata refuses to overwrite without ,replace.  tea DOCUMENTED the
+     * option but never read it and always overwrote — exposed by the
+     * option-consumption audit (Bug 42's checker), fixed as a real
+     * safety feature rather than consumed as a no-op. */
+    if(!opt_present(c->options,"replace") && access(fn,F_OK)==0){
+        tea_err("file %s already exists (use ,replace)\n",fn);
+        return 602;
+    }
 
     /* .dta -> readstat-backed writer with per-column compression */
     if(ends_with_ci(fn, ".dta")){
@@ -4537,6 +4549,14 @@ static int do_file(Cmd *c){
     const char *p = c->args + strlen(sub); while(*p==' ')p++;
     if(!strcmp(sub,"open")){
         char h[33]=""; sscanf(p,"%32s",h);
+        /* Stata's file open takes a mode option; tea is text-write only.
+         * Consume the words so the option audit accepts them; reject read. */
+        (void)opt_present(c->options,"write");
+        (void)opt_present(c->options,"text");
+        if(opt_present(c->options,"read")){
+            tea_err("file open: read mode not implemented (write only)\n");
+            return 198;
+        }
         const char *u = strstr(p,"using");
         if(!u){ tea_err("file open: using FILE required\n"); return 198; }
         u+=5; while(*u==' ')u++;
@@ -4687,7 +4707,8 @@ static int do_sysuse(Cmd *c){
         tea_err("sysuse: no bundled dataset '%s' (try: sysuse dir)\n", name);
         return 601;
     }
-    if(c->f->nvar > 0 && !opt_present(c->options,"clear")){
+    bool sys_clear = opt_present(c->options,"clear");   /* query unconditionally */
+    if(c->f->nvar > 0 && !sys_clear){
         tea_err("sysuse: no; data in memory would be lost (use ',clear' to discard it)\n");
         return 4;
     }
@@ -4948,7 +4969,10 @@ static int do_frame(Cmd *c){
 /* ---- dispatch table ---------------------------------------------------- */
 /* ---- help / version / pwd / cd / log / exit ---------------------------- */
 
-typedef struct { const char *name; int (*fn)(Cmd*); int needs_data; const char *help; } Disp;
+typedef struct { const char *name; int (*fn)(Cmd*); int needs_data; const char *help;
+                 int rawopts;   /* 1: handler parses options itself; skip
+                                   the unknown-option check (graph family
+                                   forwards, outreg2 custom-parses) */ } Disp;
 extern Disp TABLE[];
 
 /* -1: decide from environment (native isatty; wasm off).
@@ -5417,27 +5441,32 @@ int tea_complete(Frame *f, const char *line, int point, char *out, size_t outsz)
     return n;
 }
 
+/* trailing rawopts is deliberately omitted on ~120 entries: C zero-fills
+ * missing trailing initializers (well-defined), and only the two custom
+ * option parsers set it.  Silence -Wextra's style objection locally. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 Disp TABLE[]={
     {"twoway",do_twoway,1,
         "twoway (TYPE y x [if], opts) ... [, gopts]  overlay plot; TYPE: scatter line connected lowess\n"
         "      per-series: lcolor() lpattern() msymbol(i) mlabel(var) mlabposition(#) bwidth() mean adjust\n"
-        "      global: title() xtitle() ytitle() note() legend(off) yline(#,..) yscale(range()) ylabel(a(s)b) name(N[,replace]) saving()"},
+        "      global: title() xtitle() ytitle() note() legend(off) yline(#,..) yscale(range()) ylabel(a(s)b) name(N[,replace]) saving()",1},
     {"graph",do_graph,1,
         "graph box y [if], over(v[,sub]) [over(v2)] [noout] ...   grouped box plots\n"
         "      graph combine N1 N2 ... [, cols(#) title() note() name()]   compose named graphs\n"
-        "      graph dir | graph drop NAME|_all                            registry"},
+        "      graph dir | graph drop NAME|_all                            registry",1},
     {"scatter",do_scatter,1,
         "scatter yvar xvar [if] [in] [, title() xtitle() ytitle() saving() noview]\n"
         "      SVG scatter plot; saving(FILE) writes to FILE instead of tea_graph.svg\n"
-        "      e.g.  scatter gdp_growth inflation if year>2000, title(\"Growth vs inflation\")"},
+        "      e.g.  scatter gdp_growth inflation if year>2000, title(\"Growth vs inflation\")",1},
     {"line",do_lineplot,1,
         "line yvar xvar [if] [in] [, sort title() xtitle() ytitle() saving() noview]\n"
         "      SVG line plot; connects points in data order (use sort to order by x)\n"
-        "      e.g.  line gdp year if country==\"US\", sort"},
+        "      e.g.  line gdp year if country==\"US\", sort",1},
     {"histogram",do_histogram,1,
         "histogram var [if] [in] [, bins(#) freq title() saving() noview]\n"
         "      SVG histogram; density by default, freq for counts, auto bins = min(ceil(sqrt(N)),50)\n"
-        "      e.g.  histogram wage, bins(30) freq"},
+        "      e.g.  histogram wage, bins(30) freq",1},
     {"hist",do_histogram,1,NULL},
     {"generate",wrap_gen,1,
         "generate [type] newvar = exp [if] [in]      create a new variable\n"
@@ -5589,7 +5618,7 @@ Disp TABLE[]={
     {"outreg2",do_outreg2,1,
         "outreg2 using FILE [, replace|append ctitle() dec() bdec() se label\n"
         "      symbol() alpha() addstat(\"Name\", expr, ...) addtext() addnote()]\n"
-        "      regression-table exporter (tab-separated; opens in Excel)"},
+        "      regression-table exporter (tab-separated; opens in Excel)",1},
     {"which",do_which,0,
         "which CMD  \u2014 report whether CMD is a built-in tea command"},
     {"ssc",do_ssc,0,
@@ -5646,7 +5675,7 @@ Disp TABLE[]={
     {"pwcorr",do_pwcorr,1,
         "pwcorr varlist  \u2014 pairwise correlation matrix"},
     {"file",do_file,0,
-        "file open H using F, write [replace|append] | file write H \"...\" _n | file close H"},
+        "file open H using F, write [replace|append] | file write H \"...\" _n | file close H",1},
     {"confirm",do_confirm,0,
         "confirm [new] file FILENAME | confirm [new|numeric|string] variable NAME\n"
         "      error (601/602/111/110/7) unless the condition holds; use with\n"
@@ -5705,6 +5734,8 @@ Disp TABLE[]={
     {NULL,NULL,0,NULL}
 };
 
+#pragma GCC diagnostic pop
+
 static int tea_cmd_exists(const char *nm){
     for(int i = 0; TABLE[i].name; i++)
         if(!strcmp(TABLE[i].name, nm)) return 1;
@@ -5716,7 +5747,16 @@ int run_command(Cmd *c){
     g_ws=c->ws;
     for(Disp *d=TABLE;d->name;d++) if(!strcmp(c->cmd,d->name)){
         if(d->needs_data && c->f->nvar==0 && strcmp(c->cmd,"set")){ }
-        return d->fn(c);
+        cmd_opt_track_begin(c);
+        int rc = d->fn(c);
+        if(rc == 0 && !d->rawopts && c->options[0]){
+            const char *bad = cmd_opt_unknown(c);
+            if(bad){
+                fprintf(stderr, "%s: option %s not allowed\n", c->cmd, bad);
+                return 198;
+            }
+        }
+        return rc;
     }
     if(!strcmp(c->cmd,"set")){ char w[16]; sscanf(c->args,"%15s",w);
         if(!strcmp(w,"obs")){ Cmd cc=*c; snprintf(cc.args,sizeof cc.args,"%s",c->args+3); return do_setobs(&cc);}

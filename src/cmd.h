@@ -52,6 +52,8 @@ int  varlist_expand(Frame *f, const char *spec, int **out);
 void cmd_split(Cmd *c);
 
 /* option helpers operating on Cmd.options */
+void cmd_opt_track_begin(const Cmd *c);
+const char *cmd_opt_unknown(const Cmd *c);
 bool opt_present(const char *opts, const char *name);
 bool opt_value(const char *opts, const char *name, char *buf, size_t n);
 

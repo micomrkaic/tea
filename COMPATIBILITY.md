@@ -293,3 +293,18 @@ Documented graphics deviations from Stata:
   the same Arellano-Bond formulas: coefficients, conventional and
   robust SEs, and the Sargan statistic identical to every reported
   digit on a 200x8 panel with 22 instruments.
+
+## noconstant ANOVA and option hygiene (v1.6.48)
+
+- regress with noconstant now follows Stata's convention: the ANOVA
+  decomposes about zero (uncentered total SS, df_total = N, R-squared
+  = 1 - RSS/sum(y^2)).  Previously the centered TSS produced negative
+  Model SS and R-squared for through-origin fits.  Verified against
+  statsmodels to printed precision.
+- Unknown or misspelled options are now Stata's r(198) instead of
+  silent no-ops, enforced by consumption tracking in the dispatcher;
+  commands that parse their own option syntax (graph family, outreg2,
+  file) are exempt by declaration.  save now genuinely enforces
+  ,replace (it was documented but never read — tea silently
+  overwrote).  ivregress rejects noconstant explicitly (it was never
+  supported; previously ignored).
