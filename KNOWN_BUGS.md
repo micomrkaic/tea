@@ -1831,3 +1831,27 @@ used in `egen`.
   and no constant the omitted base level makes the dummies levels
   rather than contrasts — Stata prints the same numbers (cell-means
   via ibn. factor notation is not yet in tea's grammar; noted).
+
+## v1.6.49 — Bug 44: reserved words accepted as variable names
+
+- Mico's report: `gen ln = ln(passengers)` gave no error.  That half
+  turned out to be CORRECT — Stata accepts it too (ln is not
+  reserved; the parser disambiguates the function by its paren, and
+  tea's expression resolver was verified to do the same: ln( is the
+  function even after shadowing, spaced `ln (x)` included, bare ln
+  is the variable).  Test 79 pins that Stata parity.
+- But probing around the report found the real hole: tea accepted
+  Stata's RESERVED words as variable names.  `gen _n = 3` created a
+  variable shadowing the observation counter; `rename x if` planted
+  a variable named `if` in the frame, poisoning every later
+  if-clause; `gen byte = 9` and `gen int = 4` created variables
+  named after storage types.  (`gen if` and `gen in` failed only by
+  accident — the command parser ate them as clauses.)
+- Fix: Stata's reserved list (_all _b byte _coef _cons double float
+  if in int long _n _N _pi _pred _rc _skip str# strL using with) is
+  rejected with r(198) at every user-facing creation surface —
+  generate, egen, all three rename forms (simple, group, wildcard
+  products), encode/decode/destring/tostring generate(), recode
+  gen(), reshape long j(), reshape wide generated column names.
+  _merge stays legal (Stata does not reserve it; merge creates it).
+  The type-token form `gen int x = 4` is unaffected.

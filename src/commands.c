@@ -199,6 +199,7 @@ extern int do_lincom(Cmd *c);
 
 /* error helper: prefixes 'line N: ' in do-file mode, plain in REPL. */
 static void unquote_str(char *s);   /* strip surrounding double quotes */
+static int check_new_varname(const char *nm, const char *cmdname);
 
 /* Stata's abbrev(): names longer than n display as the first n-2
  * characters + '~' + the last character (abbrev("displacement",8) ->
@@ -345,6 +346,10 @@ static int do_genrep(Cmd *c,int is_replace){
     for(char *q=rhs;*q;q++){} char *r=rhs; while(*r==' ')r++;
     for(int i=(int)strlen(r)-1;i>=0&&(r[i]==' ');i--)r[i]=0;
 
+    if(!is_replace){                       /* new name must be legal */
+        int nrc = check_new_varname(nm, c->cmd);
+        if(nrc) return nrc;
+    }
     const char *perr;
     Node *ast=expr_parse(r,c->f,&perr);
     if(!ast){ tea_err("expression error: %s\n",perr); return 198; }
@@ -452,6 +457,7 @@ static int do_egen(Cmd *c){
     char *rhs=eq+1; while(*rhs==' ')rhs++;
     char fn[32]; char inside[1024]; 
     if(sscanf(rhs,"%31[^ (](%1023[^)])",fn,inside)!=2){ tea_err("egen: bad syntax\n"); return 198; }
+    { int nrc = check_new_varname(nm, "egen"); if(nrc) return nrc; }
 
     /* Trim trailing whitespace from inside */
     {char *q=inside+strlen(inside);while(q>inside&&(q[-1]==' '||q[-1]=='\t'))*--q=0;}
@@ -1117,6 +1123,7 @@ static int do_rename(Cmd *c){
                 }
                 for(int m=0;m<k;m++) if(!strcmp(nv[k],nv[m])){
                     tea_err("rename: duplicate new name %s\n",nv[k]); return 198; }
+                { int nrc = check_new_varname(nv[k], "rename"); if(nrc) return nrc; }
             }
             for(int k=0;k<no;k++) snprintf(c->f->vars[idx[k]].name,33,"%s",nv[k]);
             frame_unsort(c->f);
@@ -1131,6 +1138,7 @@ static int do_rename(Cmd *c){
     if(!strchr(a, '*') && !strchr(b, '*')){
         int vi = var_find(c->f, a);
         if(vi < 0){ tea_err("rename: %s not found\n", a); return 111; }
+        { int nrc = check_new_varname(b, "rename"); if(nrc) return nrc; }
         if(strcmp(a, b) != 0 && var_find(c->f, b) >= 0){
             tea_err("rename: %s already exists\n", b); return 110;
         }
@@ -1163,6 +1171,7 @@ static int do_rename(Cmd *c){
         }
         newname[wo] = 0;
         if(!newname[0]){ tea_err("rename: '%s' would produce empty name\n", c->f->vars[i].name); return 198; }
+        { int nrc = check_new_varname(newname, "rename"); if(nrc) return nrc; }
         /* Check for collision with another existing variable (other than self) */
         if(strcmp(c->f->vars[i].name, newname) != 0){
             int existing = var_find(c->f, newname);
@@ -3175,6 +3184,30 @@ static void ws_drop_frame(Workspace *ws, Frame *R){
         if(*pp==R){ *pp=R->next; frame_clear(R); free(R->sortvars); free(R); break; }
 }
 
+/* Stata's reserved words — invalid as variable names (help naming):
+ * _all _b byte _coef _cons double float if in int long _n _N _pi
+ * _pred _rc _skip str# strL using with.  Note _merge is NOT reserved
+ * (merge creates it as an ordinary variable). */
+static bool tea_name_reserved(const char *s){
+    static const char *R[] = {"_all","_b","byte","_coef","_cons","double",
+        "float","if","in","int","long","_n","_N","_pi","_pred","_rc",
+        "_skip","using","with",NULL};
+    for(int i=0;R[i];i++) if(!strcmp(s,R[i])) return true;
+    if(!strcmp(s,"strL")) return true;
+    if(!strncmp(s,"str",3) && s[3]){          /* str1 .. str2045 */
+        const char *p=s+3;
+        while(isdigit((unsigned char)*p)) p++;
+        if(!*p) return true;
+    }
+    return false;
+}
+
+/* validate a USER-chosen new variable name: identifier syntax + not
+ * reserved.  Prints the error and returns Stata's r(198) on failure;
+ * 0 when the name is acceptable.  Internal temporaries (__ prefix)
+ * never come through here — this guards the user-facing creation
+ * surfaces (generate, egen, rename, encode/decode, destring/tostring,
+ * recode gen(), reshape). */
 /* valid Stata identifier: [A-Za-z_][A-Za-z0-9_]*, at most 32 chars */
 static bool valid_varname(const char *s){
     if(!s[0]) return false;
@@ -3183,6 +3216,18 @@ static bool valid_varname(const char *s){
     for(const char *p=s; *p; p++,L++)
         if(!(isalnum((unsigned char)*p) || *p=='_')) return false;
     return L<=32;
+}
+
+static int check_new_varname(const char *nm, const char *cmdname){
+    if(!valid_varname(nm)){
+        tea_err("%s: %s invalid name\n", cmdname, nm);
+        return 198;
+    }
+    if(tea_name_reserved(nm)){
+        tea_err("%s: %s invalid name — %s is a reserved word\n", cmdname, nm, nm);
+        return 198;
+    }
+    return 0;
 }
 
 /* ---- reshape (in-place; user must `frame copy` first if they want a copy) */
@@ -3258,6 +3303,8 @@ static int do_reshape(Cmd *c){
     Frame *R=frame_create(c->ws,"__reshape_res");
 
     if(islong){
+        { int nrc = check_new_varname(jname, "reshape long: j()");
+          if(nrc){ ws_drop_frame(c->ws,R); free(iv); return nrc; } }
         /* the new j column must not collide with an existing variable */
         if(var_find(Rsrc,jname)>=0){
             tea_err("reshape long: variable %s already exists — choose another j() name\n",jname);
@@ -3480,6 +3527,10 @@ static int do_reshape(Cmd *c){
             for(int a=0;a<nl;a++){ char nm2[128];
                 if(jstr) snprintf(nm2,sizeof nm2,"%s%s",stubs[sIdx],slev[a]);
                 else     snprintf(nm2,sizeof nm2,"%s%g",stubs[sIdx],nlev[a]);
+                if(valid_varname(nm2) && tea_name_reserved(nm2)){
+                    tea_err("reshape wide: generated name %s is a reserved word\n", nm2);
+                    WIDE_BAIL(198);
+                }
                 if(!valid_varname(nm2)){
                     tea_err("reshape wide: generated name %s is not a valid variable name (%s).\n"
                             "        j values must form valid identifiers when appended to the stub —\n"
@@ -3599,6 +3650,7 @@ static int do_encode(Cmd *c){
     char newvar[64]=""; opt_value(c->options,"generate",newvar,sizeof newvar);
     if(!newvar[0]) opt_value(c->options,"gen",newvar,sizeof newvar);
     if(!newvar[0]){ tea_err("encode: generate(newvar) required\n"); return 198; }
+    { int nrc = check_new_varname(newvar, "encode"); if(nrc) return nrc; }
     char lbl[64]=""; opt_value(c->options,"label",lbl,sizeof lbl);
     if(!lbl[0]) snprintf(lbl, sizeof lbl, "%s", newvar);
 
@@ -3652,6 +3704,7 @@ static int do_decode(Cmd *c){
     char newvar[64]=""; opt_value(c->options,"generate",newvar,sizeof newvar);
     if(!newvar[0]) opt_value(c->options,"gen",newvar,sizeof newvar);
     if(!newvar[0]){ tea_err("decode: generate(newvar) required\n"); return 198; }
+    { int nrc = check_new_varname(newvar, "decode"); if(nrc) return nrc; }
 
     int si = var_find(c->f, src);
     if(si < 0){ tea_err("decode: %s not found\n",src); return 111; }
@@ -3778,6 +3831,8 @@ static int do_destring(Cmd *c){
             char newname[64];
             if(nv == 1) snprintf(newname, sizeof newname, "%s", gen_stub);
             else snprintf(newname, sizeof newname, "%s%s", gen_stub, src->name);
+            { int nrc = check_new_varname(newname, "destring");
+              if(nrc){ free(vals); free(vs); return nrc; } }
             if(var_find(c->f, newname) >= 0){
                 tea_err("destring: %s already exists\n", newname);
                 free(vals); free(vs); return 110;
@@ -3857,6 +3912,9 @@ static int do_tostring(Cmd *c){
             char newname[64];
             if(nv == 1) snprintf(newname, sizeof newname, "%s", gen_stub);
             else snprintf(newname, sizeof newname, "%s%s", gen_stub, src->name);
+            { int nrc = check_new_varname(newname, "tostring");
+              if(nrc){ for(size_t i=0;i<c->f->nobs;i++) free(strs[i]);
+                       free(strs); free(vs); return nrc; } }
             if(var_find(c->f, newname) >= 0){
                 for(size_t i=0;i<c->f->nobs;i++) free(strs[i]);
                 free(strs);
@@ -3941,6 +3999,8 @@ static int do_recode(Cmd *c){
         Variable *dst=src;
         if(hasgen){ char nm[33]; snprintf(nm,33,"%s%s",gen, nv>1?src->name:"");
             if(nv==1) snprintf(nm,33,"%s",gen);
+            { int nrc = check_new_varname(nm, "recode");
+              if(nrc){ free(vv); return nrc; } }
             dst=var_add(c->f,nm,VT_NUM); src=&c->f->vars[vv[k]]; }
         for(size_t i=0;i<c->f->nobs;i++){
             double x=src->num[i], outv=x; int done=0;

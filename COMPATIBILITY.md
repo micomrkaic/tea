@@ -308,3 +308,11 @@ Documented graphics deviations from Stata:
   ,replace (it was documented but never read — tea silently
   overwrote).  ivregress rejects noconstant explicitly (it was never
   supported; previously ignored).
+
+## Reserved variable names (v1.6.49)
+
+- Stata's reserved words are now rejected as new variable names at
+  all creation surfaces, r(198).  `gen ln = ln(x)` remains legal
+  exactly as in Stata: functions are disambiguated by the paren, and
+  the resolution order (function when followed by a paren, variable
+  otherwise) matches Stata even after shadowing.

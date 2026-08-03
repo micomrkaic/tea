@@ -1,0 +1,17 @@
+number of observations set to 3
+gen _n rejected: 1
+gen int rejected: 1
+gen byte rejected: 1
+gen using rejected: 1
+gen _cons rejected: 1
+gen str5 rejected: 1
+rename to if rejected: 1
+egen _pi rejected: 1
+recode gen(with) rejected: 1
+(3 real changes made)
+type-token form ok: 1
+(airline: 144 obs loaded — Box-Jenkins airline passengers, monthly 1949-1960 (tsset, arima))
+gen ln legal (Stata parity): 1
+fn resolves after shadow: 1
+var ref resolves: 1
+spaced call is the function: 1
