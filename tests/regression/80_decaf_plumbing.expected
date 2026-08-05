@@ -1,0 +1,35 @@
+number of observations set to 6
+(6 real changes made)
+(6 real changes made)
+(6 real changes made)
+(6 real changes made)
+number of observations set to 3
+(3 real changes made)
+(3 real changes made)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                             0
+        from master (_merge==1)             0
+        from using  (_merge==2)             0
+    Matched     (_merge==3)                 6
+    -----------------------------------------
+  6
+matched rows: 6
+(reshaped long; now 5 vars, 12 obs)
+long obs: 12
+  6
+1990 rows: 6
+collapsed groups: 3
+     +          +          +          +
+     | grp      | gname    | v        |
+   1.| 1        | g1       | 137.5    |
+   2.| 2        | g2       | 192.5    |
+   3.| 3        | g3       | 247.5    |
+(airline: 144 obs loaded — Box-Jenkins airline passengers, monthly 1949-1960 (tsset, arima))
+dta round-trip vars: 1
+
+    Variable |        Obs        Mean    Std. dev.         Min         Max
+-------------+--------------------------------------------------------------
+         lnp |        144       5.542       0.4415       4.644       6.433
+round-trip mean ok: 1

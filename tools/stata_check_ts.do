@@ -3,6 +3,16 @@
 * Known convention differences (COMPATIBILITY.md): tea's unit-root
 * p-values are probit-interpolation approximations of MacKinnon;
 * tea's vecrank prints Osterwald-Lenum CVs (as Stata does).
+* ---- reference oracle (added v1.6.50) ---------------------------------
+* Pin against Stata 19 SEMANTICS regardless of the running release:
+* `version 19' is StataCorp's own reproducibility contract, so a
+* rolling StataNow license still delivers a frozen target.  The next
+* two lines make every pin run self-documenting in its log.
+version 19
+display "oracle: Stata " c(stata_version) " " c(edition_real) ", born " c(born_date)
+* Datasets: run tools/make_pin_data.do in tea first (same seeds and
+* recursions as the regression tests; writes eight .dta files).
+
 use airline, clear            // export from tea: sysuse airline + save
 gen lp = ln(passengers)
 gen time = _n

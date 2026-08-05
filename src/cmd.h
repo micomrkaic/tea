@@ -52,6 +52,15 @@ int  varlist_expand(Frame *f, const char *spec, int **out);
 void cmd_split(Cmd *c);
 
 /* option helpers operating on Cmd.options */
+/* build tier: decaf = data-management-only (no estimation, no LAPACK) */
+#ifdef TEA_DECAF
+#define TEA_PRODUCT  "decaf tea"
+#define TEA_TAGLINE  "data management edition \u2014 all the plumbing, none of the econometrics"
+#else
+#define TEA_PRODUCT  "tea"
+#define TEA_TAGLINE  "tiny econometric assistant"
+#endif
+
 void cmd_opt_track_begin(const Cmd *c);
 const char *cmd_opt_unknown(const Cmd *c);
 bool opt_present(const char *opts, const char *name);

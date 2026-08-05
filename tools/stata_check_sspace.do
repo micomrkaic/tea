@@ -4,6 +4,16 @@
 * initialization (Koopman 1997); Stata's ucm uses a kappa
 * approximation, so log-likelihoods can differ in the diffuse terms
 * while variance estimates should agree to reported precision.
+* ---- reference oracle (added v1.6.50) ---------------------------------
+* Pin against Stata 19 SEMANTICS regardless of the running release:
+* `version 19' is StataCorp's own reproducibility contract, so a
+* rolling StataNow license still delivers a frozen target.  The next
+* two lines make every pin run self-documenting in its log.
+version 19
+display "oracle: Stata " c(stata_version) " " c(edition_real) ", born " c(born_date)
+* Datasets: run tools/make_pin_data.do in tea first (same seeds and
+* recursions as the regression tests; writes eight .dta files).
+
 use nile, clear               // export from tea: sysuse nile + save
 tsset year
 ucm flow, model(llevel)

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><!--TEANAME-->tea<!--/TEANAME--> — <!--TEATAG-->tiny econometric assistant<!--/TEATAG--></title>
+<title><!--TEANAME-->decaf tea<!--/TEANAME--> — <!--TEATAG-->data management in your browser &mdash; import, clean, merge, reshape; estimation not included<!--/TEATAG--></title>
 <link rel="icon" type="image/jpeg" href="tea_logo.jpg">
 <link rel="stylesheet" href="xterm.min.css">
 <style>
@@ -68,7 +68,7 @@
 
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
-  <div class="tagline"><!--TEATAG-->tiny econometric assistant<!--/TEATAG--></div>
+  <div class="tagline"><!--TEATAG-->data management in your browser &mdash; import, clean, merge, reshape; estimation not included<!--/TEATAG--></div>
   <div class="ver">v<!--TEAVER-->1.6.50<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
@@ -78,7 +78,7 @@
 <header>
   <img src="tea_logo.jpg" alt="">
   <h1>tea</h1>
-  <div class="sub"><!--TEATAG-->tiny econometric assistant<!--/TEATAG--> — running entirely in your browser (WebAssembly)</div>
+  <div class="sub"><!--TEATAG-->data management in your browser &mdash; import, clean, merge, reshape; estimation not included<!--/TEATAG--> — running entirely in your browser (WebAssembly)</div>
   <a href="STATA-QUICKSTART.pdf" target="_blank" rel="noopener" style="margin-left:auto;font-size:13px;color:var(--accent)">Stata user? Start here</a>
   <a href="tea-manual.pdf" target="_blank" rel="noopener" style="margin-left:14px;font-size:13px;color:var(--accent)">Manual (PDF)</a>
 </header>
@@ -230,7 +230,7 @@ async function fetchWasm(){
   const A = '\x1b[38;5;24m', D = '\x1b[2m', R = '\x1b[0m';
   term.writeln('');
   term.writeln(A + '        (  (' + R);
-  term.writeln(A + '         )  )' + R + '      ' + '<!--TEANAME-->tea<!--/TEANAME-->' + ' ' + v + ' \u2014 ' + '<!--TEATAG-->tiny econometric assistant<!--/TEATAG-->');
+  term.writeln(A + '         )  )' + R + '      ' + '<!--TEANAME-->decaf tea<!--/TEANAME-->' + ' ' + v + ' \u2014 ' + '<!--TEATAG-->data management in your browser &mdash; import, clean, merge, reshape; estimation not included<!--/TEATAG-->');
   term.writeln(A + '      .........' + R + D + '    free Stata-like data analysis, in your browser' + R);
   term.writeln(A + '      |       |]' + R + D + '   GPLv3 \u00b7 Mico Mrkaic \u00b7 github.com/micomrkaic/tea' + R);
   term.writeln(A + '      \\       /' + R);

@@ -38,7 +38,7 @@ static void print_banner(const Interp *ip){
     const char *R = color ? "\x1b[0m"       : "";
     fprintf(stderr, "\n");
     fprintf(stderr, "%s        (  (%s\n", A, R);
-    fprintf(stderr, "%s         )  )%s      tea %s \u2014 tiny econometric assistant\n", A, R, TEA_VERSION);
+    fprintf(stderr, "%s         )  )%s      %s %s \u2014 %s\n", A, R, TEA_PRODUCT, TEA_VERSION, TEA_TAGLINE);
     fprintf(stderr, "%s      .........%s    %sfree Stata-like data analysis at the command line%s\n", A, R, D, R);
     fprintf(stderr, "%s      |       |]%s   %sGPLv3 \u00b7 Mico Mrkaic \u00b7 github.com/micomrkaic/tea%s\n", A, R, D, R);
     fprintf(stderr, "%s      \\       /%s\n", A, R);
@@ -90,7 +90,7 @@ int main(int argc,char **argv){
         } else if(!strcmp(a, "--tea-extensions")){
             ip->strict_stata = false;
         } else if(!strcmp(a, "--version")){
-            printf("tea %s — tiny econometric assistant\n", TEA_VERSION);
+            printf("%s %s \u2014 %s\n", TEA_PRODUCT, TEA_VERSION, TEA_TAGLINE);
             interp_free(ip); ws_free(ws); return 0;
         } else if(!strcmp(a, "--help")){
             usage(stdout);

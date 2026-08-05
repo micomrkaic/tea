@@ -166,6 +166,48 @@ src/%.o: src/%.c
 
 -include $(DEP)
 
+# ---- decaf tier: data-management-only build ------------------------------
+# "decaf tea" — merge, import, reshape, collapse, explore, graph: the
+# data plumbing that is most of real Stata usage, with the entire
+# estimation tier compiled out (-DTEA_DECAF).  No estimator TUs, no
+# LAPACK/BLAS link — decaf computes no statistic you'd publish.  One
+# tree, one history, two binaries: decaf is a build target, not a fork.
+DECAF_EXCLUDE = src/regress.c src/arima.c src/tsinfer.c src/panel2.c \
+                src/sspace.c src/sspace_cmd.c src/dfactor.c src/kalman.c \
+                src/mle.c src/estcmd.c src/estimates.c src/estout.c \
+                src/outreg.c src/vce.c src/constraint.c src/wasm_linalg.c
+DECAF_SRC     = $(filter-out $(DECAF_EXCLUDE),$(SRC))
+DECAF_OBJDIR  = obj-decaf
+DECAF_OBJ     = $(patsubst src/%.c,$(DECAF_OBJDIR)/%.o,$(DECAF_SRC))
+DECAF_LDFLAGS = $(VENDOR_RS_LD) $(PLATFORM_LDFLAGS) -lgsl -lreadline \
+                -lreadstat -lz $(PLATFORM_EXTRA_LIBS) -lm
+
+$(DECAF_OBJDIR)/%.o: src/%.c | src/tea_version.h
+	@mkdir -p $(DECAF_OBJDIR)
+	$(CC) $(CFLAGS) -DTEA_DECAF -MMD -MP -c $< -o $@
+
+tea-decaf: $(DECAF_OBJ)
+	$(CC) -o $@ $(DECAF_OBJ) $(DECAF_LDFLAGS)
+
+decaf: tea-decaf
+
+# build both tiers with one command: ./tea and ./tea-decaf side by side
+both: tea tea-decaf
+
+# the whole two-tier verification in one command (native suites + decaf
+# leak check; wasm gates stay separate targets since they need emcc)
+gate: test decaf-test
+
+decaf-test: tea-decaf
+	@printf 'help _names\n' > /tmp/tea_names.do; \
+	for leak in regress xtreg arima sspace ttest estout predict newey; do \
+	    if ./tea-decaf /tmp/tea_names.do | grep -qx "$$leak"; then \
+	        echo "decaf leak: $$leak present in decaf build"; exit 1; fi; \
+	done; rm -f /tmp/tea_names.do; echo 'decaf leak check: clean'
+	TEA=$$PWD/tea-decaf TEA_TIER=decaf bash tests/regression/run_tests.sh
+
+-include $(DECAF_OBJ:.o=.d)
+
 # ---- debug target: ASan + UBSan, no optimisation -------------------------
 # Builds a separate binary at tea-debug so the release tea/ stays unaffected.
 # Use this for any reproducer that might hint at memory corruption.
@@ -228,7 +270,7 @@ showpaths:
 	@echo "CFLAGS           = $(CFLAGS)"
 	@echo "LDFLAGS          = $(LDFLAGS)"
 
-.PHONY: clean test smoke check-deps showpaths debug release manual docs-pdf quickstart sync-web-version dist
+.PHONY: clean test smoke check-deps showpaths debug release manual docs-pdf quickstart sync-web-version dist both gate decaf decaf-test wasm-decaf wasm-decaf-test wasm-decaf-clean
 
 # ---- WebAssembly build (browser demo) -------------------------------------
 # Requires emcc and the prebuilt WASM static libs (reference CLAPACK stack,
@@ -282,6 +324,51 @@ vendor/readstat/include/readstat.h:
 	  $(MAKE) && $(MAKE) install
 	@echo "== ReadStat vendored under vendor/readstat — plain 'make' will now find it"
 
+# ---- decaf WASM: the browser data tool -------------------------------------
+# Same tier cut as the native decaf: no estimator TUs and, decisively,
+# NO linear-algebra stack — the CLAPACK/BLAS/f2c archives drop out of
+# the link entirely.  Smaller wasm, faster load, zero numerical-library
+# surface.  Output lands in web/decaf/ beside a generated index.html.
+WASM_DECAF_SRC    = $(filter-out $(DECAF_EXCLUDE) src/main.c,$(SRC))
+WASM_DECAF_OBJDIR = web/obj-decaf
+WASM_DECAF_OBJ    = $(patsubst src/%.c,$(WASM_DECAF_OBJDIR)/%.o,$(WASM_DECAF_SRC))
+WASM_DECAF_DEP    = $(WASM_DECAF_OBJ:.o=.d)
+
+$(WASM_DECAF_OBJDIR)/%.o: src/%.c | src/tea_version.h
+	@mkdir -p $(WASM_DECAF_OBJDIR)
+	emcc -std=c17 -O2 -DTEA_DECAF $(WASM_INC) -MMD -MP -c $< -o $@
+
+-include $(WASM_DECAF_DEP)
+
+wasm-decaf: web/decaf/tea.js web/decaf/index.html
+
+web/decaf/tea.js: $(WASM_DECAF_OBJ)
+	@mkdir -p web/decaf
+	emcc -O2 $(WASM_DECAF_OBJ) \
+	  $(WASM_LIBS)/libgsl.a $(WASM_LIBS)/libreadstat.a $(WASM_LIBS)/libz.a \
+	  -sEXPORTED_FUNCTIONS=_tea_web_init,_tea_web_exec,_tea_web_version,_tea_web_save_memory,_tea_web_data_hash,_tea_web_run_dofile,_tea_web_complete,_malloc,_free \
+	  -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,FS,NODEFS \
+	  -sALLOW_MEMORY_GROWTH=1 -sMODULARIZE=1 -sEXPORT_NAME=createTea \
+	  -sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 -lnodefs.js \
+	  -o web/decaf/tea.js
+
+# the decaf page is the tea page with the branding markers re-stamped;
+# tea.js/tea.wasm resolve relative to the page, so paths need no edits
+web/decaf/index.html: web/index.html
+	@mkdir -p web/decaf
+	sed -E \
+	  -e 's|(<!--TEAVER-->)[^<]*(<!--/TEAVER-->)|\1$(VER)\2|' \
+	  -e 's|(<!--TEANAME-->)[^<]*(<!--/TEANAME-->)|\1decaf tea\2|' \
+	  -e 's|(<!--TEATAG-->)[^<]*(<!--/TEATAG-->)|\1data management in your browser \&mdash; import, clean, merge, reshape; estimation not included\2|' \
+	  web/index.html > web/decaf/index.html
+	cp web/lineeditor.js web/xterm.min.js web/xterm-addon-fit.js web/decaf/ 2>/dev/null || true
+
+wasm-decaf-test: wasm-decaf
+	cd web && node run_decaf_smoke.cjs
+
+wasm-decaf-clean:
+	rm -rf web/decaf $(WASM_DECAF_OBJDIR)
+
 wasm-clean:
 	rm -rf web/tea.js web/tea.wasm
 	rm -rf $(WASM_OBJDIR)
@@ -308,7 +395,11 @@ wasm-test:
 
 # stamp the VERSION into the browser splash (marker-based, idempotent)
 sync-web-version:
-	sed -E -i 's|(<!--TEAVER-->)[^<]*(<!--/TEAVER-->)|\1$(VER)\2|' web/index.html
+	sed -E -i \
+	  -e 's|(<!--TEAVER-->)[^<]*(<!--/TEAVER-->)|\1$(VER)\2|' \
+	  -e 's|(<!--TEANAME-->)[^<]*(<!--/TEANAME-->)|\1tea\2|' \
+	  -e 's|(<!--TEATAG-->)[^<]*(<!--/TEATAG-->)|\1tiny econometric assistant\2|' \
+	  web/index.html
 	@echo "web splash stamped with $(VER)"
 
 # release tarball: test-gated, named from VERSION, invariant tea/ top level
@@ -319,6 +410,8 @@ dist: test
 	tar czf /tmp/tea-v$(VER).tar.gz --exclude='.git' --exclude='tea/vendor' --exclude='*.o' \
 	  --exclude='*.d' --exclude='*.o' --exclude='tea/tea' \
 	  --exclude='tea/tea-debug' --exclude='tea/web/obj' \
+	  --exclude='tea/tea-decaf' --exclude='tea/obj-decaf' \
+	  --exclude='tea/web/obj-decaf' \
 	  --exclude='tea/src/tea_version.h' --exclude='tea/*.tar.gz' -C .. tea
 	mv /tmp/tea-v$(VER).tar.gz .
 	@echo "dist: tea-v$(VER).tar.gz"

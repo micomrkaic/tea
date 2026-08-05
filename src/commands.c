@@ -191,11 +191,13 @@ static int scan_filename(const char **ps, char *out, size_t outsz){
     return (int)w;
 }
 
+#ifndef TEA_DECAF
 /* estimation/postestimation handlers live in regress.c */
 extern int do_regress(Cmd *c);
 extern int do_predict(Cmd *c);
 extern int do_test(Cmd *c);
 extern int do_lincom(Cmd *c);
+#endif /* !TEA_DECAF */
 
 /* error helper: prefixes 'line N: ' in do-file mode, plain in REPL. */
 static void unquote_str(char *s);   /* strip surrounding double quotes */
@@ -4125,7 +4127,9 @@ static int do_save(Cmd *c){
 /* ---- confirm: assert existence/type; the capture-confirm idiom --------- */
 /* ---- paper-kit commands: which, ssc, version, duplicates, isid,
  *      tempfile/tempname, pwcorr, file --------------------------------- */
+#ifndef TEA_DECAF
 int do_outreg2(Cmd *c);   /* src/outreg.c */
+#endif
 
 /* file-scope comparators (nested functions are a GCC-only extension and
  * crash under ASan's non-executable stack; clang rejects them outright) */
@@ -4312,6 +4316,7 @@ static int do_tempname(Cmd *c){
  *   ttest var1 == var2             paired (obs with both nonmissing)
  *   ttest var [if] [in], by(g) [unequal]   two-sample; unequal = Welch
  * Output follows Stata's table layout; probabilities via the t CDF. */
+#ifndef TEA_DECAF
 static void ttest_row(const char *lab, long n, double mean, double sd){
     double se = sd / sqrt((double)n);
     double tcrit = gsl_cdf_tdist_Pinv(0.975, (double)(n-1));
@@ -4476,6 +4481,7 @@ static int do_ttest(Cmd *c){
     return rc;
 }
 
+#endif /* !TEA_DECAF */
 /* ---- correlate ------------------------------------------------------- *
  * Stata: correlate [varlist] [if] [in] [, means covariance]
  * LISTWISE deletion (pwcorr is the pairwise sibling).  Output layout
@@ -4557,6 +4563,7 @@ static int do_correlate(Cmd *c){
     return 0;
 }
 
+#ifndef TEA_DECAF
 int do_constraint(Cmd *c);
 int do_dfactor(Cmd *c);
 int do_sspace(Cmd *c);
@@ -4573,6 +4580,7 @@ int do_newey(Cmd *c);
 int do_dfuller(Cmd *c);
 int do_pperron(Cmd *c);
 int do_tsfilter(Cmd *c);
+#endif /* !TEA_DECAF */
 
 static int do_pwcorr(Cmd *c){
     int *vs=NULL, nv, n_temps=0; const char *vlerr=NULL;
@@ -5097,11 +5105,16 @@ static int do_help(Cmd *c){
          "decode destring tostring label format"},
         {"explore",    "Explore & summarize",
          "describe list summarize tabstat tabulate codebook count correlate "
+#ifndef TEA_DECAF
          "corr pwcorr ttest isid duplicates"},
+#else
+         "corr pwcorr isid duplicates"},
+#endif
         {"reshape",    "Sort, reshape & combine",
          "sort gsort reshape merge collapse"},
         {"graphics",   "Graphics",
          "twoway graph scatter line histogram"},
+#ifndef TEA_DECAF
         {"estimation", "Regression & ML estimators",
          "regress ivregress logit probit poisson areg"},
         {"panel",      "Panel data",
@@ -5113,6 +5126,10 @@ static int do_help(Cmd *c){
          "ucm sspace dfactor constraint"},
         {"postest",    "Post-estimation",
          "predict margins test lincom estimates est estout outreg2"},
+#else
+        {"declare",    "Panel & time declarations",
+         "xtset xtdescribe tsset"},
+#endif
         {"files",      "Session, files & programming",
          "help pwd cd mkdir dir ls rmdir erase copy do log history version "
          "exit which ssc file confirm tempfile tempname error status"},
@@ -5134,6 +5151,13 @@ static int do_help(Cmd *c){
         }
         return 0;
     }
+    if(!strcmp(what,"_names")){
+        /* machine-readable: EVERY dispatch name, aliases included —
+         * the tier-aware test harness asks the binary what it can run
+         * (help _list stays documented-commands-only for gen_cmdref) */
+        for(Disp *d=TABLE;d->name;d++) printf("%s\n",d->name);
+        return 0;
+    }
     if(!strcmp(what,"_check")){
         int stray=0;
         for(Disp *d=TABLE;d->name;d++){
@@ -5146,7 +5170,7 @@ static int do_help(Cmd *c){
         return stray? 9 : 0;
     }
     if(!what[0]){
-        printf("\n%stea %s — tiny econometric assistant%s\n",B,TEA_VERSION,E);
+        printf("\n%s%s %s \u2014 %s%s\n",B,TEA_PRODUCT,TEA_VERSION,TEA_TAGLINE,E);
         printf("Commands by theme.  'help TOPIC' lists one theme with descriptions\n");
         printf("(e.g. help timeseries); 'help CMD' shows one command's syntax.\n");
         for(int t=0;CATS[t].key;t++){
@@ -5204,7 +5228,11 @@ static int do_version(Cmd *c){
     /* Stata do-files start with `version 16` etc.: accept silently */
     char a[32]=""; sscanf(c->args,"%31s",a);
     if(a[0] && (isdigit((unsigned char)a[0]))) return 0;
-    printf("tea %s — tiny econometric assistant\n",TEA_VERSION);
+    printf("%s %s \u2014 %s\n",TEA_PRODUCT,TEA_VERSION,TEA_TAGLINE);
+#ifdef TEA_DECAF
+    printf("This is the decaf build: estimation commands are not included.\n");
+    printf("Data prepared here saves to .dta for estimation in any full package.\n");
+#endif
     /* no __DATE__/__TIME__: a compile timestamp makes builds
      * non-reproducible byte-for-byte — the version string carries the
      * release identity */
@@ -5595,6 +5623,7 @@ Disp TABLE[]={
         "xtdescribe                                   summarize panel structure\n"
         "      e.g.  xtdescribe   (requires xtset first; shows n, T, balance)"},
     {"xtdes",do_xtdescribe,1,NULL},
+#ifndef TEA_DECAF
     {"xtreg",do_xtreg,1,
         "xtreg y x1 x2 ... [if] [in], fe [vce(robust|cluster v)]   panel FE OLS\n"
         "      e.g.  xtreg growth L.growth pop, fe\n"
@@ -5640,6 +5669,7 @@ Disp TABLE[]={
         "estout [names] [, format(latex|markdown|plain) se|t|p stars stats(...)]\n"
         "      Side-by-side LaTeX/markdown/plain table of stored estimates.\n"
         "      e.g.  estout m1 m2, stats(N r2 rmse) using table.tex"},
+#endif /* !TEA_DECAF */
     {"collapse",do_collapse,1,
         "collapse (stat) v1 v2 ... , by(g) [weight]   aggregate to groups\n"
         "      e.g.  collapse (mean) gdp pop, by(region year)"},
@@ -5675,10 +5705,12 @@ Disp TABLE[]={
         "save FILE [, replace]                        write Stata .dta (default) or .tea\n"
         "      e.g.  save mydata.dta, replace        — emits Stata-compatible .dta\n"
         "      e.g.  save mydata.tea, replace        — native tea binary"},
+#ifndef TEA_DECAF
     {"outreg2",do_outreg2,1,
         "outreg2 using FILE [, replace|append ctitle() dec() bdec() se label\n"
         "      symbol() alpha() addstat(\"Name\", expr, ...) addtext() addnote()]\n"
         "      regression-table exporter (tab-separated; opens in Excel)",1},
+#endif /* !TEA_DECAF */
     {"which",do_which,0,
         "which CMD  \u2014 report whether CMD is a built-in tea command"},
     {"ssc",do_ssc,0,
@@ -5691,6 +5723,7 @@ Disp TABLE[]={
         "tempfile NAME...  \u2014 set local macros to fresh temp-file paths"},
     {"tempname",do_tempname,0,
         "tempname NAME...  \u2014 set local macros to fresh scratch names"},
+#ifndef TEA_DECAF
     {"constraint",do_constraint,0,
         "constraint [define] # expr = expr | list | drop #|_all      linear constraints"},
     {"dfactor",do_dfactor,1,
@@ -5728,6 +5761,7 @@ Disp TABLE[]={
         "tsfilter hp|bk|hamilton NEW = VAR[, opts]    business-cycle filters"},
     {"ttest",do_ttest,1,
         "ttest VAR == # | VAR1 == VAR2 | VAR, by(G)   t tests (one-sample, paired, two-sample)"},
+#endif /* !TEA_DECAF */
     {"correlate",do_correlate,1,
         "correlate [varlist] [if] [in][, means covariance]  correlation (listwise)"},
     {"corr",do_correlate,1,
@@ -5764,6 +5798,7 @@ Disp TABLE[]={
         "frame create|change|copy|rename|put|drop|dir  multiple datasets\n"
         "      e.g.  frame create alt   |   frame change alt   |   frame put x y, into(alt)"},
     {"frames",do_frame,0,NULL},
+#ifndef TEA_DECAF
     {"regress",do_regress,1,
         "regress y x1 x2 ... [if] [in] [weight] [, noconstant robust cluster(var)]   OLS\n"
         "      e.g.  regress gdp_growth investment trade if year>=2000, cluster(country)"},
@@ -5771,6 +5806,7 @@ Disp TABLE[]={
     {"predict",do_predict,1,"predict newvar [, xb residuals]                                          predict from last fit"},
     {"test",do_test,1,"test v1 v2 ...                                                           Wald F-test (joint zero)"},
     {"lincom",do_lincom,1,"lincom <linear combo of coefs>                                          point estimate + SE of L'b"},
+#endif /* !TEA_DECAF */
     {"help",do_help,0,"help [cmd]                                   list commands or show one's syntax"},
     {"pwd",do_pwd,0,"pwd                                          print working directory"},
     {"cd",do_cd,0,"cd DIR                                       change working directory"},

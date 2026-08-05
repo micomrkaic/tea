@@ -316,3 +316,16 @@ Documented graphics deviations from Stata:
   exactly as in Stata: functions are disambiguated by the paren, and
   the resolution order (function when followed by a paren, variable
   otherwise) matches Stata even after shadowing.
+
+## Reference oracle and the decaf tier (v1.6.50)
+
+- Stata pins are taken under `version 19` semantics (declared at the
+  top of every tools/stata_check_*.do); each pin run self-documents
+  its oracle (c(stata_version), edition, born date) in its log.
+  tools/make_pin_data.do exports, from tea, all eight datasets the
+  check scripts consume, with the same seeds and recursions as the
+  regression tests.
+- decaf tea (see DECAF.md) is the data-management build tier: the
+  full data pipeline with the estimation tier compiled out and no
+  LAPACK/BLAS in the link.  Data-management behavior is asserted
+  byte-identical between the two tiers by the release gate.

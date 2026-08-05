@@ -53,12 +53,14 @@ void ws_free(Workspace *w) {
         VLItem *it = L->items;
         while (it) { VLItem *in = it->next; free(it->txt); free(it); it = in; }
         free(L); L = ln; }
+#ifndef TEA_DECAF   /* no estimation tier: nothing stored, nothing to free */
     est_free(w->last_est);
     est_free(w->fe_est);
     est_free(w->re_est);
     /* drop named stored estimates */
     StoredEst *s = w->stored_est;
     while(s){ StoredEst *n = s->next; est_free(s->est); free(s); s = n; }
+#endif
     free(w);
 }
 
