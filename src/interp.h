@@ -79,6 +79,7 @@ TeaSession *tea_session_new(Interp *ip, bool interactive);
  * code the driver should treat as do-file-aborting (0 = fine).  Sets
  * *need_more when the statement is incomplete (continuation prompt). */
 int  tea_session_feed(TeaSession *s, const char *line, bool *need_more);
+void tea_interrupt_request(void);   /* GUI Break: honored at next command boundary */
 /* EOF: execute any pending unterminated {...} block (matches historical
  * behavior); leftover partial statements are discarded. */
 void tea_session_flush(TeaSession *s);

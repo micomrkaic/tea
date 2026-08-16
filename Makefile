@@ -196,7 +196,8 @@ both: tea tea-decaf
 
 # the whole two-tier verification in one command (native suites + decaf
 # leak check; wasm gates stay separate targets since they need emcc)
-gate: test decaf-test
+QT_PRESENT := $(shell pkg-config --exists Qt6Widgets 2>/dev/null && echo y)
+gate: test decaf-test embed-test $(if $(QT_PRESENT),gui-test,)
 
 decaf-test: tea-decaf
 	@printf 'help _names\n' > /tmp/tea_names.do; \
@@ -208,13 +209,62 @@ decaf-test: tea-decaf
 
 -include $(DECAF_OBJ:.o=.d)
 
+# ---- Qt desktop frontend ---------------------------------------------------
+# tea-qt: the GUI over the embed API (src/tea_embed.h) — results
+# console + command line with completion/history, data browser
+# (virtual-scrolling QTableView over the live frame, zero copies),
+# variables pane, history pane, SVG plot dock, Break button.  One C++
+# TU (gui/tea_qt.cpp) — the only C++ in the tree; the core stays pure
+# C17 and the shell talks to it exclusively through tea_embed.h.  The
+# worker-thread model uses Q_OBJECT signals/slots (queued, cross-
+# thread), so the file needs moc; no cmake/qmake, just pkg-config.
+# Core objects are the SAME .o files as the CLI binary (minus main.o),
+# so the Qt build inherits every fix and every gate the core passes.
+# Needs qt6-base-dev + qt6-svg-dev (Linux) or brew install qt6 (macOS).
+QT_PKGS      = Qt6Widgets Qt6Svg Qt6SvgWidgets
+QT_CXX      ?= g++
+MOC         ?= $(shell command -v moc 2>/dev/null || echo /usr/lib/qt6/libexec/moc)
+QT_CXXFLAGS  = -std=c++17 -O2 -fPIC -Wall $(shell pkg-config --cflags $(QT_PKGS)) -Isrc -Igui
+QT_LDLIBS    = $(shell pkg-config --libs $(QT_PKGS))
+QT_CORE_OBJ  = $(filter-out src/main.o,$(OBJ))
+
+gui/tea_qt.moc: gui/tea_qt.cpp
+	$(MOC) $< -o $@
+
+gui/tea_qt.o: gui/tea_qt.cpp gui/tea_qt.moc src/tea_embed.h | src/tea_version.h
+	$(QT_CXX) $(QT_CXXFLAGS) -c gui/tea_qt.cpp -o gui/tea_qt.o
+
+tea-qt: $(QT_CORE_OBJ) gui/tea_qt.o
+	$(QT_CXX) -o $@ gui/tea_qt.o $(QT_CORE_OBJ) $(QT_LDLIBS) $(LDFLAGS)
+
+gui: tea-qt
+qt:  tea-qt
+
+# embed-API gate: the interrupt contract (tests/embed/break_test.c) —
+# core surgery (the run_line poll) gets its own permanent proof
+embed-test: $(QT_CORE_OBJ)
+	$(CC) $(CFLAGS) -Isrc tests/embed/break_test.c $(QT_CORE_OBJ) $(LDFLAGS) -o /tmp/tea_embed_break
+	/tmp/tea_embed_break
+
+# headless GUI gate: constructs the real window offscreen, runs a
+# do-file through the worker thread, asserts output arrived and the
+# data/variables models see the frame
+gui-test: tea-qt
+	@printf 'sysuse airline\nquietly gen lnp = ln(passengers)\ndisplay "SMOKE_MARK " _N\n' > /tmp/tea_gui_smoke.do
+	QT_QPA_PLATFORM=offscreen ./tea-qt --smoke /tmp/tea_gui_smoke.do
+qt-test: gui-test
+
+gui-clean:
+	rm -f tea-qt gui/tea_qt.o gui/tea_qt.moc
+qt-clean: gui-clean
+
 # ---- debug target: ASan + UBSan, no optimisation -------------------------
 # Builds a separate binary at tea-debug so the release tea/ stays unaffected.
 # Use this for any reproducer that might hint at memory corruption.
 DEBUG_CFLAGS  = -std=c17 -O0 -g3 -fno-omit-frame-pointer \
                 $(WARNINGS) $(HARDEN_BASE) \
                 -fsanitize=address,undefined \
-                $(PLATFORM_CFLAGS)
+                $(PLATFORM_CFLAGS) $(VENDOR_RS_CFLAGS)
 DEBUG_LDFLAGS = -fsanitize=address,undefined $(LDFLAGS)
 
 debug:
@@ -270,7 +320,7 @@ showpaths:
 	@echo "CFLAGS           = $(CFLAGS)"
 	@echo "LDFLAGS          = $(LDFLAGS)"
 
-.PHONY: clean test smoke check-deps showpaths debug release manual docs-pdf quickstart sync-web-version dist both gate decaf decaf-test wasm-decaf wasm-decaf-test wasm-decaf-clean
+.PHONY: embed-test clean test smoke check-deps showpaths debug release manual docs-pdf quickstart sync-web-version dist gui gui-test gui-clean both gate decaf decaf-test wasm-decaf wasm-decaf-test wasm-decaf-clean qt qt-test qt-clean
 
 # ---- WebAssembly build (browser demo) -------------------------------------
 # Requires emcc and the prebuilt WASM static libs (reference CLAPACK stack,
@@ -412,6 +462,7 @@ dist: test
 	  --exclude='tea/tea-debug' --exclude='tea/web/obj' \
 	  --exclude='tea/tea-decaf' --exclude='tea/obj-decaf' \
 	  --exclude='tea/web/obj-decaf' \
+	  --exclude='tea/tea-qt' --exclude='tea/gui/tea_qt.o' --exclude='tea/gui/tea_qt.moc' \
 	  --exclude='tea/src/tea_version.h' --exclude='tea/*.tar.gz' -C .. tea
 	mv /tmp/tea-v$(VER).tar.gz .
 	@echo "dist: tea-v$(VER).tar.gz"

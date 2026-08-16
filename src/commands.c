@@ -732,6 +732,13 @@ static int do_list(Cmd *c){
     return 0;
 }
 
+/* public wrapper so the embed layer (tea_embed.c) can render cells the
+ * way list does; fmt_cell itself stays static to this TU */
+void tea_cell_text(const Variable *v, size_t i, char *out, size_t n);
+void tea_cell_text(const Variable *v, size_t i, char *out, size_t n){
+    fmt_cell((Variable*)v, i, out, n);   /* fmt_cell doesn't mutate */
+}
+
 /* ---- summarize --------------------------------------------------------- */
 static int cmp_double_asc(const void *p, const void *q){
     double a = *(const double*)p, b = *(const double*)q;

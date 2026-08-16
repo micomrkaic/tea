@@ -5,3 +5,8 @@ tea-debug
 *.tar.gz
 vendor/
 /*.svg
+tea-qt
+gui/*.o
+obj-decaf/
+tea-decaf
+web/obj-decaf/

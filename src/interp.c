@@ -197,7 +197,20 @@ static void mute_end(int sv[2]){
     if(sv[1]>=0){ dup2(sv[1],2); close(sv[1]); }
 }
 
+/* cooperative interrupt for embedding frontends (GUI Break button):
+ * polled at every command boundary — each do-file line, each loop
+ * iteration — so a runaway foreach stops at the next line without
+ * corrupting the frame mid-command. */
+volatile int g_tea_interrupt = 0;
+void tea_interrupt_request(void){ g_tea_interrupt = 1; }
+
 int run_line(Interp *ip,const char *raw){
+    if(g_tea_interrupt){
+        g_tea_interrupt = 0;
+        fprintf(stderr,"--Break--\n");
+        g_tea_last_rc = ip->rc = 1;   /* mirror for the _rc evaluator */
+        return 1;
+    }
     char line[8192]; snprintf(line,sizeof line,"%s",raw);
     char *s=line; while(*s==' '||*s=='\t')s++;
     if(!*s) return 0;

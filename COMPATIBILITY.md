@@ -329,3 +329,16 @@ Documented graphics deviations from Stata:
   full data pipeline with the estimation tier compiled out and no
   LAPACK/BLAS in the link.  Data-management behavior is asserted
   byte-identical between the two tiers by the release gate.
+
+## Qt desktop shell and the embed API (v1.6.51)
+
+- src/tea_embed.h is the neutral embedding surface (init/exec/
+  do-file/complete/interrupt + read-only frame accessors); the Qt
+  shell (gui/, binary tea-qt, see GUI.md) is its first consumer.
+- The interpreter gained a cooperative interrupt polled at every
+  command boundary (run_line entry): --Break-- with rc=1, mirrored
+  into _rc.  Covered by the embed-test gate.
+- Web artifacts in web/ and docs/ remain as built at v1.6.50 (no
+  wasm toolchain in this release environment; sources are unchanged
+  in wasm-relevant paths except the additive tea_embed.c/interrupt
+  hook).  Next emsdk-equipped release rebuilds and restamps them.
