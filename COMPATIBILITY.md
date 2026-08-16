@@ -342,3 +342,16 @@ Documented graphics deviations from Stata:
   wasm toolchain in this release environment; sources are unchanged
   in wasm-relevant paths except the additive tea_embed.c/interrupt
   hook).  Next emsdk-equipped release rebuilds and restamps them.
+
+## GUI v2 layout and release tooling (v1.6.52)
+
+- tea-qt console reworked to terminal-style interleaving (design
+  decision: no separate command box); do-file editor dock added; the
+  stale-plot bug fixed by baselining tea_graph.svg mtime at launch —
+  the GUI smoke now proves it by planting a stale SVG in its cwd.
+- Makefile: Qt6-first moc detection (a bare `moc` on PATH is usually
+  Qt5's) and a qt-check preflight with install hints.
+- tools/update.sh rewritten: re-execs from /tmp (self-overwrite
+  hazard), fast-forwards a merely-behind master, refuses a diverged
+  one with whole-tree-import recovery advice, and pushes master
+  before the tag so a rejected push cannot strand a published tag.

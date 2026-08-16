@@ -223,12 +223,22 @@ decaf-test: tea-decaf
 # Needs qt6-base-dev + qt6-svg-dev (Linux) or brew install qt6 (macOS).
 QT_PKGS      = Qt6Widgets Qt6Svg Qt6SvgWidgets
 QT_CXX      ?= g++
-MOC         ?= $(shell command -v moc 2>/dev/null || echo /usr/lib/qt6/libexec/moc)
+QT_LIBEXEC  := $(shell pkg-config --variable=libexecdir Qt6Core 2>/dev/null)
+# prefer Qt6's own moc: a bare `moc` on PATH is typically Qt5's and
+# produces metaobject code Qt6 headers reject (seen in the wild)
+MOC         ?= $(if $(wildcard $(QT_LIBEXEC)/moc),$(QT_LIBEXEC)/moc,$(shell command -v moc6 2>/dev/null || echo /usr/lib/qt6/libexec/moc))
 QT_CXXFLAGS  = -std=c++17 -O2 -fPIC -Wall $(shell pkg-config --cflags $(QT_PKGS)) -Isrc -Igui
 QT_LDLIBS    = $(shell pkg-config --libs $(QT_PKGS))
 QT_CORE_OBJ  = $(filter-out src/main.o,$(OBJ))
 
-gui/tea_qt.moc: gui/tea_qt.cpp
+qt-check:
+	@pkg-config --exists Qt6Widgets Qt6Svg Qt6SvgWidgets || { \
+	    echo "tea-qt needs Qt6 dev packages:"; \
+	    echo "  Debian/Ubuntu: sudo apt install qt6-base-dev qt6-svg-dev"; \
+	    echo "  macOS:         brew install qt6"; \
+	    exit 1; }
+
+gui/tea_qt.moc: gui/tea_qt.cpp | qt-check
 	$(MOC) $< -o $@
 
 gui/tea_qt.o: gui/tea_qt.cpp gui/tea_qt.moc src/tea_embed.h | src/tea_version.h
@@ -251,7 +261,9 @@ embed-test: $(QT_CORE_OBJ)
 # data/variables models see the frame
 gui-test: tea-qt
 	@printf 'sysuse airline\nquietly gen lnp = ln(passengers)\ndisplay "SMOKE_MARK " _N\n' > /tmp/tea_gui_smoke.do
-	QT_QPA_PLATFORM=offscreen ./tea-qt --smoke /tmp/tea_gui_smoke.do
+	@rm -rf /tmp/tea_gui_smoke_cwd && mkdir -p /tmp/tea_gui_smoke_cwd
+	@printf '<svg xmlns="http://www.w3.org/2000/svg"/>' > /tmp/tea_gui_smoke_cwd/tea_graph.svg
+	cd /tmp/tea_gui_smoke_cwd && QT_QPA_PLATFORM=offscreen $(CURDIR)/tea-qt --smoke /tmp/tea_gui_smoke.do
 qt-test: gui-test
 
 gui-clean:
@@ -320,7 +332,7 @@ showpaths:
 	@echo "CFLAGS           = $(CFLAGS)"
 	@echo "LDFLAGS          = $(LDFLAGS)"
 
-.PHONY: embed-test clean test smoke check-deps showpaths debug release manual docs-pdf quickstart sync-web-version dist gui gui-test gui-clean both gate decaf decaf-test wasm-decaf wasm-decaf-test wasm-decaf-clean qt qt-test qt-clean
+.PHONY: qt-check embed-test clean test smoke check-deps showpaths debug release manual docs-pdf quickstart sync-web-version dist gui gui-test gui-clean both gate decaf decaf-test wasm-decaf wasm-decaf-test wasm-decaf-clean qt qt-test qt-clean
 
 # ---- WebAssembly build (browser demo) -------------------------------------
 # Requires emcc and the prebuilt WASM static libs (reference CLAPACK stack,

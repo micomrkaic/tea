@@ -4,19 +4,43 @@
  *
  * gui/tea_qt.cpp — the Qt desktop shell (tea-qt).  The only C++ TU in
  * the tree: a thin shell over src/tea_embed.h; the core stays C17.
- * Worker thread runs all embed calls; models refresh between
- * commands; stdout/stderr captured at fd level by OutputPump.
- * --smoke <dofile> is the headless gate (make gui-test).
+ *
+ *   - Console: terminal-style REPL — the prompt lives at the tail of
+ *     the results document and input interleaves with output, exactly
+ *     like the CLI.  History (Up/Down), completion (Tab), and the
+ *     document before the prompt is read-only.
+ *   - Do-file editor dock: open/save/run file/run selection; running
+ *     writes the buffer to a temp file and feeds it through `do`, so
+ *     what you see is what runs — no save required.
+ *   - Data browser + variables panes: QAbstractTableModels reading
+ *     the frame in place via the embed accessors, refreshed between
+ *     commands only.
+ *   - Plots dock: watches tea_graph.svg, BASELINED AT STARTUP — a
+ *     stale SVG from an earlier session in the same directory must
+ *     never surface (it did; that was a bug).  Only graphs written
+ *     after launch show.
+ *   - Worker QThread runs every embed call; Break is the API's
+ *     designated any-thread interrupt.
+ *   - OutputPump captures stdout/stderr at the fd level; the smoke
+ *     verdict writes to a dup of the REAL stderr taken before the
+ *     pump replaces fd 2.
+ *
+ * --smoke <dofile>: headless gate (QT_QPA_PLATFORM=offscreen); runs
+ * the do-file through the worker and asserts output reached both the
+ * capture and the console, the models see the frame, and no stale
+ * plot surfaced.  Wired as `make gui-test`.
  */
 #include <QtWidgets>
 #include <QtSvgWidgets/QSvgWidget>
 #include <unistd.h>
 #include <cstdio>
+#include <functional>
 #include "../src/tea_embed.h"
 
-/* the real stderr, saved before OutputPump redirects fd 2 — smoke
- * diagnostics must reach the invoking shell, not the results widget */
+/* a dup of the real stderr, taken before the pump steals fd 2 */
 static int g_real_err = 2;
+
+/* ================= output pump: fd-level capture ================= */
 
 class OutputPump : public QObject {
     Q_OBJECT
@@ -47,6 +71,8 @@ private:
     }
 };
 
+/* ================= worker: the core's single thread ============== */
+
 class Worker : public QObject {
     Q_OBJECT
 public slots:
@@ -63,6 +89,291 @@ signals:
     void ready();
     void lineDone(int rc, bool needMore);
 };
+
+/* ================= console: terminal-style REPL ================== */
+
+class Console : public QPlainTextEdit {
+    Q_OBJECT
+public:
+    Console() {
+        setUndoRedoEnabled(false);
+        setMaximumBlockCount(200000);
+        setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    }
+
+    /* MainWindow supplies completion (empty result while busy) */
+    std::function<QString(const QString &, int)> completer;
+
+    void appendOutput(const QString &t, bool isErr) {
+        QTextCursor c(document());
+        c.movePosition(QTextCursor::End);
+        QTextCharFormat f;
+        if (isErr) f.setForeground(QColor(200, 60, 40));
+        c.setCharFormat(f);
+        c.insertText(t);
+        setTextCursor(c);
+        ensureCursorVisible();
+    }
+
+    void showPrompt(bool continuation) {
+        QTextCursor c(document());
+        c.movePosition(QTextCursor::End);
+        if (c.columnNumber() != 0) c.insertText(QStringLiteral("\n"));
+        c.setCharFormat(QTextCharFormat());
+        c.insertText(continuation ? QStringLiteral("> ") : QStringLiteral(". "));
+        m_promptPos = c.position();
+        m_hasPrompt = true;
+        setTextCursor(c);
+        ensureCursorVisible();
+    }
+
+    void promptConsumed() { m_hasPrompt = false; }
+
+    /* History-dock rerun / menu-driven commands land here */
+    void injectAndSubmit(const QString &line) {
+        if (!m_hasPrompt) return;
+        setTail(line);
+        submitTail();
+    }
+
+    bool hasPrompt() const { return m_hasPrompt; }
+
+signals:
+    void command(const QString &line);
+
+protected:
+    void keyPressEvent(QKeyEvent *e) override {
+        const bool modifies =
+            !e->text().isEmpty() || e->key() == Qt::Key_Backspace ||
+            e->key() == Qt::Key_Delete || e->matches(QKeySequence::Paste) ||
+            e->matches(QKeySequence::Cut);
+
+        if (!m_hasPrompt) {                 /* busy: read-only console */
+            if (!modifies) QPlainTextEdit::keyPressEvent(e);
+            return;
+        }
+        if (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) {
+            submitTail();
+            return;
+        }
+        if (e->key() == Qt::Key_Up)   { histMove(-1); return; }
+        if (e->key() == Qt::Key_Down) { histMove(+1); return; }
+        if (e->key() == Qt::Key_Tab)  { complete();   return; }
+        if (e->key() == Qt::Key_Home) {
+            QTextCursor c = textCursor();
+            if (c.position() >= m_promptPos) {
+                c.setPosition(m_promptPos,
+                              e->modifiers() & Qt::ShiftModifier
+                                  ? QTextCursor::KeepAnchor
+                                  : QTextCursor::MoveAnchor);
+                setTextCursor(c);
+                return;
+            }
+        }
+        if (modifies) {
+            QTextCursor c = textCursor();
+            /* edits happen in the tail only; jump there if elsewhere */
+            if (c.position() < m_promptPos ||
+                (c.hasSelection() && c.selectionStart() < m_promptPos)) {
+                c.movePosition(QTextCursor::End);
+                setTextCursor(c);
+            }
+            if (e->key() == Qt::Key_Backspace &&
+                textCursor().position() <= m_promptPos &&
+                !textCursor().hasSelection())
+                return;                      /* don't eat the prompt */
+        }
+        QPlainTextEdit::keyPressEvent(e);
+    }
+
+    void insertFromMimeData(const QMimeData *src) override {
+        if (!m_hasPrompt) return;
+        QTextCursor c = textCursor();
+        if (c.position() < m_promptPos) {
+            c.movePosition(QTextCursor::End);
+            setTextCursor(c);
+        }
+        /* multi-line paste: first line into the tail; queue the rest
+         * would need submit plumbing — v1 keeps the first line only
+         * and appends the remainder flattened with spaces removed of
+         * newlines, which matches pasting into a one-line prompt */
+        QString t = src->text();
+        t.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+        t.replace(QChar('\n'), QChar(' '));
+        insertPlainText(t);
+    }
+
+private:
+    QString tailText() const {
+        QTextCursor c(document());
+        c.setPosition(m_promptPos);
+        c.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+        return c.selectedText();
+    }
+
+    void setTail(const QString &t) {
+        QTextCursor c(document());
+        c.setPosition(m_promptPos);
+        c.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+        c.insertText(t);
+        c.movePosition(QTextCursor::End);
+        setTextCursor(c);
+    }
+
+    void submitTail() {
+        QString line = tailText();
+        QTextCursor c(document());
+        c.movePosition(QTextCursor::End);
+        c.insertText(QStringLiteral("\n"));
+        setTextCursor(c);
+        m_hasPrompt = false;
+        if (!line.trimmed().isEmpty()) {
+            m_hist.append(line);
+        }
+        m_histPos = m_hist.size();
+        emit command(line);
+    }
+
+    void histMove(int d) {
+        if (m_hist.isEmpty()) return;
+        m_histPos = qBound(0, m_histPos + d, int(m_hist.size()));
+        setTail(m_histPos < m_hist.size() ? m_hist.at(m_histPos) : QString());
+    }
+
+    void complete() {
+        if (!completer) return;
+        QString tail = tailText();
+        QTextCursor c = textCursor();
+        int point = qBound(0, c.position() - m_promptPos, int(tail.size()));
+        QString joined = completer(tail, point);
+        if (joined.isEmpty()) return;
+        QStringList cands = joined.split(QChar('\n'), Qt::SkipEmptyParts);
+        if (cands.size() == 1) {
+            /* replace the word being completed, readline-style */
+            int s = point;
+            while (s > 0 && !tail.at(s - 1).isSpace()) --s;
+            QString nt = tail;
+            nt.replace(s, point - s, cands.first());
+            setTail(nt);
+        } else {
+            /* print candidates above, then restore prompt + tail */
+            QString saved = tail;
+            appendOutput(QStringLiteral("\n") +
+                         cands.join(QStringLiteral("  ")) +
+                         QStringLiteral("\n"), false);
+            showPrompt(false);
+            setTail(saved);
+        }
+    }
+
+    int m_promptPos = 0;
+    bool m_hasPrompt = false;
+    QStringList m_hist;
+    int m_histPos = 0;
+};
+
+/* ================= do-file editor ================================ */
+
+class DoEditor : public QWidget {
+    Q_OBJECT
+public:
+    DoEditor() {
+        auto *v = new QVBoxLayout(this);
+        v->setContentsMargins(0, 0, 0, 0);
+        v->setSpacing(0);
+
+        auto *bar = new QToolBar;
+        bar->setIconSize(QSize(16, 16));
+        auto addBtn = [&](const QString &text, const QKeySequence &ks,
+                          auto fn) {
+            QAction *a = bar->addAction(text);
+            if (!ks.isEmpty()) {
+                a->setShortcut(ks);
+                a->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+            }
+            connect(a, &QAction::triggered, this, fn);
+            return a;
+        };
+        addBtn(QStringLiteral("New"),  QKeySequence(), [this]{ newFile(); });
+        addBtn(QStringLiteral("Open"), QKeySequence(), [this]{ open(); });
+        addBtn(QStringLiteral("Save"), QKeySequence::Save, [this]{ save(); });
+        bar->addSeparator();
+        addBtn(QStringLiteral("Run"),
+               QKeySequence(QStringLiteral("Ctrl+R")), [this]{ runAll(); });
+        addBtn(QStringLiteral("Run selection"),
+               QKeySequence(QStringLiteral("Ctrl+Shift+R")),
+               [this]{ runSelection(); });
+        v->addWidget(bar);
+
+        m_ed = new QPlainTextEdit;
+        m_ed->setLineWrapMode(QPlainTextEdit::NoWrap);
+        v->addWidget(m_ed, 1);
+
+        m_name = new QLabel(QStringLiteral("untitled.do"));
+        m_name->setContentsMargins(6, 2, 6, 2);
+        v->addWidget(m_name);
+    }
+
+    void setFontAll(const QFont &f) { m_ed->setFont(f); }
+
+signals:
+    /* MainWindow feeds this through the worker's `do` path */
+    void runRequest(const QString &path, const QString &what);
+
+private:
+    void newFile() { m_ed->clear(); m_path.clear(); m_name->setText(QStringLiteral("untitled.do")); }
+
+    void open() {
+        QString p = QFileDialog::getOpenFileName(this, QStringLiteral("Open do-file"),
+                    QString(), QStringLiteral("do-files (*.do);;all files (*)"));
+        if (p.isEmpty()) return;
+        QFile f(p);
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+        m_ed->setPlainText(QString::fromUtf8(f.readAll()));
+        m_path = p;
+        m_name->setText(p);
+    }
+
+    void save() {
+        if (m_path.isEmpty()) {
+            QString p = QFileDialog::getSaveFileName(this, QStringLiteral("Save do-file"),
+                        QStringLiteral("untitled.do"), QStringLiteral("do-files (*.do)"));
+            if (p.isEmpty()) return;
+            m_path = p;
+            m_name->setText(p);
+        }
+        QFile f(m_path);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Text))
+            f.write(m_ed->toPlainText().toUtf8());
+    }
+
+    void runText(const QString &text, const QString &what) {
+        /* run what you see: the buffer goes to a temp file and through
+         * `do` — no save required, loops and continuations intact */
+        QString p = QDir::temp().filePath(QStringLiteral("tea_qt_editor_run.do"));
+        QFile f(p);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return;
+        QByteArray b = text.toUtf8();
+        f.write(b);
+        if (!b.endsWith('\n')) f.write("\n");
+        f.close();
+        emit runRequest(p, what);
+    }
+
+    void runAll()       { runText(m_ed->toPlainText(), QStringLiteral("editor buffer")); }
+    void runSelection() {
+        QString s = m_ed->textCursor().selectedText();
+        s.replace(QChar(0x2029), QChar('\n'));   /* paragraph seps -> newlines */
+        if (s.isEmpty()) return;
+        runText(s, QStringLiteral("selection"));
+    }
+
+    QPlainTextEdit *m_ed{};
+    QLabel *m_name{};
+    QString m_path;
+};
+
+/* ================= models over the embed accessors =============== */
 
 class DataModel : public QAbstractTableModel {
     Q_OBJECT
@@ -120,6 +431,8 @@ private:
     int m_n = 0;
 };
 
+/* ================= main window =================================== */
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
@@ -132,41 +445,25 @@ public:
                 "tea"
 #endif
             ), QString::fromUtf8(tea_embed_version())));
-        resize(1200, 800);
+        resize(1280, 840);
 
-        m_results = new QPlainTextEdit;
-        m_results->setReadOnly(true);
-        m_results->setMaximumBlockCount(200000);
         QFont mono(QStringLiteral("Monospace"));
         mono.setStyleHint(QFont::TypeWriter);
-        m_results->setFont(mono);
 
-        m_cmd = new QLineEdit;
-        m_cmd->setFont(mono);
-        m_cmd->setPlaceholderText(QStringLiteral("type a command — Tab completes, Up/Down history"));
-        m_cmd->installEventFilter(this);
+        /* center: the console IS the command line */
+        m_console = new Console;
+        m_console->setFont(mono);
+        m_console->completer = [this](const QString &line, int point) -> QString {
+            if (m_busy) return {};
+            char out[8192];
+            int n = tea_embed_complete(line.toUtf8().constData(), point,
+                                       out, sizeof out);
+            return n > 0 ? QString::fromUtf8(out) : QString();
+        };
+        connect(m_console, &Console::command, this, &MainWindow::onCommand);
+        setCentralWidget(m_console);
 
-        m_break = new QToolButton;
-        m_break->setText(QStringLiteral("Break"));
-        m_break->setEnabled(false);
-
-        auto *cmdRow = new QWidget;
-        auto *h = new QHBoxLayout(cmdRow);
-        h->setContentsMargins(4, 2, 4, 4);
-        auto *dot = new QLabel(QStringLiteral("."));
-        dot->setFont(mono);
-        h->addWidget(dot);
-        h->addWidget(m_cmd, 1);
-        h->addWidget(m_break);
-
-        auto *center = new QWidget;
-        auto *v = new QVBoxLayout(center);
-        v->setContentsMargins(0, 0, 0, 0);
-        v->setSpacing(0);
-        v->addWidget(m_results, 1);
-        v->addWidget(cmdRow);
-        setCentralWidget(center);
-
+        /* left: variables + history docks */
         m_varsModel = new VarsModel;
         auto *varsView = new QTableView;
         varsView->setModel(m_varsModel);
@@ -175,17 +472,21 @@ public:
         varsView->setSelectionBehavior(QAbstractItemView::SelectRows);
         varsView->setEditTriggers(QAbstractItemView::NoEditTriggers);
         connect(varsView, &QTableView::doubleClicked, this, [this](const QModelIndex &ix){
-            m_cmd->insert(QString::fromUtf8(tea_embed_var_name(ix.row())) + QChar(' '));
-            m_cmd->setFocus();
+            /* insert the variable name at the console tail */
+            m_console->insertPlainText(QString::fromUtf8(tea_embed_var_name(ix.row())) + QChar(' '));
+            m_console->setFocus();
         });
         addDockWidget(Qt::LeftDockWidgetArea, makeDock(QStringLiteral("Variables"), varsView, "vars"));
 
         m_history = new QListWidget;
         m_history->setFont(mono);
         connect(m_history, &QListWidget::itemDoubleClicked, this,
-                [this](QListWidgetItem *it){ submit(it->text()); });
+                [this](QListWidgetItem *it){
+                    if (!m_busy) m_console->injectAndSubmit(it->text());
+                });
         addDockWidget(Qt::LeftDockWidgetArea, makeDock(QStringLiteral("History"), m_history, "hist"));
 
+        /* right: data browser, plots, editor docks (tabbed) */
         m_dataModel = new DataModel;
         auto *dataView = new QTableView;
         dataView->setModel(m_dataModel);
@@ -203,8 +504,25 @@ public:
         m_plotDock = makeDock(QStringLiteral("Plots"), scroll, "plots");
         addDockWidget(Qt::RightDockWidgetArea, m_plotDock);
         tabifyDockWidget(dataDock, m_plotDock);
+
+        m_editor = new DoEditor;
+        m_editor->setFontAll(mono);
+        connect(m_editor, &DoEditor::runRequest, this, &MainWindow::onEditorRun);
+        auto *edDock = makeDock(QStringLiteral("Do-file editor"), m_editor, "editor");
+        addDockWidget(Qt::RightDockWidgetArea, edDock);
+        tabifyDockWidget(m_plotDock, edDock);
         dataDock->raise();
 
+        /* the stale-plot fix: baseline tea_graph.svg's mtime at launch
+         * so a leftover graph from an earlier session never surfaces —
+         * only graphs written AFTER startup show the dock */
+        {
+            QFileInfo fi(QDir::current().filePath(QStringLiteral("tea_graph.svg")));
+            if (fi.exists()) m_plotStamp = fi.lastModified();
+            m_plotDock->hide();
+        }
+
+        /* worker thread: the core's home */
         m_worker = new Worker;
         m_worker->moveToThread(&m_thread);
         connect(&m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
@@ -213,29 +531,46 @@ public:
         connect(this, &MainWindow::reqDofile,  m_worker, &Worker::runDofile);
         connect(m_worker, &Worker::ready,    this, &MainWindow::onReady);
         connect(m_worker, &Worker::lineDone, this, &MainWindow::onLineDone);
-        connect(m_break, &QToolButton::clicked, this, []{ tea_embed_interrupt(); });
         m_thread.start();
         emit reqInit();
 
-        auto *file = menuBar()->addMenu(QStringLiteral("&File"));
-        QAction *aDo = file->addAction(QStringLiteral("&Run do-file..."));
+        /* toolbar: run/open/break */
+        auto *tb = addToolBar(QStringLiteral("Run"));
+        tb->setObjectName(QStringLiteral("toolbar_run"));
+        tb->setMovable(false);
+        QAction *aDo = tb->addAction(QStringLiteral("Run do-file…"));
         aDo->setShortcut(QKeySequence(QStringLiteral("Ctrl+D")));
         connect(aDo, &QAction::triggered, this, [this]{
             QString p = QFileDialog::getOpenFileName(this, QStringLiteral("Run do-file"),
                         QString(), QStringLiteral("do-files (*.do);;all files (*)"));
-            if (!p.isEmpty()) submit(QStringLiteral("do \"%1\"").arg(p));
+            if (!p.isEmpty() && !m_busy)
+                m_console->injectAndSubmit(QStringLiteral("do \"%1\"").arg(p));
         });
-        QAction *aOpen = file->addAction(QStringLiteral("&Open data..."));
+        QAction *aOpen = tb->addAction(QStringLiteral("Open data…"));
         aOpen->setShortcut(QKeySequence::Open);
         connect(aOpen, &QAction::triggered, this, [this]{
             QString p = QFileDialog::getOpenFileName(this, QStringLiteral("Open data"),
                         QString(), QStringLiteral("data (*.dta *.tea *.csv *.tsv *.xlsx);;all files (*)"));
-            if (!p.isEmpty()) submit(QStringLiteral("use \"%1\", clear").arg(p));
+            if (!p.isEmpty() && !m_busy)
+                m_console->injectAndSubmit(QStringLiteral("use \"%1\", clear").arg(p));
         });
+        tb->addSeparator();
+        m_breakAct = tb->addAction(QStringLiteral("Break"));
+        m_breakAct->setEnabled(false);
+        connect(m_breakAct, &QAction::triggered, this, []{ tea_embed_interrupt(); });
+
+        /* menus: File mirrors the toolbar; View toggles the docks */
+        auto *file = menuBar()->addMenu(QStringLiteral("&File"));
+        file->addAction(aDo);
+        file->addAction(aOpen);
         file->addSeparator();
         QAction *aQuit = file->addAction(QStringLiteral("&Quit"));
         aQuit->setShortcut(QKeySequence::Quit);
         connect(aQuit, &QAction::triggered, qApp, &QApplication::quit);
+
+        auto *view = menuBar()->addMenu(QStringLiteral("&View"));
+        const auto docks = findChildren<QDockWidget *>();
+        for (QDockWidget *d : docks) view->addAction(d->toggleViewAction());
     }
 
     ~MainWindow() override { m_thread.quit(); m_thread.wait(2000); }
@@ -257,7 +592,7 @@ signals:
 
 private slots:
     void onReady() {
-        appendText(QStringLiteral("%1 %2 — ready\n")
+        m_console->appendOutput(QStringLiteral("%1 %2 — ready\n")
                    .arg(QString::fromUtf8(
 #ifdef TEA_DECAF
                        "decaf tea"
@@ -265,29 +600,46 @@ private slots:
                        "tea"
 #endif
                    ), QString::fromUtf8(tea_embed_version())), false);
-        if (m_smoke) { m_busy = true; emit reqDofile(m_smokeFile); }
-        else m_cmd->setFocus();
+        if (m_smoke) { m_busy = true; emit reqDofile(m_smokeFile); return; }
+        m_console->showPrompt(false);
+        m_console->setFocus();
+    }
+
+    void onCommand(const QString &line) {
+        if (!line.trimmed().isEmpty()) {
+            m_history->addItem(line);
+            m_history->scrollToBottom();
+        }
+        m_busy = true;
+        m_breakAct->setEnabled(true);
+        emit reqExec(line);
+    }
+
+    void onEditorRun(const QString &path, const QString &what) {
+        if (m_busy) return;
+        m_console->promptConsumed();
+        m_console->appendOutput(QStringLiteral("· running %1\n").arg(what), false);
+        m_busy = true;
+        m_breakAct->setEnabled(true);
+        emit reqDofile(path);
     }
 
     void onText(const QString &t, bool isErr) {
-        appendText(t, isErr);
+        m_console->appendOutput(t, isErr);
         if (m_smoke) m_smokeOut += t;
     }
 
     void onLineDone(int rc, bool needMore) {
         m_busy = false;
-        m_break->setEnabled(false);
-        m_cmd->setEnabled(true);
-        m_needMore = needMore;
+        m_breakAct->setEnabled(false);
         m_dataModel->refresh();
         m_varsModel->refresh();
         refreshPlot();
         if (m_smoke) {
-            /* defer so the pump's queued output signals drain first */
             QTimer::singleShot(300, this, [this, rc]{ verdict(rc); });
             return;
         }
-        m_cmd->setFocus();
+        m_console->showPrompt(needMore);
     }
 
 private:
@@ -298,78 +650,12 @@ private:
         return d;
     }
 
-    bool eventFilter(QObject *o, QEvent *e) override {
-        if (o == m_cmd && e->type() == QEvent::KeyPress) {
-            auto *k = static_cast<QKeyEvent *>(e);
-            if (k->key() == Qt::Key_Up)   { histMove(-1); return true; }
-            if (k->key() == Qt::Key_Down) { histMove(+1); return true; }
-            if (k->key() == Qt::Key_Tab)  { complete();   return true; }
-            if (k->key() == Qt::Key_Return || k->key() == Qt::Key_Enter) {
-                submit(m_cmd->text()); return true;
-            }
-        }
-        return QMainWindow::eventFilter(o, e);
-    }
-
-    void submit(const QString &line) {
-        if (m_busy) return;
-        appendText((m_needMore ? QStringLiteral("> %1\n") : QStringLiteral(". %1\n"))
-                   .arg(line), false);
-        if (!line.trimmed().isEmpty()) {
-            m_history->addItem(line);
-            m_histPos = m_history->count();
-        }
-        m_cmd->clear();
-        m_busy = true;
-        m_break->setEnabled(true);
-        m_cmd->setEnabled(false);
-        emit reqExec(line);
-    }
-
-    void histMove(int d) {
-        int n = m_history->count();
-        if (!n) return;
-        m_histPos = qBound(0, m_histPos + d, n);
-        m_cmd->setText(m_histPos < n ? m_history->item(m_histPos)->text()
-                                     : QString());
-    }
-
-    void complete() {
-        if (m_busy) return;
-        char out[8192];
-        QByteArray line = m_cmd->text().toUtf8();
-        int n = tea_embed_complete(line.constData(), m_cmd->cursorPosition(),
-                                   out, sizeof out);
-        if (n <= 0) return;
-        QStringList cands = QString::fromUtf8(out).split(QChar('\n'),
-                                                         Qt::SkipEmptyParts);
-        if (cands.size() == 1) {
-            QString t = m_cmd->text();
-            int p = m_cmd->cursorPosition(), s = p;
-            while (s > 0 && !t.at(s - 1).isSpace()) --s;
-            t.replace(s, p - s, cands.first());
-            m_cmd->setText(t);
-        } else {
-            appendText(cands.join(QStringLiteral("  ")) + QStringLiteral("\n"),
-                       false);
-        }
-    }
-
-    void appendText(const QString &t, bool isErr) {
-        QTextCharFormat f;
-        if (isErr) f.setForeground(QColor(200, 60, 40));
-        QTextCursor c = m_results->textCursor();
-        c.movePosition(QTextCursor::End);
-        c.setCharFormat(f);
-        c.insertText(t);
-        m_results->setTextCursor(c);
-    }
-
     void refreshPlot() {
         QString p = QDir::current().filePath(QStringLiteral("tea_graph.svg"));
         QFileInfo fi(p);
         if (!fi.exists()) return;
-        if (fi.lastModified() == m_plotStamp) return;
+        if (m_plotStamp.isValid() && fi.lastModified() <= m_plotStamp) return;
+        if (!m_plotStamp.isValid() && fi.lastModified() == m_plotStamp) return;
         m_plotStamp = fi.lastModified();
         m_svg->load(p);
         m_plotDock->show();
@@ -392,27 +678,36 @@ private:
                     int(m_smokeOut.size()));
             ok = false;
         }
+        if (!m_console->toPlainText().contains(QStringLiteral("SMOKE_MARK"))) {
+            dprintf(g_real_err, "smoke: marker did not reach the console widget\n");
+            ok = false;
+        }
+        if (m_plotDock->isVisible()) {
+            dprintf(g_real_err, "smoke: stale plot surfaced (dock visible with no graph command)\n");
+            ok = false;
+        }
         dprintf(g_real_err, "gui smoke: %s (rows=%d cols=%d)\n",
                 ok ? "PASS" : "FAIL",
                 m_dataModel->rowCount(), m_dataModel->columnCount());
         QCoreApplication::exit(ok ? 0 : 1);
     }
 
-    QPlainTextEdit *m_results{};
-    QLineEdit      *m_cmd{};
-    QToolButton    *m_break{};
+    Console        *m_console{};
     QListWidget    *m_history{};
     QSvgWidget     *m_svg{};
     QDockWidget    *m_plotDock{};
+    DoEditor       *m_editor{};
     DataModel      *m_dataModel{};
     VarsModel      *m_varsModel{};
     Worker         *m_worker{};
+    QAction        *m_breakAct{};
     QThread         m_thread;
     QDateTime       m_plotStamp;
-    int             m_histPos = 0;
-    bool            m_busy = false, m_needMore = false, m_smoke = false;
+    bool            m_busy = false, m_smoke = false;
     QString         m_smokeOut, m_smokeFile;
 };
+
+/* ================= entry ========================================= */
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);

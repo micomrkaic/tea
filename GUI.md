@@ -2,13 +2,22 @@
 
 tea-qt is the third frontend over the one tea core, next to the
 readline REPL (`./tea`) and the browser build (`web/`).  It is a
-native Qt6 Widgets application: results console and command line
-(Tab completion, Up/Down history), a virtual-scrolling **data
-browser** over the live frame (zero copies, value labels rendered,
-1-based observation numbers), a variables pane (double-click inserts
-the name into the command line), a history pane (double-click
-reruns), an SVG plots dock that picks up `tea_graph.svg` as graph
-commands write it, and a **Break** button.
+native Qt6 Widgets application:
+
+- a **terminal-style console**: the prompt lives at the tail of the
+  results document and input interleaves with output exactly as in
+  the CLI — Tab completion, Up/Down history, read-only scrollback;
+- a **do-file editor** dock: open/save/run file/run selection; running
+  writes the buffer to a temp file and feeds it through `do`, so what
+  you see is what runs, no save required (Ctrl+R / Ctrl+Shift+R);
+- a virtual-scrolling **data browser** over the live frame (zero
+  copies, value labels rendered, 1-based observation numbers);
+- a variables pane (double-click inserts the name at the prompt) and
+  a history pane (double-click reruns);
+- an SVG **plots dock** that picks up `tea_graph.svg` as graph
+  commands write it — baselined at startup, so a stale graph from an
+  earlier session in the same directory never surfaces;
+- a **Break** toolbar action, honored at the next command boundary.
 
 ## Architecture
 
