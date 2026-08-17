@@ -260,7 +260,7 @@ embed-test: $(QT_CORE_OBJ)
 # do-file through the worker thread, asserts output arrived and the
 # data/variables models see the frame
 gui-test: tea-qt
-	@printf 'sysuse airline\nquietly gen lnp = ln(passengers)\ndisplay "SMOKE_MARK " _N\n' > /tmp/tea_gui_smoke.do
+	@printf 'sysuse airline\nquietly gen lnp = ln(passengers)\nhelp\ndisplay "SMOKE_MARK " _N\n' > /tmp/tea_gui_smoke.do
 	@rm -rf /tmp/tea_gui_smoke_cwd && mkdir -p /tmp/tea_gui_smoke_cwd
 	@printf '<svg xmlns="http://www.w3.org/2000/svg"/>' > /tmp/tea_gui_smoke_cwd/tea_graph.svg
 	cd /tmp/tea_gui_smoke_cwd && QT_QPA_PLATFORM=offscreen $(CURDIR)/tea-qt --smoke /tmp/tea_gui_smoke.do

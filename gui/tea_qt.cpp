@@ -75,14 +75,24 @@ private:
 
 class Worker : public QObject {
     Q_OBJECT
+    /* end-of-output sentinel: one \x01 byte down each captured fd.
+     * lineDone and the pump's textReady are queued from DIFFERENT
+     * threads, so their relative delivery order is unguaranteed — the
+     * v1.6.52 console showed the prompt before help's final chunks
+     * arrived, the chunks landed after the prompt, and the polluted
+     * tail got submitted as commands (the "doom loop").  The window
+     * now waits for lineDone AND both sentinels before prompting. */
+    static void eol() { const char b = 1; (void)!write(1, &b, 1); (void)!write(2, &b, 1); }
 public slots:
     void init()                     { tea_embed_init(); emit ready(); }
     void execLine(const QString &s) {
         int more = tea_embed_exec(s.toUtf8().constData());
+        eol();
         emit lineDone(tea_embed_last_rc(), more == 1);
     }
     void runDofile(const QString &p) {
         int rc = tea_embed_run_dofile(p.toUtf8().constData());
+        eol();
         emit lineDone(rc, false);
     }
 signals:
@@ -105,13 +115,25 @@ public:
     std::function<QString(const QString &, int)> completer;
 
     void appendOutput(const QString &t, bool isErr) {
-        QTextCursor c(document());
-        c.movePosition(QTextCursor::End);
         QTextCharFormat f;
         if (isErr) f.setForeground(QColor(200, 60, 40));
-        c.setCharFormat(f);
-        c.insertText(t);
-        setTextCursor(c);
+        QTextCursor c(document());
+        if (m_hasPrompt) {
+            /* terminal semantics: output goes ABOVE the prompt line,
+             * prompt and typed tail shift down intact — late chunks
+             * can never pollute the editable tail */
+            c.setPosition(m_promptStart);
+            c.setCharFormat(f);
+            c.insertText(t);
+            int d = int(t.size());
+            m_promptStart += d;
+            m_promptPos   += d;
+        } else {
+            c.movePosition(QTextCursor::End);
+            c.setCharFormat(f);
+            c.insertText(t);
+            setTextCursor(c);
+        }
         ensureCursorVisible();
     }
 
@@ -120,6 +142,7 @@ public:
         c.movePosition(QTextCursor::End);
         if (c.columnNumber() != 0) c.insertText(QStringLiteral("\n"));
         c.setCharFormat(QTextCharFormat());
+        m_promptStart = c.position();
         c.insertText(continuation ? QStringLiteral("> ") : QStringLiteral(". "));
         m_promptPos = c.position();
         m_hasPrompt = true;
@@ -266,7 +289,8 @@ private:
         }
     }
 
-    int m_promptPos = 0;
+    int m_promptPos = 0;     /* after the prompt text: tail starts here */
+    int m_promptStart = 0;   /* before the prompt text: output inserts here */
     bool m_hasPrompt = false;
     QStringList m_hist;
     int m_histPos = 0;
@@ -625,21 +649,40 @@ private slots:
     }
 
     void onText(const QString &t, bool isErr) {
-        m_console->appendOutput(t, isErr);
-        if (m_smoke) m_smokeOut += t;
+        QString clean = t;
+        int k = int(clean.count(QChar(1)));
+        if (k) {
+            clean.remove(QChar(1));
+            (isErr ? m_eolErr : m_eolOut) += k;
+        }
+        if (!clean.isEmpty()) {
+            m_console->appendOutput(clean, isErr);
+            if (m_smoke) m_smokeOut += clean;
+        }
+        if (k) maybeFinishLine();
     }
 
     void onLineDone(int rc, bool needMore) {
+        m_lineDone = true;
+        m_doneRc = rc;
+        m_doneMore = needMore;
+        maybeFinishLine();
+    }
+
+    void maybeFinishLine() {
+        /* the prompt appears only after the command reported done AND
+         * every byte it wrote has been drained from both pipes */
+        if (!m_lineDone || m_eolOut < 1 || m_eolErr < 1) return;
+        m_lineDone = false;
+        m_eolOut -= 1;
+        m_eolErr -= 1;
         m_busy = false;
         m_breakAct->setEnabled(false);
         m_dataModel->refresh();
         m_varsModel->refresh();
         refreshPlot();
-        if (m_smoke) {
-            QTimer::singleShot(300, this, [this, rc]{ verdict(rc); });
-            return;
-        }
-        m_console->showPrompt(needMore);
+        m_console->showPrompt(m_doneMore);
+        if (m_smoke) { verdict(m_doneRc); return; }
     }
 
 private:
@@ -686,6 +729,19 @@ private:
             dprintf(g_real_err, "smoke: stale plot surfaced (dock visible with no graph command)\n");
             ok = false;
         }
+        {
+            QString all = m_console->toPlainText();
+            if (all.contains(QStringLiteral("unrecognized command"))) {
+                dprintf(g_real_err, "smoke: console polluted (output executed as commands)\n");
+                ok = false;
+            }
+            /* prompt-after-output: with the sentinel protocol the
+             * document must END at a fresh prompt */
+            if (!all.endsWith(QStringLiteral("\n. ")) && !all.endsWith(QStringLiteral(". "))) {
+                dprintf(g_real_err, "smoke: document does not end at a prompt\n");
+                ok = false;
+            }
+        }
         dprintf(g_real_err, "gui smoke: %s (rows=%d cols=%d)\n",
                 ok ? "PASS" : "FAIL",
                 m_dataModel->rowCount(), m_dataModel->columnCount());
@@ -704,6 +760,8 @@ private:
     QThread         m_thread;
     QDateTime       m_plotStamp;
     bool            m_busy = false, m_smoke = false;
+    bool            m_lineDone = false, m_doneMore = false;
+    int             m_doneRc = 0, m_eolOut = 0, m_eolErr = 0;
     QString         m_smokeOut, m_smokeFile;
 };
 

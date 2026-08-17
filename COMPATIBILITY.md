@@ -355,3 +355,18 @@ Documented graphics deviations from Stata:
   hazard), fast-forwards a merely-behind master, refuses a diverged
   one with whole-tree-import recovery advice, and pushes master
   before the tag so a rejected push cannot strand a published tag.
+
+## Console output-ordering protocol (v1.6.53)
+
+- Fixed the tea-qt "doom loop": lineDone and pump chunks are queued
+  from different threads, so the prompt could appear before a large
+  command's final output chunks, which then landed after the prompt
+  and were submitted as commands on the next Enter.  Two layers, both
+  in gui/ only: output arriving while a prompt is active now inserts
+  ABOVE the prompt (terminal semantics; the editable tail cannot be
+  polluted), and the worker writes a one-byte \x01 sentinel down both
+  captured fds after each command — the window prompts only after
+  lineDone AND both sentinels, so output always precedes its prompt.
+- The GUI smoke now runs `help` (the original trigger) and asserts
+  the console contains no "unrecognized command" pollution and the
+  document ends at a fresh prompt.

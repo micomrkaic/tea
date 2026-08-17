@@ -6,7 +6,12 @@ native Qt6 Widgets application:
 
 - a **terminal-style console**: the prompt lives at the tail of the
   results document and input interleaves with output exactly as in
-  the CLI — Tab completion, Up/Down history, read-only scrollback;
+  the CLI — Tab completion, Up/Down history, read-only scrollback.
+  Output ordering is protocol-guaranteed: the worker writes an EOL
+  sentinel down both captured fds and the prompt appears only after
+  every byte of a command's output has drained; any output that
+  arrives while a prompt is showing inserts above it, so the editable
+  tail can never be polluted;
 - a **do-file editor** dock: open/save/run file/run selection; running
   writes the buffer to a temp file and feeds it through `do`, so what
   you see is what runs, no save required (Ctrl+R / Ctrl+Shift+R);
