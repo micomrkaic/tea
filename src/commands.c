@@ -5879,7 +5879,19 @@ int run_command(Cmd *c){
         if(!strcmp(w,"more")){
             char v[16]=""; sscanf(c->args+5," %15s",v);
             extern int g_more_enabled;
-            if(!strcmp(v,"on"))  { g_more_enabled=1; return 0; }
+            if(!strcmp(v,"on"))  {
+                g_more_enabled=1;
+                /* honesty where the pager cannot function: the flag is
+                 * accepted (harmless), but say so once instead of the
+                 * silent no-op users read as a bug */
+#ifdef __EMSCRIPTEN__
+                tea_printf("(note: more paging is unavailable in the browser)\n");
+#else
+                if(!isatty(1))
+                    tea_printf("(note: output is not a terminal; more paging will have no effect)\n");
+#endif
+                return 0;
+            }
             if(!strcmp(v,"off")) { g_more_enabled=0; return 0; }
             tea_err("set more: on or off\n"); return 198;
         }

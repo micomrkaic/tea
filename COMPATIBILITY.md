@@ -370,3 +370,18 @@ Documented graphics deviations from Stata:
 - The GUI smoke now runs `help` (the original trigger) and asserts
   the console contains no "unrecognized command" pollution and the
   document ends at a fresh prompt.
+
+## Browser fixes and the toolchain transplant (v1.6.54)
+
+- Splash bug fixed: the terminal banner carried HTML-comment stamping
+  markers inside a JS string, which xterm printed literally.  The
+  banner now uses TEA_NAME/TEA_TAG consts stamped by the same make
+  rules that stamp the page markers.
+- `set more on` now says so when paging cannot function (browser
+  builds, and any non-terminal stdout such as tea-qt or pipes)
+  instead of silently doing nothing.
+- The wasm engines (full + decaf) are rebuilt at current sources with
+  a from-scratch toolchain (apt emscripten 3.1.6, freshly compiled
+  CLAPACK/GSL/ReadStat/zlib per WASM_NOTES.md).  All 80 goldens
+  reproduced byte-identically across the toolchain change — the
+  strongest evidence yet for the output promise.

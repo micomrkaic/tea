@@ -152,6 +152,27 @@ whole build works from distro packages + GitHub sources instead:
    fetch; the test harness is unaffected (it passes wasmBinary directly),
    but ad-hoc `node tea.js` runs need `delete globalThis.fetch` first.
 
+## Bootstrap CONFIRMED end-to-end (cold-container rebuild, v1.6.54)
+The v1.6.17 recipe below was re-executed from scratch on Ubuntu 24 with
+apt's emscripten 3.1.6 + node 22 and produced 80/80 byte-identical
+goldens — including every estimator through freshly compiled CLAPACK.
+Clarifications learned this time:
+- the s_copy/s_cat patch is a LINK-stage requirement: wasm enforces
+  function signatures the native linker ignores (declared int in 44
+  lapack + 11 blas sources, defined void in libf2c).  The exact fix:
+  `grep -rl "int s_cat\|int s_copy" SRC BLAS | xargs sed -i
+  's|/\* Subroutine \*/ int s_cat(|/* Subroutine */ void s_cat(|g;
+   s|/\* Subroutine \*/ int s_copy(|/* Subroutine */ void s_copy(|g'`
+- arithchk removal is cleaner as a configure_file(COPYONLY) of the
+  pre-seeded arith.h (three defines: IEEE_8087, Arith_Kind_ASA 1,
+  Double_Align) replacing the whole add_executable/ADD_CUSTOM_COMMAND
+  block in F2CLIBS/libf2c/CMakeLists.txt.
+- zlib for wasm: github.com/madler/zlib, `emconfigure ./configure
+  --static && emmake make libz.a`.
+- node >= 18 needs `npm install acorn` inside
+  /usr/share/emscripten/tools/ (unchanged), and ad-hoc `node tea.js`
+  runs still need `delete globalThis.fetch` (harnesses unaffected).
+
 ## Bootstrap refinements (cold-container rebuild, v1.6.17)
 - Install ORDER matters: binaryen/clang-15/llvm-15 BEFORE the forced
   emscripten deb; once emscripten is force-installed, apt is wedged

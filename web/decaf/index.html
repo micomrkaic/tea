@@ -69,7 +69,7 @@
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
   <div class="tagline"><!--TEATAG-->data management in your browser &mdash; import, clean, merge, reshape; estimation not included<!--/TEATAG--></div>
-  <div class="ver">v<!--TEAVER-->1.6.50<!--/TEAVER--> &middot; runs entirely in your browser</div>
+  <div class="ver">v<!--TEAVER-->1.6.54<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
   <div class="foot">free software (GPLv3) &middot; no data leaves your machine</div>
@@ -133,7 +133,10 @@ window.addEventListener('error', e => fatal(e.message || 'script error'));
 if (typeof Terminal === 'undefined') { fatal('xterm.min.js missing'); throw new Error('xterm'); }
 if (typeof createTea === 'undefined') { fatal('tea.js missing'); throw new Error('tea.js'); }
 
-const term = new Terminal({ cursorBlink:true, fontSize:14,
+/* stamped by sync-web-version / the decaf page recipe */
+  const TEA_NAME = 'decaf tea';
+  const TEA_TAG  = 'data management in your browser — estimation not included';
+  const term = new Terminal({ cursorBlink:true, fontSize:14,
   theme:{ background:'#1e1e1e' }, convertEol:true, scrollback:5000 });
 term.open(document.getElementById('terminal'));
 const fit = new FitAddon.FitAddon();
@@ -230,7 +233,7 @@ async function fetchWasm(){
   const A = '\x1b[38;5;24m', D = '\x1b[2m', R = '\x1b[0m';
   term.writeln('');
   term.writeln(A + '        (  (' + R);
-  term.writeln(A + '         )  )' + R + '      ' + '<!--TEANAME-->decaf tea<!--/TEANAME-->' + ' ' + v + ' \u2014 ' + '<!--TEATAG-->data management in your browser &mdash; import, clean, merge, reshape; estimation not included<!--/TEATAG-->');
+  term.writeln(A + '         )  )' + R + '      ' + TEA_NAME + ' ' + v + ' \u2014 ' + TEA_TAG);
   term.writeln(A + '      .........' + R + D + '    free Stata-like data analysis, in your browser' + R);
   term.writeln(A + '      |       |]' + R + D + '   GPLv3 \u00b7 Mico Mrkaic \u00b7 github.com/micomrkaic/tea' + R);
   term.writeln(A + '      \\       /' + R);

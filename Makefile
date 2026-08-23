@@ -422,6 +422,8 @@ web/decaf/index.html: web/index.html
 	  -e 's|(<!--TEAVER-->)[^<]*(<!--/TEAVER-->)|\1$(VER)\2|' \
 	  -e 's|(<!--TEANAME-->)[^<]*(<!--/TEANAME-->)|\1decaf tea\2|' \
 	  -e 's|(<!--TEATAG-->)[^<]*(<!--/TEATAG-->)|\1data management in your browser \&mdash; import, clean, merge, reshape; estimation not included\2|' \
+	  -e "s|(const TEA_NAME = ')[^']*(')|\1decaf tea\2|" \
+	  -e "s|(const TEA_TAG  = ')[^']*(')|\1data management in your browser — estimation not included\2|" \
 	  web/index.html > web/decaf/index.html
 	cp web/lineeditor.js web/xterm.min.js web/xterm-addon-fit.js web/decaf/ 2>/dev/null || true
 
@@ -461,6 +463,8 @@ sync-web-version:
 	  -e 's|(<!--TEAVER-->)[^<]*(<!--/TEAVER-->)|\1$(VER)\2|' \
 	  -e 's|(<!--TEANAME-->)[^<]*(<!--/TEANAME-->)|\1tea\2|' \
 	  -e 's|(<!--TEATAG-->)[^<]*(<!--/TEATAG-->)|\1tiny econometric assistant\2|' \
+	  -e "s|(const TEA_NAME = ')[^']*(')|\1tea\2|" \
+	  -e "s|(const TEA_TAG  = ')[^']*(')|\1tiny econometric assistant\2|" \
 	  web/index.html
 	@echo "web splash stamped with $(VER)"
 
