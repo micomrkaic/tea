@@ -385,3 +385,19 @@ Documented graphics deviations from Stata:
   CLAPACK/GSL/ReadStat/zlib per WASM_NOTES.md).  All 80 goldens
   reproduced byte-identically across the toolchain change — the
   strongest evidence yet for the output promise.
+
+## The pager actually pages (v1.6.55)
+
+- `set more on` previously paged exactly two commands (list, describe)
+  — the hand-wired sites.  Paging is now centralized in the output tee,
+  so every command in the main TU pages: help, tabulate, summarize,
+  codebook, and the rest.  q aborts the current command's remaining
+  screen output (the log stays complete); each input line gets a fresh
+  screen budget (native statements included).
+- Two bugs found by the new pty gate (tests/embed/more_pty_test.py,
+  `make more-test`, in `make gate`): the reset originally lived in
+  run_command and missed native statements, and the pager's own
+  --Break-- line was counted by the tee at a full-screen counter,
+  re-pausing recursively and eating the next command's first
+  keystroke.  Pipes cannot test a pager — its isatty guard is the
+  point — hence the pty driver.

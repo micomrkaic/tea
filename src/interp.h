@@ -80,6 +80,7 @@ TeaSession *tea_session_new(Interp *ip, bool interactive);
  * *need_more when the statement is incomplete (continuation prompt). */
 int  tea_session_feed(TeaSession *s, const char *line, bool *need_more);
 void tea_interrupt_request(void);   /* GUI Break: honored at next command boundary */
+void tea_more_reset(void);          /* pager: fresh screen budget per input line */
 /* EOF: execute any pending unterminated {...} block (matches historical
  * behavior); leftover partial statements are discarded. */
 void tea_session_flush(TeaSession *s);

@@ -196,8 +196,15 @@ both: tea tea-decaf
 
 # the whole two-tier verification in one command (native suites + decaf
 # leak check; wasm gates stay separate targets since they need emcc)
+# pager gate: needs a REAL pty (the pipe harness cannot see `more` by
+# design), so it lives in a python driver; skipped without python3
+more-test: tea
+	@if command -v python3 >/dev/null 2>&1; then \
+	    python3 tests/embed/more_pty_test.py ./tea; \
+	else echo "more-test skipped: python3 not found"; fi
+
 QT_PRESENT := $(shell pkg-config --exists Qt6Widgets 2>/dev/null && echo y)
-gate: test decaf-test embed-test $(if $(QT_PRESENT),gui-test,)
+gate: test decaf-test embed-test more-test $(if $(QT_PRESENT),gui-test,)
 
 decaf-test: tea-decaf
 	@printf 'help _names\n' > /tmp/tea_names.do; \
@@ -332,7 +339,7 @@ showpaths:
 	@echo "CFLAGS           = $(CFLAGS)"
 	@echo "LDFLAGS          = $(LDFLAGS)"
 
-.PHONY: qt-check embed-test clean test smoke check-deps showpaths debug release manual docs-pdf quickstart sync-web-version dist gui gui-test gui-clean both gate decaf decaf-test wasm-decaf wasm-decaf-test wasm-decaf-clean qt qt-test qt-clean
+.PHONY: more-test qt-check embed-test clean test smoke check-deps showpaths debug release manual docs-pdf quickstart sync-web-version dist gui gui-test gui-clean both gate decaf decaf-test wasm-decaf wasm-decaf-test wasm-decaf-clean qt qt-test qt-clean
 
 # ---- WebAssembly build (browser demo) -------------------------------------
 # Requires emcc and the prebuilt WASM static libs (reference CLAPACK stack,

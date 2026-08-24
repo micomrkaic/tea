@@ -211,6 +211,9 @@ int run_line(Interp *ip,const char *raw){
         g_tea_last_rc = ip->rc = 1;   /* mirror for the _rc evaluator */
         return 1;
     }
+    tea_more_reset();   /* every input line starts a fresh pager budget —
+                         * native statements included (they never reach
+                         * run_command, which the pty gate caught) */
     char line[8192]; snprintf(line,sizeof line,"%s",raw);
     char *s=line; while(*s==' '||*s=='\t')s++;
     if(!*s) return 0;

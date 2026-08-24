@@ -90,6 +90,12 @@ void tea_log_command(const char *line){
     fflush(g_logfp);
 }
 
+/* pager plumbing — defined with the more machinery further down, but
+ * consulted by the tee functions here */
+static int more_gate(int *count);
+static int g_more_count;
+static int g_more_quit;
+
 __attribute__((format(__printf__,1,2)))
 static int tea_printf(const char *fmt, ...){
     va_list ap;
@@ -104,23 +110,42 @@ static int tea_printf(const char *fmt, ...){
         vsnprintf(buf, sz, fmt, ap);
         va_end(ap);
     }
+    if(g_more_quit){
+        /* user pressed q at --more--: screen output of this command is
+         * done, but the log remains complete */
+        if(g_logfp){ fputs(buf, g_logfp); fflush(g_logfp); }
+        if(buf != small) free(buf);
+        return n;
+    }
     fputs(buf, stdout);
     if(g_logfp){ fputs(buf, g_logfp); fflush(g_logfp); }
+    for(const char *p = buf; *p; p++)
+        if(*p == '\n' && more_gate(&g_more_count)){ g_more_quit = 1; break; }
     if(buf != small) free(buf);
     return n;
 }
 __attribute__((format(__printf__,2,3)))
 static int tea_fprintf(FILE *fp, const char *fmt, ...){
     /* fprintf to non-stdout streams (e.g. stderr) is NOT teed */
-    va_list ap; va_start(ap, fmt);
+    va_list ap;
+    if(fp == stdout){
+        char buf[4096];
+        va_start(ap, fmt);
+        int n = vsnprintf(buf, sizeof buf, fmt, ap);
+        va_end(ap);
+        if(g_more_quit){
+            if(g_logfp){ fputs(buf, g_logfp); fflush(g_logfp); }
+            return n;
+        }
+        fputs(buf, stdout);
+        if(g_logfp){ fputs(buf, g_logfp); fflush(g_logfp); }
+        for(const char *p = buf; *p; p++)
+            if(*p == '\n' && more_gate(&g_more_count)){ g_more_quit = 1; break; }
+        return n;
+    }
+    va_start(ap, fmt);
     int n = vfprintf(fp, fmt, ap);
     va_end(ap);
-    if(fp == stdout && g_logfp){
-        va_start(ap, fmt);
-        char buf[4096]; vsnprintf(buf, sizeof buf, fmt, ap);
-        va_end(ap);
-        fputs(buf, g_logfp); fflush(g_logfp);
-    }
     return n;
 }
 
@@ -288,6 +313,15 @@ static void fmt_cell(Variable *v,size_t i,char *out,size_t n){
  * TTY — do-files, pipes, capture, and the test suite never see it, so
  * golden output is untouched.  Default off, like modern Stata. */
 int g_more_enabled = 0;
+/* centralized pager state: every line printed through the tee counts
+ * against the screen budget, so ALL of this TU's commands page (help,
+ * tabulate, summarize, ...) — not just the two that were hand-wired.
+ * q swallows the remaining screen output of the current command (the
+ * log still gets everything). */
+/* (tentatively declared above the tee; defined here) */
+static int g_more_count;
+static int g_more_quit;
+void tea_more_reset(void){ g_more_count = 0; g_more_quit = 0; }
 #ifndef __EMSCRIPTEN__
 #include <sys/ioctl.h>
 #include <termios.h>
@@ -309,7 +343,15 @@ static int more_gate(int *count){
     int ch = getchar();
     if (have_t) tcsetattr(0, TCSANOW, &old_t);
     fprintf(stderr, "\r        \r"); fflush(stderr);
-    if (ch == 'q' || ch == 'Q'){ printf("--Break--\n"); return 1; }
+    if (ch == 'q' || ch == 'Q'){
+        /* bypass the tee: this printf is tee'd in this TU, and counting
+         * our own --Break-- line at a full-screen counter re-pauses the
+         * pager recursively, eating the next command's first keystroke
+         * (found by the pty gate) */
+        fputs("--Break--\n", stdout);
+        *count = 0;
+        return 1;
+    }
     if (ch == '\n' || ch == '\r') *count = more_screen_rows() - 1;  /* one line */
     else *count = 0;                                                  /* full page */
     return 0;
@@ -716,7 +758,6 @@ static int do_list(Cmd *c){
     printf("     +");for(int j=0;j<nv;j++)printf("%-*s+",w[j]+2,"");printf("\n     |");
     for(int j=0;j<nv;j++)printf(" %-*s |",u8pad(c->f->vars[vs[j]].name,w[j]),c->f->vars[vs[j]].name);printf("\n");
     EvalCtx ec={0}; ec.f=c->f;
-    int more_count = 2;   /* the header rows already on screen */
     for(size_t i=0;i<c->f->nobs;i++){
         if(c->in_lo>0&&(long)i+1<c->in_lo)continue;
         if(c->in_hi>0&&(long)i+1>c->in_hi)continue;
@@ -725,7 +766,7 @@ static int do_list(Cmd *c){
         for(int j=0;j<nv;j++){ char b[128]; fmt_cell(&c->f->vars[vs[j]],i,b,sizeof b);
             printf(" %-*s |",u8pad(b,w[j]),b); }
         printf("\n");
-        if(more_gate(&more_count)) break;
+        if(g_more_quit) break;   /* q at --more--: stop generating rows */
     }
     free(w); free(vs); node_free(ifn);
     tsop_drop_temps(c->f, n_temps);
@@ -968,15 +1009,14 @@ static int do_describe(Cmd *c){
     else { for(int i=0;i<c->f->nvar;i++){ int L=(int)strlen(c->f->vars[i].name); if(L>namew)namew=L; } }
     if(namew>32)namew=32;
     printf("%-*s %-8s %-10s %s\n",namew,"variable","type","format","label");
-    int more_count = 6;   /* header block already on screen */
     if(c->varlist[0]){
         for(int k=0;k<nv;k++){ Variable*v=&c->f->vars[vs[k]];
             printf("%-*s %-8s %-10s %s\n",namew,v->name,v->type==VT_STR?"str":"double",v->format,v->vlabel);
-            if(more_gate(&more_count)) break; }
+            if(g_more_quit) break; }
     } else {
         for(int i=0;i<c->f->nvar;i++){ Variable*v=&c->f->vars[i];
             printf("%-*s %-8s %-10s %s\n",namew,v->name,v->type==VT_STR?"str":"double",v->format,v->vlabel);
-            if(more_gate(&more_count)) break; }
+            if(g_more_quit) break; }
     }
     printf("-------------------------------------------------------------\n");
     free(vs);
