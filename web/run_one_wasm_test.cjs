@@ -29,5 +29,13 @@ const REG = path.resolve(__dirname, '../tests/regression');
               fs.readFileSync(flagsFile, 'utf8').includes('--tea-extensions') ? 1 : 0;
   M.ccall('tea_web_run_dofile', 'number', ['string','number'],
           ['/tests/regression/' + name + '.do', ext]);
-  process.exit(0);
+  // process.exit() discards QUEUED stdout: pipe writes are async in
+  // node, so a print-heavy test under backpressure lost its tail with
+  // a clean exit status (intermittent 79/80s in the harness, seen on
+  // 39_tier4 and 73_dfactor_constraint at varying lines).  exitCode +
+  // natural termination lets node drain stdout; the empty-write
+  // callback is a FIFO barrier forcing the drain if some handle would
+  // otherwise keep the process alive.
+  process.exitCode = 0;
+  process.stdout.write('', () => process.exit(0));
 })();

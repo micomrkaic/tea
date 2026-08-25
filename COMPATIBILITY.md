@@ -401,3 +401,17 @@ Documented graphics deviations from Stata:
   re-pausing recursively and eating the next command's first
   keystroke.  Pipes cannot test a pager — its isatty guard is the
   point — hence the pty driver.
+
+## Title stamping (v1.6.56)
+
+- The browser tab still showed stamping markers: <title> is RCDATA,
+  where HTML comments are literal text, unlike the body divs where
+  the marker scheme is valid.  The title is now stamped by matching
+  the tag itself; markers removed from it.
+- Also fixed in v1.6.56: the wasm harness's intermittent 79/80 —
+  node's process.exit() discards queued async stdout, so print-heavy
+  tests under container load lost their output tail with a clean exit
+  status, masquerading as golden mismatches (39_tier4, 73_dfactor at
+  varying lines).  The per-test runner now drains stdout before
+  exiting, and the harness reports child death (signal/status)
+  distinctly from a real golden diff.

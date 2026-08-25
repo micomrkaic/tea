@@ -19,6 +19,11 @@ for (const f of dos) {
   else {
     fail++; failed.push(name);
     console.log('FAIL', name);
+    // a child that DIED (signal or nonzero exit) produces truncated
+    // stdout that would otherwise masquerade as a golden mismatch —
+    // say so explicitly (seen: OOM-killed node under container load)
+    if (r.signal) console.log('  child killed by signal', r.signal, '- output truncated, not a golden diff');
+    else if (r.status !== 0) console.log('  child exit status', r.status, '- output may be truncated');
     const a = actual.split('\n'), e = expected.split('\n');
     for (let i = 0; i < Math.max(a.length, e.length); i++)
       if (a[i] !== e[i]) { console.log('  line', i+1, '\n   exp:', JSON.stringify(e[i]), '\n   got:', JSON.stringify(a[i])); break; }
