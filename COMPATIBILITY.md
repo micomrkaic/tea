@@ -436,3 +436,17 @@ Documented graphics deviations from Stata:
   Qt-version-specific, so a committed copy breaks `make gui` on any
   machine with a different Qt.  Now ignored; update.sh untracks it
   idempotently.
+
+## Loader: compressed transfers (v1.6.58)
+
+- v1.6.57's loader rejected PERFECT modules on GitHub Pages: the new
+  length check compared received bytes against Content-Length, but
+  Pages serves tea.wasm with Content-Encoding: gzip, so Content-Length
+  is the COMPRESSED size (~36%) while fetch delivers the decompressed
+  stream — every load "failed" with more bytes received than declared.
+  The length check is gone; WebAssembly.validate is the completeness
+  test (it is what catches real truncation).  The page smoke gained a
+  `compressed` scenario serving a full body under a gzip-sized
+  Content-Length, which reproduced the field failure before the fix.
+  Lesson recorded: the smoke's fetch stub had tested the assumption
+  (honest lengths), not the web.

@@ -505,6 +505,7 @@ manual: $(BIN)
 # script had no coverage; it now does
 wasm-test:
 	cd web && node run_wasm_tests.cjs && node run_page_smoke.cjs \
+	    && node run_page_smoke.cjs compressed \
 	    && node run_page_smoke.cjs truncate-once \
 	    && node run_page_smoke.cjs truncate-always
 

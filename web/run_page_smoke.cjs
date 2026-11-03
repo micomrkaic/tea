@@ -67,6 +67,13 @@ const FitAddon = { FitAddon: class { fit(){} activate(){} } };
 //                     must carry cache:'reload' to bypass the poison
 //   truncate-always — every response cut: the loader must FAIL with the
 //                     human hard-refresh message, never reach ready
+//   compressed      — the REAL WEB: GitHub Pages serves the wasm with
+//                     Content-Encoding: gzip, so Content-Length is the
+//                     COMPRESSED size (~36% of the module) while fetch
+//                     delivers the decompressed stream.  The loader must
+//                     accept the full module in ONE fetch — a length-vs-
+//                     Content-Length equality check false-fails here
+//                     (shipped in v1.6.57; this scenario is its tombstone)
 const SCENARIO = process.argv[2] || 'normal';
 let fetchCalls = 0;
 async function fetchStub(url, opts){
@@ -77,13 +84,16 @@ async function fetchStub(url, opts){
   const bytes =
     (SCENARIO === 'truncate-always' ||
      (SCENARIO === 'truncate-once' && fetchCalls === 1)) ? cut : full;
+  const declared = SCENARIO === 'compressed'
+    ? Math.floor(bytes.length * 0.357)   /* gzip'd size, as Pages reports */
+    : bytes.length;
   if (SCENARIO === 'truncate-once' && fetchCalls === 2 &&
       !(opts && opts.cache === 'reload'))
     throw new Error('retry fetch did not pass cache:"reload" — a poisoned cache entry would be replayed');
   let served = false;
   return {
     ok: true, status: 200,
-    headers: { get: h => /content-length/i.test(h) ? String(bytes.length) : null },
+    headers: { get: h => /content-length/i.test(h) ? String(declared) : null },
     body: { getReader(){ return { read: async () =>
         served ? {done: true} : (served = true, {done: false, value: bytes}) }; } },
     arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
@@ -165,14 +175,14 @@ let readyAt = 0;
         console.error('page smoke[truncate-always]: reached ready on a truncated module');
         process.exit(1);
       }
-      const want = SCENARIO === 'truncate-once' ? 2 : 1;
+      const want = SCENARIO === 'truncate-once' ? 2 : 1;   /* compressed: 1 — no spurious retry */
       if (fetchCalls !== want) {
         console.error('page smoke[%s]: expected %d fetches, saw %d',
                       SCENARIO, want, fetchCalls);
         process.exit(1);
       }
-      console.log(SCENARIO === 'normal'
-        ? 'page smoke: ready and stable (loader completed)'
+      console.log(SCENARIO === 'normal' ? 'page smoke: ready and stable (loader completed)'
+        : SCENARIO === 'compressed' ? 'page smoke[compressed]: full module accepted despite gzip Content-Length (correct)'
         : 'page smoke[truncate-once]: recovered via cache-bypass refetch (correct)');
       process.exit(0);
     }

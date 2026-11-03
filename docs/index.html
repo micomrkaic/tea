@@ -69,7 +69,7 @@
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
   <div class="tagline"><!--TEATAG-->tiny econometric assistant<!--/TEATAG--></div>
-  <div class="ver">v<!--TEAVER-->1.6.57<!--/TEAVER--> &middot; runs entirely in your browser</div>
+  <div class="ver">v<!--TEAVER-->1.6.58<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
   <div class="foot">free software (GPLv3) &middot; no data leaves your machine</div>
@@ -196,6 +196,8 @@ async function fetchWasmOnce(cacheMode){
     const {done, value} = await reader.read();
     if (done) break;
     chunks.push(value); got += value.length;
+    /* total is Content-Length — the COMPRESSED size on gzip'd transfers,
+     * so the bar saturates early there; the clamp keeps it sane */
     barEl.style.width = Math.min(100, 100*got/total).toFixed(1) + '%';
     splashStatus.textContent = `brewing\u2026 ${(got/1048576).toFixed(1)} MB`;
   }
@@ -207,9 +209,14 @@ function wasmComplete(r){
   const b = r.bytes;
   if (b.length < 8 || b[0] !== 0x00 || b[1] !== 0x61 ||
       b[2] !== 0x73 || b[3] !== 0x6d) return false;      /* \0asm magic */
-  if (r.total && b.length !== r.total) return false;      /* short read */
-  return WebAssembly.validate(b);   /* full structural check: false on
-                                       any truncated or corrupt section */
+  /* NO length-vs-Content-Length check: under Content-Encoding (GitHub
+   * Pages gzips the wasm) Content-Length is the COMPRESSED size while
+   * fetch delivers the decompressed stream, so an equality test
+   * false-fails on a perfect module (shipped in v1.6.57, bounced every
+   * load).  Structural validation is the real completeness test — it
+   * is what catches an actually-truncated module. */
+  return WebAssembly.validate(b);   /* false on any truncated or corrupt
+                                       section */
 }
 async function fetchWasm(){
   let r = await fetchWasmOnce();
@@ -219,9 +226,9 @@ async function fetchWasm(){
     r = await fetchWasmOnce('reload');
   }
   if (!wasmComplete(r))
-    throw new Error('tea.wasm arrived incomplete twice (' + r.bytes.length +
-      (r.total ? ' of ' + r.total : '') + ' bytes). A proxy or cache may be ' +
-      'truncating the download \u2014 hard-refresh (Ctrl+Shift+R) or try another network.');
+    throw new Error('tea.wasm arrived truncated or corrupt twice (' +
+      r.bytes.length + ' bytes received). A proxy or cache may be ' +
+      'cutting the download \u2014 hard-refresh (Ctrl+Shift+R) or try another network.');
   return r.bytes;
 }
 
