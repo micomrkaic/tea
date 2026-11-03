@@ -277,6 +277,47 @@ gui-clean:
 	rm -f tea-qt gui/tea_qt.o gui/tea_qt.moc
 qt-clean: gui-clean
 
+# ---- install / uninstall ---------------------------------------------------
+# User-local by default (no sudo): binaries into ~/.local/bin, the man
+# page into ~/.local/share/man/man1 (man-db finds it automatically when
+# ~/.local/bin is on PATH), documentation into ~/.local/share/doc/tea.
+# tea is a SELF-CONTAINED binary: the bundled datasets (sysuse) and all
+# help text are compiled in, so it runs correctly from any directory
+# with no runtime assets to install.  Override the prefix as usual:
+#     make install PREFIX=/usr/local
+PREFIX  ?= $(HOME)/.local
+BINDIR   = $(PREFIX)/bin
+MAN1DIR  = $(PREFIX)/share/man/man1
+DOCDIR   = $(PREFIX)/share/doc/tea
+
+man/tea.1: man/tea.1.in VERSION
+	@mkdir -p man
+	sed -e 's/@VERSION@/$(VER)/g' -e "s/@DATE@/$$(date +'%B %Y')/g" man/tea.1.in > $@
+
+install: tea man/tea.1
+	install -d "$(BINDIR)" "$(MAN1DIR)" "$(DOCDIR)"
+	install -m 0755 tea "$(BINDIR)/tea"
+	@if [ -x tea-decaf ]; then install -m 0755 tea-decaf "$(BINDIR)/tea-decaf"; \
+	    echo "installed tea-decaf (data-management tier)"; fi
+	@if [ -x tea-qt ]; then install -m 0755 tea-qt "$(BINDIR)/tea-qt"; \
+	    echo "installed tea-qt (desktop GUI)"; fi
+	install -m 0644 man/tea.1 "$(MAN1DIR)/tea.1"
+	@if [ -f docs/tea-manual.pdf ]; then \
+	    install -m 0644 docs/tea-manual.pdf "$(DOCDIR)/tea-manual.pdf"; fi
+	install -m 0644 README.md COMPATIBILITY.md DECAF.md GUI.md "$(DOCDIR)/"
+	@echo "installed tea $(VER) to $(BINDIR)"
+	@case ":$$PATH:" in \
+	  *":$(BINDIR):"*) : ;; \
+	  *) echo "note: $(BINDIR) is not on your PATH \
+	(add: export PATH=\"$(BINDIR):$$PATH\" to your shell profile)";; \
+	esac
+
+uninstall:
+	rm -f "$(BINDIR)/tea" "$(BINDIR)/tea-decaf" "$(BINDIR)/tea-qt" \
+	      "$(MAN1DIR)/tea.1"
+	rm -rf "$(DOCDIR)"
+	@echo "uninstalled tea from $(PREFIX)"
+
 # ---- debug target: ASan + UBSan, no optimisation -------------------------
 # Builds a separate binary at tea-debug so the release tea/ stays unaffected.
 # Use this for any reproducer that might hint at memory corruption.
@@ -339,7 +380,7 @@ showpaths:
 	@echo "CFLAGS           = $(CFLAGS)"
 	@echo "LDFLAGS          = $(LDFLAGS)"
 
-.PHONY: more-test qt-check embed-test clean test smoke check-deps showpaths debug release manual docs-pdf quickstart sync-web-version dist gui gui-test gui-clean both gate decaf decaf-test wasm-decaf wasm-decaf-test wasm-decaf-clean qt qt-test qt-clean
+.PHONY: install uninstall more-test qt-check embed-test clean test smoke check-deps showpaths debug release manual docs-pdf quickstart sync-web-version dist gui gui-test gui-clean both gate decaf decaf-test wasm-decaf wasm-decaf-test wasm-decaf-clean qt qt-test qt-clean
 
 # ---- WebAssembly build (browser demo) -------------------------------------
 # Requires emcc and the prebuilt WASM static libs (reference CLAPACK stack,
@@ -463,7 +504,9 @@ manual: $(BIN)
 # Bug 41 shipped through a green 77/77 gate precisely because the page
 # script had no coverage; it now does
 wasm-test:
-	cd web && node run_wasm_tests.cjs && node run_page_smoke.cjs
+	cd web && node run_wasm_tests.cjs && node run_page_smoke.cjs \
+	    && node run_page_smoke.cjs truncate-once \
+	    && node run_page_smoke.cjs truncate-always
 
 # stamp the VERSION into the browser splash (marker-based, idempotent)
 sync-web-version:

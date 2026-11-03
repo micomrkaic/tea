@@ -415,3 +415,24 @@ Documented graphics deviations from Stata:
   varying lines).  The per-test runner now drains stdout before
   exiting, and the harness reports child death (signal/status)
   distinctly from a real golden diff.
+
+## Install targets, man page, loader hardening (v1.6.57)
+
+- `make install` / `make uninstall`: user-local by default (~/.local),
+  PREFIX-overridable; installs tea + tea-decaf + tea-qt (when built),
+  man/tea.1, and the doc set.  tea is a self-contained binary — the
+  bundled datasets and help text are compiled in — so the installed
+  binary runs correctly from any directory with no runtime assets.
+- man/tea.1 (generated from man/tea.1.in with the release version).
+- Browser loader hardened against truncated downloads: the fetched
+  module is structurally validated (WebAssembly.validate + length
+  check) before instantiation; an incomplete module triggers ONE
+  refetch with cache:'reload', which bypasses and replaces a poisoned
+  HTTP-cache entry (corporate proxies truncate multi-MB transfers and
+  browsers replay the cached partial body on every reload).  A second
+  failure reports byte counts and the hard-refresh remedy instead of
+  raw CompileError internals.
+- gui/tea_qt.moc had escaped into git: it is moc-generated and
+  Qt-version-specific, so a committed copy breaks `make gui` on any
+  machine with a different Qt.  Now ignored; update.sh untracks it
+  idempotently.

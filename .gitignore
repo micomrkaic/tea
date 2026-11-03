@@ -10,3 +10,5 @@ gui/*.o
 obj-decaf/
 tea-decaf
 web/obj-decaf/
+gui/tea_qt.moc
+gui/tea_qt.o

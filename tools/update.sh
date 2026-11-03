@@ -96,6 +96,10 @@ read -r a < /dev/tty || a=n
 [ "$a" = y ] || { echo "stopped: extracted+verified, nothing committed"; exit 0; }
 
 # ---- 6. commit, tag, push (master first, tag second) -----------------
+# hygiene: generated files that ever escaped into the index break other
+# machines (a committed tea_qt.moc is Qt-version-specific); untrack them
+# once, idempotently — the files stay on disk, .gitignore keeps them out
+git rm --cached -q gui/tea_qt.moc gui/tea_qt.o 2>/dev/null || true
 git add -A
 if [ -n "$(git status --porcelain)" ]; then
   git commit -m "release v$VER"

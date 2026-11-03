@@ -56,9 +56,30 @@ class Terminal {
 const FitAddon = { FitAddon: class { fit(){} activate(){} } };
 
 // ---- fetch: serves the real tea.wasm with a streaming body ----
-async function fetchStub(url){
+// Scenario-driven (argv[2]) so the loader's truncation hardening has a
+// real gate, not just its happy path:
+//   normal          — full module, exactly one fetch expected
+//   truncate-once   — first response is CUT at 55% with an HONEST short
+//                     Content-Length (mimics a poisoned HTTP-cache entry
+//                     that stored a partial body as a complete 200 — the
+//                     case only WebAssembly.validate can catch); the
+//                     loader must refetch exactly once, and that refetch
+//                     must carry cache:'reload' to bypass the poison
+//   truncate-always — every response cut: the loader must FAIL with the
+//                     human hard-refresh message, never reach ready
+const SCENARIO = process.argv[2] || 'normal';
+let fetchCalls = 0;
+async function fetchStub(url, opts){
   if (!/tea\.wasm/.test(String(url))) throw new Error('unexpected fetch: ' + url);
-  const bytes = new Uint8Array(wasmBuf);
+  fetchCalls++;
+  const full = new Uint8Array(wasmBuf);
+  const cut = full.slice(0, Math.floor(full.length * 0.55));
+  const bytes =
+    (SCENARIO === 'truncate-always' ||
+     (SCENARIO === 'truncate-once' && fetchCalls === 1)) ? cut : full;
+  if (SCENARIO === 'truncate-once' && fetchCalls === 2 &&
+      !(opts && opts.cache === 'reload'))
+    throw new Error('retry fetch did not pass cache:"reload" — a poisoned cache entry would be replayed');
   let served = false;
   return {
     ok: true, status: 200,
@@ -123,13 +144,36 @@ const t0 = Date.now();
 let readyAt = 0;
 (function poll(){
   if (/failed to load/.test(String(splashEl.textContent))) {
+    if (SCENARIO === 'truncate-always') {
+      /* failing is this scenario's SUCCESS — but with the human message,
+       * not raw wasm internals */
+      if (/hard-refresh/.test(String(splashEl.textContent))) {
+        console.log('page smoke[truncate-always]: failed with the human remedy (correct)');
+        process.exit(0);
+      }
+      console.error('page smoke[truncate-always]: failed WITHOUT the hard-refresh message:',
+                    splashEl.textContent);
+      process.exit(1);
+    }
     console.error('page smoke: fatal():', splashEl.textContent);
     process.exit(1);
   }
   if (statusEl.textContent === 'ready') {
     if (!readyAt) readyAt = Date.now();
     else if (Date.now() - readyAt > 1000) {
-      console.log('page smoke: ready and stable (loader completed)');
+      if (SCENARIO === 'truncate-always') {
+        console.error('page smoke[truncate-always]: reached ready on a truncated module');
+        process.exit(1);
+      }
+      const want = SCENARIO === 'truncate-once' ? 2 : 1;
+      if (fetchCalls !== want) {
+        console.error('page smoke[%s]: expected %d fetches, saw %d',
+                      SCENARIO, want, fetchCalls);
+        process.exit(1);
+      }
+      console.log(SCENARIO === 'normal'
+        ? 'page smoke: ready and stable (loader completed)'
+        : 'page smoke[truncate-once]: recovered via cache-bypass refetch (correct)');
       process.exit(0);
     }
   } else readyAt = 0;

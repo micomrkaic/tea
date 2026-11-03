@@ -15,13 +15,13 @@ Stata's and the semantics are faithful where it matters.
 > endorsed by, or sponsored by StataCorp LLC.  *Stata* is a registered
 > trademark of StataCorp LLC.
 
-## What tea v1.0 does
+## What tea does
 
 **Data manipulation**:
 
 | Area                    | What works |
 |-------------------------|------------|
-| File I/O                | `.dta` (Stata-native, full round-trip of types, formats, var labels, value labels), `.tea` (native binary), `.csv`/`.tsv` (RFC 4180 quoting), `.xlsx`/`.ods` (via LibreOffice headless) |
+| File I/O                | `.dta` (Stata-native, full round-trip of types, formats, var labels, value labels), `.tea` (native binary), `.csv`/`.tsv` (RFC 4180 quoting), `.xlsx` (native reader, no external tools), `.ods` (via LibreOffice/ssconvert when installed) |
 | Variable creation       | `generate`, `replace` (with `by:`, `if`, `in`), `egen` (mean/sum/total/count/min/max/sd/group/rowtotal/rowmean/...) |
 | Type conversion         | `encode`, `decode`, `destring`, `tostring`, `recode` |
 | Reshape & merge         | `reshape long|wide` (in-place), `merge 1:1|m:1|1:m` (m:m rejected), `collapse` |
@@ -134,18 +134,60 @@ make                  # produces ./tea
 ./tea                 # interactive REPL  (type 'help' or Ctrl-D)
 make test             # build + run the full regression suite
 make smoke            # quick sanity: build + run the demo
+
+make both             # ./tea and ./tea-decaf (data-management tier)
+make gui              # ./tea-qt desktop GUI  (needs Qt6; see GUI.md)
+make gate             # every native gate: both suites, decaf leak
+                      # check, embed + pager gates, GUI smoke
 ```
+
+### Install / uninstall
+
+```
+make install          # user-local, no sudo: ~/.local/bin
+make uninstall
+make install PREFIX=/usr/local    # system-wide instead
+```
+
+`make install` places `tea` (plus `tea-decaf` and `tea-qt` when built)
+in `$PREFIX/bin`, the manual page in `$PREFIX/share/man/man1` (`man
+tea` works immediately when `~/.local/bin` is on your `PATH` — man-db
+derives its search path from `PATH`), and the PDF manual plus the
+compatibility/tier docs in `$PREFIX/share/doc/tea`.
+
+tea is a **self-contained binary**: the bundled practice datasets
+(`sysuse dir`) and all help text are compiled in, so the installed
+binary runs correctly from any directory — there are no runtime asset
+files to locate, and nothing breaks when you start it outside the
+source tree.
+
+### Editions & frontends
+
+One source tree, several faces:
+
+- **tea** — the full CLI: data management plus the econometrics tier.
+- **decaf tea** (`make decaf`) — data management only, no estimation,
+  no LAPACK in the link; the institutional build.  See `DECAF.md`.
+- **tea-qt** (`make gui`) — native Qt6 desktop shell: terminal-style
+  console, data browser, do-file editor, plots.  See `GUI.md`.
+- **the browser** — full tea at
+  <https://micomrkaic.github.io/tea/> and decaf at
+  <https://micomrkaic.github.io/tea/decaf/>, both running entirely
+  client-side (WebAssembly); nothing to install.
 
 ### Command-line options
 
 ```
-tea [options] [do-file]
+tea [options] [do-file]      # do-file of '-' reads from stdin
 
   --strict-stata      reject tea-only extensions (default)
   --tea-extensions    allow tea-only extensions
+  -q, --quiet         suppress the startup banner
   --version           print version and exit
   --help              print usage and exit
 ```
+
+After `make install`, `man tea` has the same information.
 
 Tea is **strict-Stata by default**: do-files that use tea-only features
 are rejected.  This guarantees every passing do-file runs unchanged in
@@ -160,8 +202,8 @@ list of currently-gated extensions.
 | `.tea`    | yes  | yes   | Native tea binary; fast internal exchange.     |
 | `.csv`    | yes  | yes   | Comma-separated; via `import`/`export`.        |
 | `.tsv`    | yes  | yes   | Tab-separated; via `import`/`export`.          |
-| `.xlsx`   | yes  | no    | via `import excel`; uses LibreOffice headless. |
-| `.ods`    | yes  | no    | via `import ods`; LibreOffice.                 |
+| `.xlsx`   | yes  | no    | via `import excel`; native reader, no external tools. |
+| `.ods`    | yes  | no    | via `import ods`; LibreOffice/ssconvert when installed. |
 
 `use foo` and `save foo` without an extension default to `.dta`
 (Stata-compatible).  Use explicit `.tea` if you want the native format.
@@ -205,7 +247,9 @@ AddressSanitizer + UBSan on the full demo (no errors, leaks, or UB).
 
 ### REPL features
 
-History is persistent at `~/.tea_history` (capped at 2000 lines).  Tab
+History is persistent at `~/.tea_history` (capped at 2000 lines).  Long
+output pages with `set more on` (space = next page, Enter = next line,
+q = abort the rest).  Tab
 completes command names at the start of a line and variable names in the
 active frame elsewhere.  Use `help` to list commands, `help CMD` for one's
 syntax.

@@ -1,0 +1,146 @@
+.TH TEA 1 "@DATE@" "tea @VERSION@" "User Commands"
+.SH NAME
+tea \- tiny econometric assistant: a Stata-compatible data tool
+.SH SYNOPSIS
+.B tea
+[\fIoptions\fR] [\fIfile.do\fR]
+.br
+.B tea-decaf
+[\fIoptions\fR] [\fIfile.do\fR]
+.br
+.B tea-qt
+.SH DESCRIPTION
+.B tea
+is a small, self-contained C program for the data work economists use
+Stata for: import, clean, merge, reshape, define variables, estimate,
+and graph.  It runs a subset of Stata's language with faithful
+semantics: a do-file that runs in tea is intended to produce the same
+output, to the printed digit, in Stata.
+.PP
+With no arguments, tea starts an interactive REPL (GNU readline line
+editing, persistent history, tab completion of commands and variable
+names).  With a \fIfile.do\fR argument it runs the do-file in batch and
+exits with its status.  A file argument of
+.B \-
+reads the script from standard input.
+.PP
+tea is strict-Stata by default: constructs that exist only in tea are
+rejected unless
+.B \-\-tea\-extensions
+is given, which guarantees that every accepted do-file also runs
+unchanged in Stata.
+.SH OPTIONS
+.TP
+.B \-\-strict\-stata
+Reject tea-only language extensions (the default).
+.TP
+.B \-\-tea\-extensions
+Allow tea-only extensions.
+.TP
+.B \-q, \-\-quiet
+Suppress the startup banner.
+.TP
+.B \-\-version
+Print the version and exit.
+.TP
+.B \-\-help
+Print usage and exit.
+.TP
+.B \-\-
+End of options; treat the next argument as a filename.
+.SH INTERACTIVE USE
+Type
+.B help
+for the themed command index,
+.B help \fICMD\fR
+for one command's syntax, and
+.B sysuse dir
+to list the practice datasets compiled into the binary.  Long output
+pages when
+.B set more on
+is active (space advances a page, Enter one line,
+.B q
+abandons the rest of the command's output; the session log always
+receives everything).  Ctrl\-D exits.
+.SH COMPANION PROGRAMS
+.TP
+.B tea-decaf
+The data-management tier: the same binary minus the entire estimation
+layer (no regress, no time-series or panel estimators, no LAPACK in
+the link).  Data prepared in decaf saves to Stata-compatible
+.I .dta
+for estimation in any full package.  Built with
+.BR "make decaf" .
+.TP
+.B tea-qt
+The native Qt desktop shell: a terminal-style console, a
+virtual-scrolling data browser over the live dataset, a do-file
+editor with run-selection, an SVG plots pane, and a Break button.
+Built with
+.BR "make gui" .
+.PP
+A browser build (WebAssembly, runs entirely client-side) is published
+at
+.IR https://micomrkaic.github.io/tea/ ,
+with the decaf tier at
+.IR https://micomrkaic.github.io/tea/decaf/ .
+.SH FILES
+tea is a self-contained binary: bundled datasets and help text are
+compiled in, and it runs correctly from any working directory.  The
+files it touches are its outputs:
+.TP
+.I ~/.tea_history
+Interactive command history (capped at 2000 lines).
+.TP
+.I ./tea_graph.svg
+Graph commands write their output here, in the current directory.
+.TP
+.I log files
+Created where
+.B log using
+points.
+.SH EXIT STATUS
+0 on success; non-zero when a batch do-file aborts on an error (the
+Stata return code is reported in the output).
+.SH EXAMPLES
+Run a do-file in batch:
+.PP
+.nf
+    tea analysis.do
+.fi
+.PP
+Clean data interactively, then hand it to Stata:
+.PP
+.nf
+    tea
+    . sysuse weo
+    . keep if iso == "USA"
+    . save usa.dta
+.fi
+.SH SEE ALSO
+The full manual:
+.I tea-manual.pdf
+(installed under \fIshare/doc/tea\fR, also at the repository root).
+The compatibility contract:
+.IR COMPATIBILITY.md .
+The tiers:
+.IR DECAF.md ,
+.IR GUI.md .
+Repository:
+.IR https://github.com/micomrkaic/tea .
+.SH BUGS
+Known divergences from Stata are catalogued in
+.I KNOWN_BUGS.md
+(and its PDF) with root causes and status.  Report new ones at the
+repository's issue tracker.
+.SH LEGAL
+tea is an independent open-source project.  It is not affiliated
+with, endorsed by, or sponsored by StataCorp LLC.  Stata is a
+registered trademark of StataCorp LLC.
+.SH AUTHOR
+Mico Mrkaic.
+.SH COPYRIGHT
+Copyright \(co 2026 Mico Mrkaic.  License GPLv3+: GNU GPL version 3
+or later.  This is free software: you are free to change and
+redistribute it.  There is NO WARRANTY, to the extent permitted by
+law.

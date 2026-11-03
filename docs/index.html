@@ -69,7 +69,7 @@
 <div id="splash">
   <img src="tea_logo.jpg" alt="tea">
   <div class="tagline"><!--TEATAG-->tiny econometric assistant<!--/TEATAG--></div>
-  <div class="ver">v<!--TEAVER-->1.6.56<!--/TEAVER--> &middot; runs entirely in your browser</div>
+  <div class="ver">v<!--TEAVER-->1.6.57<!--/TEAVER--> &middot; runs entirely in your browser</div>
   <div id="bar-wrap"><div id="bar"></div></div>
   <div id="splash-status">brewing&hellip;</div>
   <div class="foot">free software (GPLv3) &middot; no data leaves your machine</div>
@@ -177,12 +177,19 @@ ed.h.submit = cmd => {
   _histSubmit(cmd);
 };
 
-/* fetch the wasm ourselves so the splash can show real download progress */
-async function fetchWasm(){
-  const resp = await fetch('tea.wasm');
+/* fetch the wasm ourselves: the splash shows real download progress, and
+ * we can verify the module arrived COMPLETE before the engine sees it.
+ * Corporate proxies truncate multi-MB transfers and browsers cache the
+ * partial body, so every reload replays the same broken module (seen in
+ * the wild as "Data section extends past end of the module").  The cure
+ * is structural validation + one refetch with cache:'reload', which
+ * bypasses — and replaces — the poisoned HTTP-cache entry. */
+async function fetchWasmOnce(cacheMode){
+  const resp = await fetch('tea.wasm', cacheMode ? {cache: cacheMode} : undefined);
   if (!resp.ok) throw new Error('tea.wasm: HTTP ' + resp.status);
   const total = +resp.headers.get('Content-Length') || 0;
-  if (!total || !resp.body) { barEl.classList.add('pulse'); return new Uint8Array(await resp.arrayBuffer()); }
+  if (!total || !resp.body) { barEl.classList.add('pulse');
+    return { bytes: new Uint8Array(await resp.arrayBuffer()), total }; }
   const reader = resp.body.getReader();
   const chunks = []; let got = 0;
   for(;;){
@@ -194,7 +201,28 @@ async function fetchWasm(){
   }
   const out = new Uint8Array(got); let o = 0;
   for (const c of chunks){ out.set(c, o); o += c.length; }
-  return out;
+  return { bytes: out, total };
+}
+function wasmComplete(r){
+  const b = r.bytes;
+  if (b.length < 8 || b[0] !== 0x00 || b[1] !== 0x61 ||
+      b[2] !== 0x73 || b[3] !== 0x6d) return false;      /* \0asm magic */
+  if (r.total && b.length !== r.total) return false;      /* short read */
+  return WebAssembly.validate(b);   /* full structural check: false on
+                                       any truncated or corrupt section */
+}
+async function fetchWasm(){
+  let r = await fetchWasmOnce();
+  if (!wasmComplete(r)) {
+    splashStatus.textContent = 'download incomplete \u2014 refetching (bypassing cache)\u2026';
+    barEl.style.width = '0%';
+    r = await fetchWasmOnce('reload');
+  }
+  if (!wasmComplete(r))
+    throw new Error('tea.wasm arrived incomplete twice (' + r.bytes.length +
+      (r.total ? ' of ' + r.total : '') + ' bytes). A proxy or cache may be ' +
+      'truncating the download \u2014 hard-refresh (Ctrl+Shift+R) or try another network.');
+  return r.bytes;
 }
 
 (async () => {
