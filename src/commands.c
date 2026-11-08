@@ -5576,6 +5576,18 @@ int tea_complete(Frame *f, const char *line, int point, char *out, size_t outsz)
     return n;
 }
 
+/* command-name oracle for the native readline completer.  interp.c used
+ * to redeclare TABLE with its own shadow struct ("DispCompat"); when
+ * Disp grew the rawopts field the shadow's stride went stale and every
+ * command-position TAB walked the table misaligned — dereferencing an
+ * int as a pointer (segfault in the wild, v1.6.57).  An accessor cannot
+ * drift: the only Disp layout it knows is the real one in this TU. */
+const char *tea_cmd_name(int i){
+    for(Disp *d = TABLE; d->name; d++, i--)
+        if(i == 0) return d->name;
+    return NULL;
+}
+
 /* trailing rawopts is deliberately omitted on ~120 entries: C zero-fills
  * missing trailing initializers (well-defined), and only the two custom
  * option parsers set it.  Silence -Wextra's style objection locally. */

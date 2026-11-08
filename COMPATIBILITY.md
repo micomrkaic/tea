@@ -450,3 +450,18 @@ Documented graphics deviations from Stata:
   Content-Length, which reproduced the field failure before the fix.
   Lesson recorded: the smoke's fetch stub had tested the assumption
   (honest lengths), not the web.
+
+## Native TAB completion segfault (v1.6.59)
+
+- Any command-position TAB in the native REPL segfaulted: interp.c's
+  readline completer redeclared the dispatch table with its own stale
+  4-field shadow struct, so once Disp grew its 5th field (rawopts,
+  v1.6.4x) the completer walked TABLE with the wrong stride and
+  dereferenced an int as a pointer.  The shadow struct is gone;
+  command names now come from a tea_cmd_name(i) accessor exported by
+  commands.c, which cannot drift from the real layout.
+- The gap that let it ship: the GUI/browser complete through
+  tea_complete() (same TU, real struct) and no gate ever pressed TAB
+  in a terminal.  New pty gate (tests/embed/complete_pty_test.py, in
+  make gate) presses TAB in command position, after `help`, and on
+  variable names; it crashes the v1.6.58 binary and passes the fix.

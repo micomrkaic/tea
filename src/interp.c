@@ -803,9 +803,11 @@ static char *read_one_line(FILE *in, bool interactive, const char *prompt){
 #include <readline/readline.h>
 #include <readline/history.h>
 
-/* Disp is defined in commands.c; we only need name+ for completion */
-typedef struct { const char *name; int (*fn)(void*); int needs_data; const char *help; } DispCompat;
-extern DispCompat TABLE[];     /* defined in commands.c */
+/* command names come from the real dispatch table via tea_cmd_name()
+ * (interp.h): no local redeclaration of TABLE, so this file cannot hold
+ * a stale copy of Disp's layout — redeclaring it with a 4-field shadow
+ * struct is exactly what segfaulted every command-position TAB after
+ * Disp grew its 5th field. */
 
 /* completion needs access to the workspace for variable names */
 static Workspace *g_compl_ws = NULL;
@@ -813,8 +815,9 @@ static Workspace *g_compl_ws = NULL;
 static char *cmd_generator(const char *text, int state){
     static int i; static size_t len;
     if(!state){ i=0; len=strlen(text); }
-    while(TABLE[i].name){
-        const char *n=TABLE[i++].name;
+    const char *n;
+    while((n = tea_cmd_name(i)) != NULL){
+        i++;
         if(!strncmp(n,text,len)) return strdup(n);
     }
     return NULL;

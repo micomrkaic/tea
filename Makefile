@@ -201,6 +201,7 @@ both: tea tea-decaf
 more-test: tea
 	@if command -v python3 >/dev/null 2>&1; then \
 	    python3 tests/embed/more_pty_test.py ./tea; \
+	    python3 tests/embed/complete_pty_test.py ./tea; \
 	else echo "more-test skipped: python3 not found"; fi
 
 QT_PRESENT := $(shell pkg-config --exists Qt6Widgets 2>/dev/null && echo y)
