@@ -1,5 +1,5 @@
 # tea CI: build tea and decaf tea, run the regression suite against both
-# tiers, and run the embed API test.
+# tiers, and run the embed API and pty tests.
 name: ci
 on:
   push:
@@ -23,3 +23,5 @@ jobs:
         run: make decaf-test
       - name: embed API
         run: make embed-test
+      - name: pty tests (pager and TAB completion)
+        run: make more-test

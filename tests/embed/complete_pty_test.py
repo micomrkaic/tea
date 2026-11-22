@@ -22,7 +22,11 @@ if pid == 0:
     os.execv(TEA, [TEA])
 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
 
-def read_until(needle, timeout=8.0):
+def read_until(needle, timeout=8.0, prompt=False):
+    """Read until `needle` has appeared.  With prompt=True, also wait until
+    the output ends in tea's ". " prompt and has gone quiet, i.e. readline
+    is waiting for a key.  Typing before that point races the terminal's
+    switch out of line mode, and a ^U sent in that window can be lost."""
     buf = b""
     end = time.time() + timeout
     while time.time() < end:
@@ -35,8 +39,8 @@ def read_until(needle, timeout=8.0):
             if not c:
                 break
             buf += c
-            if needle in buf:
-                return buf, True
+        if needle in buf and (not prompt or (not r and buf.endswith(b". "))):
+            return buf, True
     return buf, False
 
 def fail(msg, buf=b""):
@@ -49,8 +53,8 @@ def fail(msg, buf=b""):
 def alive():
     return os.waitpid(pid, os.WNOHANG) == (0, 0)
 
-buf, ok = read_until(b"type help")
-if not ok: fail("no banner", buf)
+buf, ok = read_until(b"type help", prompt=True)
+if not ok: fail("no banner and prompt", buf)
 
 # 1. first-word completion (unique): summar<TAB> -> summarize
 os.write(fd, b"summar\t")
@@ -65,12 +69,15 @@ buf, ok = read_until(b"regress", 5.0)
 if not alive(): fail("CRASHED on 'help <cmd>' TAB (the v1.6.57 segfault)", buf)
 if not ok: fail("'help regre' TAB did not complete", buf)
 os.write(fd, b"\n")
-buf, ok = read_until(b"OLS", 5.0)
+buf, ok = read_until(b"OLS", 5.0, prompt=True)
 if not ok: fail("completed help line did not run", buf)
 
 # 3. variable completion after a dataset is loaded
+# (wait for the prompt: sysuse's own message says "airline passengers", so
+# reading on could satisfy the check below before TAB was ever handled)
 os.write(fd, b"sysuse airline\n")
-read_until(b"airline", 5.0)
+buf, ok = read_until(b"loaded", 5.0, prompt=True)
+if not ok: fail("sysuse airline did not load", buf)
 os.write(fd, b"list passen\t")
 buf, ok = read_until(b"passengers", 5.0)
 if not alive(): fail("CRASHED on variable TAB", buf)
