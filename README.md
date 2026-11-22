@@ -4,6 +4,8 @@
 
 # tea — tiny econometric assistant
 
+[![ci](https://github.com/micomrkaic/tea/actions/workflows/ci.yml/badge.svg)](https://github.com/micomrkaic/tea/actions/workflows/ci.yml)
+
 *Data prep, brewed cleanly.*
 
 A small C17 program for the data-prep phase economists use Stata for: import,

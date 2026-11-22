@@ -1,0 +1,25 @@
+# tea CI: build tea and decaf tea, run the regression suite against both
+# tiers, and run the embed API test.
+name: ci
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: deps
+        run: sudo apt-get update && sudo apt-get install -y libreadline-dev libopenblas-dev liblapacke-dev libgsl-dev libreadstat-dev
+      - name: dependency headers reachable
+        run: make check-deps
+      - name: build
+        run: make -j4
+      - name: regression suite
+        run: make test
+      - name: decaf tier (leak check + regression suite)
+        run: make decaf-test
+      - name: embed API
+        run: make embed-test
